@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using AutoActivator.Config;
 using AutoActivator.Services;
+using AutoActivator.Sql; // Ajout nécessaire pour accéder à SqlQueries
 
 namespace AutoActivator
 {
@@ -17,18 +18,26 @@ namespace AutoActivator
             Console.WriteLine("==================================================");
             Console.WriteLine("       AUTO-ACTIVATOR L.I.S.A (.NET VERSION)      ");
             Console.WriteLine("==================================================");
-            Console.WriteLine("1. Lancer le Test d'Extraction (test_extraction.py)");
-            Console.WriteLine("2. Lancer l'Activation (run_activation.py)");
-            Console.WriteLine("3. Lancer la Comparaison (run_comparison.py)");
+            Console.WriteLine("1. Lancer le Test d'Extraction");
+            Console.WriteLine("2. Lancer l'Activation");
+            Console.WriteLine("3. Lancer la Comparaison");
             Console.WriteLine("0. Quitter");
             Console.WriteLine("==================================================");
             Console.Write("Votre choix : ");
 
             var choice = Console.ReadLine();
 
-            Directory.CreateDirectory(Settings.OutputDir);
-            Directory.CreateDirectory(Settings.SnapshotDir);
-            Directory.CreateDirectory(Settings.InputDir);
+            // Création sécurisée des répertoires de travail définis dans Settings
+            try
+            {
+                if (!Directory.Exists(Settings.OutputDir)) Directory.CreateDirectory(Settings.OutputDir);
+                if (!Directory.Exists(Settings.SnapshotDir)) Directory.CreateDirectory(Settings.SnapshotDir);
+                if (!Directory.Exists(Settings.InputDir)) Directory.CreateDirectory(Settings.InputDir);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Impossible de créer les répertoires : {ex.Message}");
+            }
 
             switch (choice)
             {
@@ -43,18 +52,18 @@ namespace AutoActivator
                     break;
                 case "0":
                     Console.WriteLine("Fin du programme.");
-                    break;
+                    return;
                 default:
                     Console.WriteLine("Choix invalide.");
                     break;
             }
 
-            Console.WriteLine("Appuyez sur une touche pour quitter...");
+            Console.WriteLine("\nAppuyez sur une touche pour quitter...");
             Console.ReadKey();
         }
 
         // =========================================================================
-        // 1. TEST D'EXTRACTION (Génération CSV sans ClosedXML)
+        // 1. TEST D'EXTRACTION (Génération CSV native)
         // =========================================================================
         private static void RunTestExtraction()
         {
@@ -64,7 +73,7 @@ namespace AutoActivator
             var db = new DatabaseManager();
             if (!db.TestConnection()) return;
 
-            Console.WriteLine($"Recherche de l'ID interne pour le contrat externe : {targetContract}");
+            Console.WriteLine($"Recherche de l'ID interne pour le contrat : {targetContract}");
 
             var p1 = new Dictionary<string, object> { { "@ContractNumber", targetContract } };
             var dfId = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], p1);
@@ -89,9 +98,8 @@ namespace AutoActivator
 
             var tablesToExtract = new[] { "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0", "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0" };
 
-            // Création d'un dossier d'extraction pour y mettre les CSV
             string extractionDir = Path.Combine(Settings.OutputDir, $"extraction_brute_{targetContract}");
-            Directory.CreateDirectory(extractionDir);
+            if (!Directory.Exists(extractionDir)) Directory.CreateDirectory(extractionDir);
 
             foreach (var table in tablesToExtract)
             {
@@ -106,20 +114,20 @@ namespace AutoActivator
                 if (dfTable.Rows.Count > 0)
                 {
                     WriteDataTableToCsv(dfTable, csvPath);
-                    Console.WriteLine($"  -> {table} : {dfTable.Rows.Count} lignes extraites (sauvegardé dans {sheetName}.csv).");
+                    Console.WriteLine($"  -> {table} : {dfTable.Rows.Count} lignes extraites.");
                 }
                 else
                 {
-                    File.WriteAllText(csvPath, "Info\nAucune donnee trouvee");
-                    Console.WriteLine($"  -> {table} : Vide (0 ligne).");
+                    File.WriteAllText(csvPath, "Info\nAucune donnee trouvee", Encoding.UTF8);
+                    Console.WriteLine($"  -> {table} : Vide.");
                 }
             }
 
-            Console.WriteLine($"🎉 Extraction terminée ! Dossier généré : {extractionDir}");
+            Console.WriteLine($"🎉 Extraction terminée ! Dossier : {extractionDir}");
         }
 
         // =========================================================================
-        // 2. ACTIVATION (Export CSV au lieu d'Excel)
+        // 2. ACTIVATION (Export CSV Natif)
         // =========================================================================
         private static void RunActivation()
         {
@@ -132,7 +140,7 @@ namespace AutoActivator
 
             foreach (var oldContractExt in contratsSources)
             {
-                Console.WriteLine($"\n--- Traitement Source : {oldContractExt} ---");
+                Console.WriteLine($"\n--- Traitement : {oldContractExt} ---");
 
                 var parameters = new Dictionary<string, object> { { "@ContractNumber", oldContractExt } };
                 var dtId = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
@@ -148,13 +156,16 @@ namespace AutoActivator
                         var pTable = new Dictionary<string, object> { { "@InternalId", idIntSource } };
                         var dtSource = db.GetData(SqlQueries.Queries[table], pTable);
                         dtSource.TableName = table;
-                        dtSource.WriteXml(Path.Combine(Settings.SnapshotDir, $"{oldContractExt}_{table}.xml"), XmlWriteMode.WriteSchema);
+
+                        // Utilisation de WriteXml natif pour le snapshot
+                        string xmlPath = Path.Combine(Settings.SnapshotDir, $"{oldContractExt}_{table}.xml");
+                        dtSource.WriteXml(xmlPath, XmlWriteMode.WriteSchema);
                     }
-                    Console.WriteLine($"   [Snapshot] 📸 Sauvegarde de l'état source pour {oldContractExt} terminée.");
+                    Console.WriteLine($"   [Snapshot] Sauvegarde source terminée.");
                 }
 
-                string newContractExt = "999" + oldContractExt.Substring(Math.Max(0, oldContractExt.Length - 6));
-                Console.WriteLine($"   [Simulation] Duplication ELIA : Source {oldContractExt} -> Cible {newContractExt}");
+                // Simulation de duplication (Logique métier LISA)
+                string newContractExt = "999" + (oldContractExt.Length > 6 ? oldContractExt.Substring(oldContractExt.Length - 6) : oldContractExt);
                 Thread.Sleep(500);
 
                 var pNewId = new Dictionary<string, object> { { "@ContractNumber", newContractExt } };
@@ -195,22 +206,21 @@ namespace AutoActivator
                 }
 
                 File.WriteAllText(csvOutput, sb.ToString(), Encoding.UTF8);
-                Console.WriteLine($"\n--- Fichier de suivi généré : {csvOutput} ---");
+                Console.WriteLine($"\n--- Fichier généré : {csvOutput} ---");
             }
         }
 
         // =========================================================================
-        // 3. COMPARAISON (Lecture de CSV au lieu d'Excel)
+        // 3. COMPARAISON (Lecture XML et CSV native)
         // =========================================================================
         private static void RunComparison()
         {
-            Console.WriteLine("\n--- Démarrage du Comparateur Auto-Activator ---");
+            Console.WriteLine("\n--- Démarrage du Comparateur ---");
 
             string inputCsv = Path.ChangeExtension(Settings.InputFile, ".csv");
-
             if (!File.Exists(inputCsv))
             {
-                Console.WriteLine($"[ERROR] Fichier d'entrée CSV introuvable : {inputCsv}");
+                Console.WriteLine($"[ERROR] CSV introuvable : {inputCsv}");
                 return;
             }
 
@@ -221,14 +231,11 @@ namespace AutoActivator
             reportData.AppendLine("Reference_Contract;New_Contract;Table;Status;Details");
 
             var statsList = new List<(string Product, string Contract, string Status)>();
-
-            // Lecture du fichier CSV (Séparateur ';')
-            var lines = File.ReadAllLines(inputCsv).Skip(1); // Skip header
+            var lines = File.ReadAllLines(inputCsv).Skip(1);
 
             foreach (var line in lines)
             {
                 if (string.IsNullOrWhiteSpace(line)) continue;
-
                 var columns = line.Split(';');
                 if (columns.Length < 6) continue;
 
@@ -236,14 +243,7 @@ namespace AutoActivator
                 string newContract = columns[1].Trim();
                 string statutJ0 = columns[5].Trim();
 
-                if (!statutJ0.StartsWith("OK", StringComparison.OrdinalIgnoreCase))
-                {
-                    Console.WriteLine($"Skip {refContract} : Activation J0 en échec ({statutJ0}).");
-                    statsList.Add(("UNKNOWN", refContract, "SKIP_ACTIVATION_KO"));
-                    continue;
-                }
-
-                Console.WriteLine($"\nTraitement : Réf {refContract} vs Nouveau {newContract}");
+                if (!statutJ0.StartsWith("OK", StringComparison.OrdinalIgnoreCase)) continue;
 
                 var pNewId = new Dictionary<string, object> { { "@ContractNumber", newContract } };
                 var dtNewId = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], pNewId);
@@ -251,120 +251,47 @@ namespace AutoActivator
                 if (dtNewId.Rows.Count == 0) continue;
                 long idNew = Convert.ToInt64(dtNewId.Rows[0]["NO_CNT"]);
 
+                // Récupération code produit
                 string productCode = "UNKNOWN";
-                var pProd = new Dictionary<string, object> { { "@InternalId", idNew } };
-                string qProd = "SELECT TOP 1 C_PROP_PRINC FROM LV.SCNTT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId";
-                var dtProd = db.GetData(qProd, pProd);
-                if (dtProd.Rows.Count > 0 && dtProd.Columns.Contains("C_PROP_PRINC"))
-                {
-                    productCode = dtProd.Rows[0]["C_PROP_PRINC"]?.ToString().Trim();
-                }
+                var dtProd = db.GetData("SELECT TOP 1 C_PROP_PRINC FROM LV.SCNTT0 WHERE NO_CNT = @Id", new Dictionary<string, object>{{"@Id", idNew}});
+                if (dtProd.Rows.Count > 0) productCode = dtProd.Rows[0][0].ToString().Trim();
 
                 string contractGlobalStatus = "OK";
-                var tablesToCheck = new[] { "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0", "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0" };
+                var tables = new[] { "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0", "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0" };
 
-                foreach (var table in tablesToCheck)
+                foreach (var table in tables)
                 {
-                    var dtRefData = new DataTable();
                     string snapshotPath = Path.Combine(Settings.SnapshotDir, $"{refContract}_{table}.xml");
+                    if (!File.Exists(snapshotPath)) continue;
 
-                    if (File.Exists(snapshotPath))
-                    {
-                        dtRefData.ReadXml(snapshotPath);
-                    }
-                    else
-                    {
-                        Console.WriteLine($"   [!] Snapshot introuvable pour {table}. Impossible de comparer.");
-                        continue;
-                    }
+                    DataTable dtRef = new DataTable();
+                    dtRef.ReadXml(snapshotPath);
 
-                    var pTable = new Dictionary<string, object> { { "@InternalId", idNew } };
-                    var dtNewData = db.GetData(SqlQueries.Queries[table], pTable);
+                    var dtNew = db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@InternalId", idNew } });
 
-                    var (status, details) = Comparator.CompareDataTables(dtRefData, dtNewData, table);
+                    var (status, details) = Comparator.CompareDataTables(dtRef, dtNew, table);
+                    if (status.StartsWith("KO")) contractGlobalStatus = "KO";
 
-                    if (status.StartsWith("KO"))
-                    {
-                        Console.WriteLine($" ÉCHEC SUR {refContract} (Table: {table}) - Status: {status}");
-                        contractGlobalStatus = "KO";
-                    }
-
-                    string cleanDetails = details?.Replace("\r", "").Replace("\n", " | ") ?? "";
-                    reportData.AppendLine($"{refContract};{newContract};{table};{status};{cleanDetails}");
+                    reportData.AppendLine($"{refContract};{newContract};{table};{status};{details?.Replace("\n", " ")}");
                 }
-
                 statsList.Add((productCode, refContract, contractGlobalStatus));
             }
 
-            string reportPath = Path.Combine(Settings.OutputDir, $"rapport_detaille_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
-            File.WriteAllText(reportPath, reportData.ToString(), Encoding.UTF8);
-            Console.WriteLine($"\nRapport généré avec succès : {reportPath}");
-
-            if (statsList.Any())
-            {
-                var summary = statsList
-                    .GroupBy(s => s.Product)
-                    .Select(g =>
-                    {
-                        int okCount = g.Count(x => x.Status == "OK");
-                        int koCount = g.Count(x => x.Status != "OK");
-                        int total = okCount + koCount;
-                        double successRate = total > 0 ? Math.Round((double)okCount / total * 100, 1) : 0;
-
-                        return new
-                        {
-                            Product = string.IsNullOrEmpty(g.Key) ? "UNKNOWN" : g.Key,
-                            OK = okCount,
-                            KO = koCount,
-                            Total = total,
-                            SuccessRate = successRate
-                        };
-                    })
-                    .OrderBy(x => x.Product)
-                    .ToList();
-
-                Console.WriteLine("\n============================================================");
-                Console.WriteLine(" SYNTHÈSE DES RÉSULTATS PAR PRODUIT (KPIs)");
-                Console.WriteLine("============================================================");
-                Console.WriteLine($"{"Produit",-15} | {"OK",-5} | {"KO",-5} | {"Total",-6} | {"Taux Succès (%)",-15}");
-                Console.WriteLine(new string('-', 60));
-
-                var summaryCsv = new StringBuilder();
-                summaryCsv.AppendLine("Product;OK;KO;Total;Success_Rate (%)");
-
-                foreach (var stat in summary)
-                {
-                    Console.WriteLine($"{stat.Product,-15} | {stat.OK,-5} | {stat.KO,-5} | {stat.Total,-6} | {stat.SuccessRate,-15:F1}");
-                    summaryCsv.AppendLine($"{stat.Product};{stat.OK};{stat.KO};{stat.Total};{stat.SuccessRate}");
-                }
-                Console.WriteLine("============================================================\n");
-
-                string summaryPath = Path.Combine(Settings.OutputDir, $"synthese_par_produit_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
-                File.WriteAllText(summaryPath, summaryCsv.ToString(), Encoding.UTF8);
-                Console.WriteLine($"Rapport de synthèse généré avec succès : {summaryPath}");
-            }
+            File.WriteAllText(Path.Combine(Settings.OutputDir, "rapport_final.csv"), reportData.ToString(), Encoding.UTF8);
+            Console.WriteLine("Rapport généré.");
         }
 
-        // =========================================================================
-        // MÉTHODE UTILITAIRE : Convertir un DataTable en fichier CSV
-        // =========================================================================
         private static void WriteDataTableToCsv(DataTable dataTable, string filePath)
         {
             var sb = new StringBuilder();
+            var columns = dataTable.Columns.Cast<DataColumn>().Select(c => c.ColumnName);
+            sb.AppendLine(string.Join(";", columns));
 
-            // Titres des colonnes
-            var columnNames = dataTable.Columns.Cast<DataColumn>().Select(column => column.ColumnName).ToArray();
-            sb.AppendLine(string.Join(";", columnNames));
-
-            // Données
             foreach (DataRow row in dataTable.Rows)
             {
-                var fields = row.ItemArray.Select(field =>
-                    field == null ? "" : field.ToString().Replace(";", ",").Replace("\n", " ").Replace("\r", "")
-                ).ToArray();
+                var fields = row.ItemArray.Select(f => f?.ToString().Replace(";", " ").Replace("\n", " ") ?? "");
                 sb.AppendLine(string.Join(";", fields));
             }
-
             File.WriteAllText(filePath, sb.ToString(), Encoding.UTF8);
         }
     }

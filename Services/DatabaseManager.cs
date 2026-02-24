@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Data.SqlClient; // Remplace Microsoft.Data.SqlClient
+using System.Data.SqlClient;
 using AutoActivator.Config;
 
 namespace AutoActivator.Services
@@ -12,29 +12,30 @@ namespace AutoActivator.Services
 
         public DatabaseManager()
         {
-            // Recuperation de la chaine de connexion definie dans le fichier Settings.cs
+            // Récupération sécurisée de la chaîne de connexion
             _connectionString = Settings.DbConfig.ConnectionString;
         }
 
         /// <summary>
-        /// Methode utilitaire pour verifier si la connexion fonctionne.
+        /// Vérifie la validité de la connexion à SQL Server.
         /// </summary>
         public bool TestConnection()
         {
             try
             {
-                using var connection = new SqlConnection(_connectionString);
-                connection.Open();
-
-                using var command = new SqlCommand("SELECT 1", connection);
-                var result = command.ExecuteScalar();
-
-                if (result != null && result.ToString() == "1")
+                using (SqlConnection connection = new SqlConnection(_connectionString))
                 {
-                    Console.WriteLine($"[INFO] Connexion réussie à la base : {Settings.DbConfig.Database}");
-                    return true;
+                    connection.Open();
+                    using (SqlCommand command = new SqlCommand("SELECT 1", connection))
+                    {
+                        var result = command.ExecuteScalar();
+                        if (result != null && result.ToString() == "1")
+                        {
+                            Console.WriteLine($"[INFO] Connexion réussie à la base : {Settings.DbConfig.Database}");
+                            return true;
+                        }
+                    }
                 }
-
                 return false;
             }
             catch (Exception e)
@@ -45,39 +46,37 @@ namespace AutoActivator.Services
         }
 
         /// <summary>
-        /// Execute une requete SQL SELECT et retourne un DataTable.
-        /// La signature a été modifiée pour accepter un Dictionary afin de se passer de SqlParameter[]
+        /// Exécute une requête SELECT avec des paramètres pour éviter l'injection SQL.
         /// </summary>
-        /// <param name="query">La requete SQL a executer</param>
-        /// <param name="parameters">Dictionnaire de paramètres pour sécuriser la requête (évite l'injection SQL)</param>
-        /// <returns>Un DataTable contenant les resultats</returns>
         public DataTable GetData(string query, Dictionary<string, object> parameters = null)
         {
-            var dataTable = new DataTable();
+            DataTable dataTable = new DataTable();
 
             try
             {
-                using var connection = new SqlConnection(_connectionString);
-                using var command = new SqlCommand(query, connection);
-
-                // Ajout dynamique des paramètres depuis le dictionnaire
-                if (parameters != null)
+                using (SqlConnection connection = new SqlConnection(_connectionString))
                 {
-                    foreach (var param in parameters)
+                    using (SqlCommand command = new SqlCommand(query, connection))
                     {
-                        // DBNull.Value gère le cas où la valeur passée serait null
-                        command.Parameters.AddWithValue(param.Key, param.Value ?? DBNull.Value);
+                        if (parameters != null)
+                        {
+                            foreach (var param in parameters)
+                            {
+                                // Gestion propre des valeurs nulles
+                                command.Parameters.AddWithValue(param.Key, param.Value ?? DBNull.Value);
+                            }
+                        }
+
+                        using (SqlDataAdapter adapter = new SqlDataAdapter(command))
+                        {
+                            adapter.Fill(dataTable);
+                        }
                     }
                 }
-
-                using var adapter = new SqlDataAdapter(command);
-                // Fill va ouvrir la connexion, lire les donnees, les charger dans le DataTable et fermer la connexion
-                adapter.Fill(dataTable);
             }
             catch (SqlException e)
             {
-                Console.WriteLine($"[ERROR] Erreur SQL lors de l'exécution de la requête : {e.Message}");
-                // On retourne un DataTable vide en cas d'erreur pour ne pas faire planter le script de comparaison
+                Console.WriteLine($"[ERROR] Erreur SQL : {e.Message}");
             }
             catch (Exception e)
             {
@@ -89,24 +88,21 @@ namespace AutoActivator.Services
         }
 
         /// <summary>
-        /// Insere un paiement dans LV.PRCTT0 pour activer le contrat.
+        /// Injecte un paiement de test dans la table LV.PRCTT0.
         /// </summary>
         public bool InjectPayment(long contractInternalId, decimal amount, DateTime? paymentDate = null)
         {
-            // Si pas de date fournie, on prend maintenant
             DateTime now = DateTime.Now;
             DateTime referenceDate = paymentDate ?? now;
-
-            // Si une date specifique est fournie sans heure, on lui donne arbitrairement 12:00:00
-            DateTime timestamp = paymentDate.HasValue && paymentDate.Value.TimeOfDay == TimeSpan.Zero
+            DateTime timestamp = (paymentDate.HasValue && paymentDate.Value.TimeOfDay == TimeSpan.Zero)
                 ? paymentDate.Value.AddHours(12)
                 : now;
 
-            // Generation d'une communication structuree fictive basee sur l'ID contrat
-            // Format : 820 + 9 chiffres ID + 99 (juste pour l'unicite)
+            // Génération d'une communication structurée
             string idStr = contractInternalId.ToString();
             string fakeCommu = $"820{(idStr.Length > 9 ? idStr.Substring(0, 9) : idStr)}99";
 
+            // Requête d'insertion native
             string query = @"
                 INSERT INTO LV.PRCTT0 (
                     C_STE, NO_CNT, C_MD_PMT, D_REF_PRM, NO_ORD_RCP, TSTAMP_CRT_RCT,
@@ -124,27 +120,27 @@ namespace AutoActivator.Services
 
             try
             {
-                using var connection = new SqlConnection(_connectionString);
-                using var command = new SqlCommand(query, connection);
+                using (SqlConnection connection = new SqlConnection(_connectionString))
+                {
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@no_cnt", contractInternalId);
+                        command.Parameters.AddWithValue("@d_ref", referenceDate.Date);
+                        command.Parameters.AddWithValue("@tstamp", timestamp);
+                        command.Parameters.AddWithValue("@amount", amount);
+                        command.Parameters.AddWithValue("@commu", fakeCommu);
 
-                // Ajout des parametres securises avec AddWithValue
-                command.Parameters.AddWithValue("@no_cnt", contractInternalId);
-                command.Parameters.AddWithValue("@d_ref", referenceDate.Date);
-                command.Parameters.AddWithValue("@tstamp", timestamp);
-                command.Parameters.AddWithValue("@amount", amount);
-                command.Parameters.AddWithValue("@commu", fakeCommu);
+                        connection.Open();
+                        command.ExecuteNonQuery();
 
-                connection.Open();
-
-                // Execution de l'insertion
-                command.ExecuteNonQuery();
-
-                Console.WriteLine($"[INFO] SUCCES: Paiement de {amount} EUR injecté pour le contrat {contractInternalId} (Date: {referenceDate:yyyy-MM-dd})");
-                return true;
+                        Console.WriteLine($"[INFO] Paiement de {amount} EUR injecté (Contrat: {contractInternalId})");
+                        return true;
+                    }
+                }
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[ERROR] ECHEC: Erreur lors de l'injection du paiement pour {contractInternalId} : {e.Message}");
+                Console.WriteLine($"[ERROR] ECHEC injection paiement : {e.Message}");
                 return false;
             }
         }
