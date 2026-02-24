@@ -9,7 +9,7 @@ using ClosedXML.Excel;
 using Microsoft.Data.SqlClient;
 using AutoActivator.Config;
 using AutoActivator.Services;
-// Assurez-vous d'avoir accès à votre classe SqlQueries définie précédemment
+
 
 namespace AutoActivator
 {
@@ -29,7 +29,7 @@ namespace AutoActivator
 
             var choice = Console.ReadLine();
 
-            // Création des dossiers nécessaires s'ils n'existent pas
+
             Directory.CreateDirectory(Settings.OutputDir);
             Directory.CreateDirectory(Settings.SnapshotDir);
             Directory.CreateDirectory(Settings.InputDir);
@@ -63,7 +63,7 @@ namespace AutoActivator
         private static void RunTestExtraction()
         {
             Console.WriteLine("\n--- Démarrage du Test d'Extraction LISA ---");
-            string targetContract = "182-2728195-31"; // Le numéro cible
+            string targetContract = "182-2728195-31";
 
             var db = new DatabaseManager();
             if (!db.TestConnection()) return;
@@ -89,7 +89,7 @@ namespace AutoActivator
             }
 
             long internalId = Convert.ToInt64(dfId.Rows[0]["NO_CNT"]);
-            Console.WriteLine($"✅ Contrat trouvé ! ID Interne (NO_CNT) = {internalId}");
+            Console.WriteLine($" Contrat trouvé ! ID Interne (NO_CNT) = {internalId}");
 
             var tablesToExtract = new[] { "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0", "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0" };
             string outputPath = Path.Combine(Settings.OutputDir, $"extraction_brute_{targetContract}.xlsx");
@@ -107,7 +107,7 @@ namespace AutoActivator
 
                 if (dfTable.Rows.Count > 0)
                 {
-                    // ClosedXML permet d'insérer un DataTable entier facilement
+
                     worksheet.Cell(1, 1).InsertTable(dfTable);
                     Console.WriteLine($"  -> {table} : {dfTable.Rows.Count} lignes extraites.");
                 }
@@ -133,7 +133,6 @@ namespace AutoActivator
             var db = new DatabaseManager();
             if (!db.TestConnection()) return;
 
-            // Liste de contrats de tests (hardcodée comme dans le script Python de base s'il n'y a pas de fichier)
             var contratsSources = new List<string> { "12345678", "87654321" };
             var resultats = new List<Dictionary<string, object>>();
 
@@ -145,7 +144,7 @@ namespace AutoActivator
                 var parameters = new[] { new SqlParameter("@ContractNumber", oldContractExt) };
                 var dtId = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
 
-                decimal montantPrime = 100.00m; // Par défaut
+                decimal montantPrime = 100.00m;
 
                 if (dtId.Rows.Count > 0)
                 {
@@ -240,13 +239,13 @@ namespace AutoActivator
             // Lecture du fichier Excel de mapping via ClosedXML
             using var wb = new XLWorkbook(Settings.InputFile);
             var ws = wb.Worksheet(1);
-            var rows = ws.RangeUsed().RowsUsed().Skip(1); // Skip le header
+            var rows = ws.RangeUsed().RowsUsed().Skip(1);
 
             foreach (var row in rows)
             {
                 string refContract = row.Cell(1).GetString().Trim();
                 string newContract = row.Cell(2).GetString().Trim();
-                string statutJ0 = row.Cell(6).GetString().Trim(); // 6eme colonne = Statut
+                string statutJ0 = row.Cell(6).GetString().Trim();
 
                 if (!statutJ0.StartsWith("OK", StringComparison.OrdinalIgnoreCase))
                 {
@@ -263,7 +262,7 @@ namespace AutoActivator
                 if (dtNewId.Rows.Count == 0) continue;
                 long idNew = Convert.ToInt64(dtNewId.Rows[0]["NO_CNT"]);
 
-                // NOUVEAU : Récupération du code Produit (C_PROP_PRINC) depuis la base
+                // Récupération du code Produit (C_PROP_PRINC) depuis la base
                 string productCode = "UNKNOWN";
                 var pProd = new[] { new SqlParameter("@InternalId", idNew) };
                 string qProd = "SELECT TOP 1 C_PROP_PRINC FROM LV.SCNTT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId";
@@ -273,7 +272,7 @@ namespace AutoActivator
                     productCode = dtProd.Rows[0]["C_PROP_PRINC"]?.ToString().Trim();
                 }
 
-                // NOUVEAU : Variable pour suivre si le contrat est globalement OK ou KO
+                // Variable pour suivre si le contrat est globalement OK ou KO
                 string contractGlobalStatus = "OK";
 
                 var tablesToCheck = new[] { "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0", "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0" };
@@ -304,7 +303,6 @@ namespace AutoActivator
                     if (status.StartsWith("KO"))
                     {
                         Console.WriteLine($" ÉCHEC SUR {refContract} (Table: {table}) - Status: {status}");
-                        // NOUVEAU : Si au moins une table est KO, le contrat entier est KO
                         contractGlobalStatus = "KO";
                     }
 
@@ -313,7 +311,7 @@ namespace AutoActivator
                     reportData.AppendLine($"{refContract};{newContract};{table};{status};{cleanDetails}");
                 }
 
-                // NOUVEAU : Ajout du résultat global pour ce contrat
+                // Ajout du résultat global pour ce contrat
                 statsList.Add((productCode, refContract, contractGlobalStatus));
             }
 
@@ -323,11 +321,11 @@ namespace AutoActivator
             Console.WriteLine($"\nRapport généré avec succès : {reportPath}");
 
             // =========================================================================
-            // NOUVEAU : CALCUL DES KPIS ET GÉNÉRATION DU RAPPORT DE SYNTHÈSE
+            // CALCUL DES KPIS ET GÉNÉRATION DU RAPPORT DE SYNTHÈSE
             // =========================================================================
             if (statsList.Any())
             {
-                // Agrégation avec LINQ
+
                 var summary = statsList
                     .GroupBy(s => s.Product)
                     .Select(g =>

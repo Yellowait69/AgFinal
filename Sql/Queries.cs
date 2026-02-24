@@ -8,10 +8,10 @@ namespace AutoActivator.Sql
         public static readonly ReadOnlyDictionary<string, string> Queries = new(new Dictionary<string, string>
         {
             // ==========================================
-            // RÉCUPÉRATION ID
+            // RECUPERATION ID
             // ==========================================
 
-            // Ajout de TOP 1 pour sécuriser le retour scalaire
+
             { "GET_INTERNAL_ID", """
                 SELECT TOP 1 NO_CNT
                 FROM LV.SCNTT0 WITH(NOLOCK)
@@ -20,7 +20,7 @@ namespace AutoActivator.Sql
 
 
             // ==========================================
-            // DONNÉES CONTRAT & AVENANTS
+            // DONNEES CONTRAT & AVENANTS
             // ==========================================
 
             { "LV.SCNTT0", """
@@ -36,11 +36,11 @@ namespace AutoActivator.Sql
 
 
             // ==========================================
-            // DONNÉES PAIEMENTS
+            // DONNEES PAIEMENTS
             // ==========================================
 
-            // Indispensable pour vérifier que l'activation (le paiement) a bien été prise en compte.
-            // On trie par date de référence et timestamp pour comparer l'historique comptable.
+            // Indispensable pour verifier que l'activation (le paiement) a bien ete prise en compte.
+            // On trie par date de reference et timestamp pour comparer l'historique comptable.
             { "LV.PRCTT0", """
                 SELECT * FROM LV.PRCTT0 WITH(NOLOCK)
                 WHERE NO_CNT = @InternalId
@@ -49,7 +49,7 @@ namespace AutoActivator.Sql
 
 
             // ==========================================
-            // DONNÉES PRODUITS / GARANTIES
+            // DONNEES PRODUITS / GARANTIES
             // ==========================================
 
             { "LV.SWBGT0", """
@@ -60,7 +60,7 @@ namespace AutoActivator.Sql
 
 
             // ==========================================
-            // DONNÉES BÉNÉFICIAIRES & CLAUSES
+            // DONNEES BENEFICIAIRES & CLAUSES
             // ==========================================
 
             { "LV.SCLST0", """
@@ -77,11 +77,11 @@ namespace AutoActivator.Sql
 
 
             // ==========================================
-            // DONNÉES FINANCIÈRES
+            // DONNEES FINANCIERES
             // ==========================================
 
-            // Tri par date d'abord, puis par séquence.
-            // Cela stabilise la comparaison si les séquences techniques changent mais pas la chronologie métier.
+            // Tri par date d'abord, puis par sequence.
+            // Cela stabilise la comparaison si les sequences techniques changent mais pas la chronologie metier.
             { "LV.BSPDT0", """
                 SELECT * FROM LV.BSPDT0 WITH(NOLOCK)
                 WHERE NO_CNT = @InternalId

@@ -1,7 +1,7 @@
 using System;
 using System.Data;
 using Microsoft.Data.SqlClient;
-using AutoActivator.Config; // Assurez-vous que le namespace correspond à celui de Settings.cs
+using AutoActivator.Config;
 
 namespace AutoActivator.Services
 {
@@ -11,13 +11,13 @@ namespace AutoActivator.Services
 
         public DatabaseManager()
         {
-            // Récupération de la chaîne de connexion définie dans le fichier Settings.cs
+            // Recuperation de la chaine de connexion definie dans le fichier Settings.cs
             _connectionString = Settings.DbConfig.ConnectionString;
         }
 
-        /// <summary>
-        /// Méthode utilitaire pour vérifier si la connexion fonctionne.
-        /// </summary>
+
+        /// Methode utilitaire pour verifier si la connexion fonctionne.
+
         public bool TestConnection()
         {
             try
@@ -30,7 +30,7 @@ namespace AutoActivator.Services
 
                 if (result != null && result.ToString() == "1")
                 {
-                    Console.WriteLine($"[INFO] Connexion réussie à la base : {Settings.DbConfig.Database}");
+                    Console.WriteLine($"[INFO] Connexion rï¿½ussie ï¿½ la base : {Settings.DbConfig.Database}");
                     return true;
                 }
 
@@ -38,17 +38,17 @@ namespace AutoActivator.Services
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[ERROR] Échec de la connexion : {e.Message}");
+                Console.WriteLine($"[ERROR] ï¿½chec de la connexion : {e.Message}");
                 return false;
             }
         }
 
-        /// <summary>
-        /// Exécute une requête SQL SELECT et retourne un DataTable (l'équivalent du DataFrame Pandas).
-        /// </summary>
-        /// <param name="query">La requête SQL à exécuter</param>
-        /// <param name="parameters">Paramètres optionnels pour sécuriser la requête</param>
-        /// <returns>Un DataTable contenant les résultats</returns>
+
+        /// Execute une requete SQL SELECT et retourne un DataTable
+
+        /// <param name="query">La requete SQL a executer</param>
+        /// <param name="parameters">Parametres optionnels pour securiser la requete</param>
+        /// <returns>Un DataTable contenant les resultats</returns>
         public DataTable GetData(string query, SqlParameter[] parameters = null)
         {
             var dataTable = new DataTable();
@@ -64,12 +64,12 @@ namespace AutoActivator.Services
                 }
 
                 using var adapter = new SqlDataAdapter(command);
-                // Fill va ouvrir la connexion, lire les données, les charger dans le DataTable et fermer la connexion
+                // Fill va ouvrir la connexion, lire les donnees, les charger dans le DataTable et fermer la connexion
                 adapter.Fill(dataTable);
             }
             catch (SqlException e)
             {
-                Console.WriteLine($"[ERROR] Erreur SQL lors de l'exécution de la requête : {e.Message}");
+                Console.WriteLine($"[ERROR] Erreur SQL lors de l'exï¿½cution de la requï¿½te : {e.Message}");
                 // On retourne un DataTable vide en cas d'erreur pour ne pas faire planter le script de comparaison
             }
             catch (Exception e)
@@ -81,23 +81,23 @@ namespace AutoActivator.Services
             return dataTable;
         }
 
-        /// <summary>
-        /// Insère un paiement dans LV.PRCTT0 pour activer le contrat.
-        /// Se base sur la structure de données fournie (Mode 6).
-        /// </summary>
+
+        /// Insere un paiement dans LV.PRCTT0 pour activer le contrat.
+        /// Se base sur la structure de donnees fournie
+
         public bool InjectPayment(long contractInternalId, decimal amount, DateTime? paymentDate = null)
         {
             // Si pas de date fournie, on prend maintenant
             DateTime now = DateTime.Now;
             DateTime referenceDate = paymentDate ?? now;
 
-            // Si une date spécifique est fournie sans heure, on lui donne arbitrairement 12:00:00
+            // Si une date specifique est fournie sans heure, on lui donne arbitrairement 12:00:00
             DateTime timestamp = paymentDate.HasValue && paymentDate.Value.TimeOfDay == TimeSpan.Zero
                 ? paymentDate.Value.AddHours(12)
                 : now;
 
-            // Génération d'une communication structurée fictive basée sur l'ID contrat
-            // Format : 820 + 9 chiffres ID + 99 (juste pour l'unicité)
+            // Generation d'une communication structuree fictive basee sur l'ID contrat
+            // Format : 820 + 9 chiffres ID + 99 (juste pour l'unicite)
             string idStr = contractInternalId.ToString();
             string fakeCommu = $"820{(idStr.Length > 9 ? idStr.Substring(0, 9) : idStr)}99";
 
@@ -121,24 +121,24 @@ namespace AutoActivator.Services
                 using var connection = new SqlConnection(_connectionString);
                 using var command = new SqlCommand(query, connection);
 
-                // Ajout des paramètres sécurisés
+                // Ajout des parametres securises
                 command.Parameters.AddWithValue("@no_cnt", contractInternalId);
-                command.Parameters.AddWithValue("@d_ref", referenceDate.Date); // Garde uniquement la partie "Date" (équivalent YYYY-MM-DD)
+                command.Parameters.AddWithValue("@d_ref", referenceDate.Date);
                 command.Parameters.AddWithValue("@tstamp", timestamp);
                 command.Parameters.AddWithValue("@amount", amount);
                 command.Parameters.AddWithValue("@commu", fakeCommu);
 
                 connection.Open();
 
-                // Exécution de l'insertion (la transaction est gérée implicitement, ou vous pouvez ajouter SqlTransaction si besoin)
+                // Execution de l'insertion (la transaction est geree implicitement, ou vous pouvez ajouter SqlTransaction si besoin)
                 command.ExecuteNonQuery();
 
-                Console.WriteLine($"[INFO] SUCCÈS: Paiement de {amount} EUR injecté pour le contrat {contractInternalId} (Date: {referenceDate:yyyy-MM-dd})");
+                Console.WriteLine($"[INFO] SUCCES: Paiement de {amount} EUR injecte pour le contrat {contractInternalId} (Date: {referenceDate:yyyy-MM-dd})");
                 return true;
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[ERROR] ÉCHEC: Erreur lors de l'injection du paiement pour {contractInternalId} : {e.Message}");
+                Console.WriteLine($"[ERROR] ECHEC: Erreur lors de l'injection du paiement pour {contractInternalId} : {e.Message}");
                 return false;
             }
         }

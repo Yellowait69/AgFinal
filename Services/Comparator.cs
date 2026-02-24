@@ -3,22 +3,21 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Text;
-using AutoActivator.Config; // Ajustez selon votre namespace pour accéder à Exclusions
+using AutoActivator.Config;
 
 namespace AutoActivator.Services
 {
     public static class Comparator
     {
-        /// <summary>
-        /// Fonction centrale de comparaison entre deux jeux de données (DataTables).
-        /// </summary>
-        /// <param name="dfRef">Les données extraites du contrat source.</param>
-        /// <param name="dfNew">Les données extraites du nouveau contrat.</param>
-        /// <param name="tableName">Le nom de la table analysée (ex: 'LV.SCNTT0').</param>
-        /// <returns>Un tuple contenant le statut (OK/KO) et les détails des différences.</returns>
+        /// Fonction centrale de comparaison entre deux jeux de donnees (DataTables).
+
+        /// <param name="dfRef">Les donnees extraites du contrat source.</param>
+        /// <param name="dfNew">Les donnees extraites du nouveau contrat.</param>
+        /// <param name="tableName">Le nom de la table analysee (ex: 'LV.SCNTT0').</param>
+        /// <returns>Un tuple contenant le statut (OK/KO) et les details des differences.</returns>
         public static (string Status, string Details) CompareDataTables(DataTable dfRef, DataTable dfNew, string tableName)
         {
-            // ÉTAPE 1 : Contrôles de validité initiaux
+            // ETAPE 1 : Controles de validite initiaux
             if (dfRef.Rows.Count == 0 && dfNew.Rows.Count == 0)
             {
                 return ("OK_EMPTY", null);
@@ -29,13 +28,13 @@ namespace AutoActivator.Services
                 return ("KO_MISSING_DATA", $"L'un des deux DataFrames est vide pour la table {tableName}.");
             }
 
-            // ÉTAPE 2 : Isolation des données (On travaille sur des copies)
+            // ETAPE 2 : Isolation des donnees (On travaille sur des copies)
             var df1 = dfRef.Copy();
             var df2 = dfNew.Copy();
 
             try
             {
-                // ÉTAPE 3 : Application des règles d'exclusion
+                // ETAPE 3 : Application des regles d'exclusion
                 var colsToDrop = Exclusions.GetExclusionsForTable(tableName);
 
                 foreach (var col in colsToDrop)
@@ -44,7 +43,7 @@ namespace AutoActivator.Services
                     if (df2.Columns.Contains(col)) df2.Columns.Remove(col);
                 }
 
-                // ÉTAPE 4 : Alignement des schémas de données (Intersection)
+                // ETAPE 4 : Alignement des schemas de donnees
                 var commonCols = df1.Columns.Cast<DataColumn>()
                     .Select(c => c.ColumnName)
                     .Intersect(df2.Columns.Cast<DataColumn>().Select(c => c.ColumnName))
@@ -53,7 +52,7 @@ namespace AutoActivator.Services
 
                 if (!commonCols.Any())
                 {
-                    return ("KO_NO_COMMON_COLS", "Aucune colonne commune trouvée après l'application des filtres d'exclusion.");
+                    return ("KO_NO_COMMON_COLS", "Aucune colonne commune trouvï¿½e aprï¿½s l'application des filtres d'exclusion.");
                 }
 
                 // Suppression des colonnes non communes pour aligner parfaitement les DataTables
@@ -66,12 +65,12 @@ namespace AutoActivator.Services
                     if (!commonCols.Contains(df2.Columns[i].ColumnName)) df2.Columns.RemoveAt(i);
                 }
 
-                // ÉTAPE 5 : Normalisation et formatage des données
+                // ETAPE 5 : Normalisation et formatage des donnees
                 NormalizeDataTable(df1, commonCols);
                 NormalizeDataTable(df2, commonCols);
 
-                // ÉTAPE 6 : Alignement des enregistrements (Tri)
-                // On crée une chaîne de tri "Col1, Col2, Col3..." pour stabiliser l'ordre des lignes
+                // ETAPE 6 : Alignement des enregistrements (Tri)
+                // On cree une chaine de tri "Col1, Col2, Col3..." pour stabiliser l'ordre des lignes
                 string sortExpression = string.Join(", ", commonCols);
 
                 try
@@ -84,26 +83,26 @@ namespace AutoActivator.Services
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"[WARNING] Le tri technique a échoué sur la table {tableName}. Raison : {e.Message}");
+                    Console.WriteLine($"[WARNING] Le tri technique a ï¿½chouï¿½ sur la table {tableName}. Raison : {e.Message}");
                 }
 
-                // ÉTAPE 7 : Comparaison finale
+                // ETAPE 7 : Comparaison finale
                 if (df1.Rows.Count != df2.Rows.Count)
                 {
-                    return ("KO_ROW_COUNT", $"Écart sur le volume de données : Source = {df1.Rows.Count} lignes vs Cible = {df2.Rows.Count} lignes.");
+                    return ("KO_ROW_COUNT", $"ï¿½cart sur le volume de donnï¿½es : Source = {df1.Rows.Count} lignes vs Cible = {df2.Rows.Count} lignes.");
                 }
 
                 return GenerateDiffReport(df1, df2, commonCols);
             }
             catch (Exception e)
             {
-                return ("KO_ERROR", $"Erreur technique lors de la génération du différentiel : {e.Message}");
+                return ("KO_ERROR", $"Erreur technique lors de la gï¿½nï¿½ration du diffï¿½rentiel : {e.Message}");
             }
         }
 
-        /// <summary>
-        /// Nettoie et normalise les données pour éviter les faux positifs (espaces, décimales, nulls).
-        /// </summary>
+
+        /// Nettoie et normalise les donnees pour eviter les faux positifs (espaces, decimales, nulls).
+
         private static void NormalizeDataTable(DataTable dt, List<string> columns)
         {
             foreach (DataRow row in dt.Rows)
@@ -112,34 +111,34 @@ namespace AutoActivator.Services
                 {
                     if (row[col] == DBNull.Value || row[col] == null)
                     {
-                        row[col] = string.Empty; // Normaliser les nulls
+                        row[col] = string.Empty;
                         continue;
                     }
 
                     string value = row[col].ToString().Trim();
 
-                    // Traitement des NaN ou None textuels (héritage de certains imports ou comportements Python)
+                    // Traitement des NaN ou None textuels
                     if (value.Equals("nan", StringComparison.OrdinalIgnoreCase) ||
                         value.Equals("None", StringComparison.OrdinalIgnoreCase))
                     {
                         row[col] = string.Empty;
                     }
-                    // Si c'est un nombre (Float), on l'arrondit à 4 décimales
+                    // Si c'est un nombre (Float), on l'arrondit a 4 decimales
                     else if (double.TryParse(value, out double floatValue))
                     {
                         row[col] = Math.Round(floatValue, 4).ToString(System.Globalization.CultureInfo.InvariantCulture);
                     }
                     else
                     {
-                        row[col] = value; // String propre
+                        row[col] = value;
                     }
                 }
             }
         }
 
-        /// <summary>
-        /// Compare cellule par cellule et génère un rapport similaire à pandas.compare().
-        /// </summary>
+
+        /// Compare cellule par cellule et genere un rapport
+
         private static (string Status, string Details) GenerateDiffReport(DataTable df1, DataTable df2, List<string> commonCols)
         {
             var diffReport = new StringBuilder();
@@ -165,7 +164,7 @@ namespace AutoActivator.Services
 
                 if (rowHasDiff)
                 {
-                    diffReport.AppendLine($"Ligne #{i + 1} différente :");
+                    diffReport.AppendLine($"Ligne #{i + 1} diffï¿½rente :");
                     diffReport.Append(rowDiffs.ToString());
                     diffReport.AppendLine();
                 }
