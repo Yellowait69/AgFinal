@@ -18,7 +18,7 @@ namespace AutoActivator
             Console.WriteLine("==================================================");
             Console.WriteLine("       AUTO-ACTIVATOR L.I.S.A (.NET VERSION)      ");
             Console.WriteLine("==================================================");
-            Console.WriteLine("1. Lancer le Test d'Extraction (LISA & ELIA)");
+            Console.WriteLine("1. Lancer l'Extraction UNIQUE (LISA & ELIA)");
             Console.WriteLine("2. Lancer l'Activation");
             Console.WriteLine("3. Lancer la Comparaison");
             Console.WriteLine("0. Quitter");
@@ -61,73 +61,91 @@ namespace AutoActivator
         }
 
         // =========================================================================
-        // 1. TEST D'EXTRACTION (LISA & ELIA)
+        // 1. EXTRACTION DANS UN FICHIER UNIQUE
         // =========================================================================
         private static void RunTestExtraction()
         {
-            Console.WriteLine("\n--- Démarrage de l'Extraction Complète ---");
+            Console.WriteLine("\n--- Démarrage de l'Extraction Groupée ---");
             Console.Write("Entrez le numéro de contrat (ex: 182-2728195-31) : ");
             string input = Console.ReadLine();
 
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                Console.WriteLine("[ERROR] Aucun numéro de contrat saisi.");
-                return;
-            }
+            if (string.IsNullOrWhiteSpace(input)) return;
 
-            // Nettoyage de l'input (suppression espaces insécables et trim)
             string targetContract = input.Trim().Replace("\u00A0", "");
-
             var db = new DatabaseManager();
             if (!db.TestConnection()) return;
 
-            // 1. Récupération des IDs (LISA et ELIA)
+            // 1. Récupération des IDs
             var parameters = new Dictionary<string, object> { { "@ContractNumber", targetContract } };
-
             var dtLisa = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
             var dtElia = db.GetData(SqlQueries.Queries["GET_ELIA_ID"], parameters);
 
             if (dtLisa.Rows.Count == 0 && dtElia.Rows.Count == 0)
             {
-                Console.WriteLine($"[ERROR] Le contrat {targetContract} est introuvable dans toutes les bases.");
+                Console.WriteLine($"[ERROR] Contrat {targetContract} introuvable.");
                 return;
             }
 
-            string extractionDir = Path.Combine(Settings.OutputDir, $"extraction_{targetContract}_{DateTime.Now:yyyyMMdd_HHmmss}");
-            if (!Directory.Exists(extractionDir)) Directory.CreateDirectory(extractionDir);
+            // 2. Préparation du contenu du fichier unique
+            StringBuilder sbFullContent = new StringBuilder();
+            string finalPath = Path.Combine(Settings.OutputDir, $"FULL_EXTRACT_{targetContract}.csv");
 
-            // 2. Extraction LISA (si ID trouvé)
+            // Fonction locale pour formater les tables dans le buffer unique
+            void AddTableToBuffer(string tableName, DataTable dt)
+            {
+                sbFullContent.AppendLine("################################################################################");
+                sbFullContent.AppendLine($"### TABLE : {tableName} | Lignes : {dt.Rows.Count}");
+                sbFullContent.AppendLine("################################################################################");
+
+                if (dt.Rows.Count > 0)
+                {
+                    var columns = dt.Columns.Cast<DataColumn>().Select(c => c.ColumnName);
+                    sbFullContent.AppendLine(string.Join(";", columns));
+
+                    foreach (DataRow row in dt.Rows)
+                    {
+                        var fields = row.ItemArray.Select(f => f?.ToString().Replace(";", " ").Replace("\n", " ").Trim());
+                        sbFullContent.AppendLine(string.Join(";", fields));
+                    }
+                }
+                else
+                {
+                    sbFullContent.AppendLine("AUCUNE DONNEE TROUVEE");
+                }
+                sbFullContent.AppendLine(); // Saut de ligne entre les tables
+            }
+
+            // 3. Extraction LISA
             if (dtLisa.Rows.Count > 0)
             {
                 long internalId = Convert.ToInt64(dtLisa.Rows[0]["NO_CNT"]);
-                Console.WriteLine($"[INFO] Contrat LISA trouvé (ID: {internalId}). Extraction des tables LV...");
+                Console.WriteLine("[INFO] Extraction des tables LISA...");
 
-                var lisaTables = new[] { "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0", "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0", "LV.MWBGT0" };
+                var lisaTables = new[] { "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0", "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0", "LV.MWBGT0", "LV.PRIST0", "LV.FMVGT0" };
                 foreach (var table in lisaTables)
                 {
-                    var p = new Dictionary<string, object> { { "@InternalId", internalId } };
-                    var dt = db.GetData(SqlQueries.Queries[table], p);
-                    WriteDataTableToCsv(dt, Path.Combine(extractionDir, $"{table.Replace("LV.", "")}.csv"));
+                    var dt = db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@InternalId", internalId } });
+                    AddTableToBuffer(table, dt);
                 }
             }
 
-            // 3. Extraction ELIA (si ID trouvé)
+            // 4. Extraction ELIA
             if (dtElia.Rows.Count > 0)
             {
                 string eliaId = dtElia.Rows[0]["IT5UCONAIDN"].ToString();
-                Console.WriteLine($"[INFO] Contrat ELIA trouvé (ID: {eliaId}). Extraction des tables FJ1...");
+                Console.WriteLine("[INFO] Extraction des tables ELIA...");
 
                 var eliaTables = new[] { "FJ1.TB5UCON", "FJ1.TB5UGAR", "FJ1.TB5UASU", "FJ1.TB5UPRP", "FJ1.TB5UAVE", "FJ1.TB5UDCR", "FJ1.TB5UBEN" };
                 foreach (var table in eliaTables)
                 {
-                    var p = new Dictionary<string, object> { { "@EliaId", eliaId } };
-                    var dt = db.GetData(SqlQueries.Queries[table], p);
-                    WriteDataTableToCsv(dt, Path.Combine(extractionDir, $"{table.Replace("FJ1.", "")}.csv"));
+                    var dt = db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@EliaId", eliaId } });
+                    AddTableToBuffer(table, dt);
                 }
             }
 
-            Console.WriteLine($"\n🎉 Extraction terminée avec succès !");
-            Console.WriteLine($"Dossier : {extractionDir}");
+            // 5. Écriture du fichier final
+            File.WriteAllText(finalPath, sbFullContent.ToString(), Encoding.UTF8);
+            Console.WriteLine($"\n🎉 Extraction terminée ! Fichier unique généré :\n--> {finalPath}");
         }
 
         // =========================================================================
