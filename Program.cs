@@ -5,11 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using ClosedXML.Excel;
-using Microsoft.Data.SqlClient;
 using AutoActivator.Config;
 using AutoActivator.Services;
-
 
 namespace AutoActivator
 {
@@ -28,7 +25,6 @@ namespace AutoActivator
             Console.Write("Votre choix : ");
 
             var choice = Console.ReadLine();
-
 
             Directory.CreateDirectory(Settings.OutputDir);
             Directory.CreateDirectory(Settings.SnapshotDir);
@@ -58,7 +54,7 @@ namespace AutoActivator
         }
 
         // =========================================================================
-        // 1. TEST D'EXTRACTION (Équivalent de test_extraction.py)
+        // 1. TEST D'EXTRACTION (Génération CSV sans ClosedXML)
         // =========================================================================
         private static void RunTestExtraction()
         {
@@ -70,14 +66,14 @@ namespace AutoActivator
 
             Console.WriteLine($"Recherche de l'ID interne pour le contrat externe : {targetContract}");
 
-            var p1 = new SqlParameter[] { new SqlParameter("@ContractNumber", targetContract) };
+            var p1 = new Dictionary<string, object> { { "@ContractNumber", targetContract } };
             var dfId = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], p1);
 
             if (dfId.Rows.Count == 0)
             {
                 string altContract = targetContract.Replace("-", "");
                 Console.WriteLine($"[WARNING] Contrat introuvable. Essai sans tirets : {altContract}");
-                var p2 = new SqlParameter[] { new SqlParameter("@ContractNumber", altContract) };
+                var p2 = new Dictionary<string, object> { { "@ContractNumber", altContract } };
                 dfId = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], p2);
 
                 if (dfId.Rows.Count == 0)
@@ -92,40 +88,38 @@ namespace AutoActivator
             Console.WriteLine($" Contrat trouvé ! ID Interne (NO_CNT) = {internalId}");
 
             var tablesToExtract = new[] { "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0", "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0" };
-            string outputPath = Path.Combine(Settings.OutputDir, $"extraction_brute_{targetContract}.xlsx");
 
-            using var workbook = new XLWorkbook();
+            // Création d'un dossier d'extraction pour y mettre les CSV
+            string extractionDir = Path.Combine(Settings.OutputDir, $"extraction_brute_{targetContract}");
+            Directory.CreateDirectory(extractionDir);
+
             foreach (var table in tablesToExtract)
             {
                 if (!SqlQueries.Queries.ContainsKey(table)) continue;
 
-                var parameters = new[] { new SqlParameter("@InternalId", internalId) };
+                var parameters = new Dictionary<string, object> { { "@InternalId", internalId } };
                 var dfTable = db.GetData(SqlQueries.Queries[table], parameters);
 
                 string sheetName = table.Replace("LV.", "");
-                var worksheet = workbook.Worksheets.Add(sheetName);
+                string csvPath = Path.Combine(extractionDir, $"{sheetName}.csv");
 
                 if (dfTable.Rows.Count > 0)
                 {
-
-                    worksheet.Cell(1, 1).InsertTable(dfTable);
-                    Console.WriteLine($"  -> {table} : {dfTable.Rows.Count} lignes extraites.");
+                    WriteDataTableToCsv(dfTable, csvPath);
+                    Console.WriteLine($"  -> {table} : {dfTable.Rows.Count} lignes extraites (sauvegardé dans {sheetName}.csv).");
                 }
                 else
                 {
-                    worksheet.Cell(1, 1).Value = "Info";
-                    worksheet.Cell(2, 1).Value = "Aucune donnée trouvée";
+                    File.WriteAllText(csvPath, "Info\nAucune donnee trouvee");
                     Console.WriteLine($"  -> {table} : Vide (0 ligne).");
                 }
-                worksheet.Columns().AdjustToContents();
             }
 
-            workbook.SaveAs(outputPath);
-            Console.WriteLine($"🎉 Extraction terminée ! Fichier généré : {outputPath}");
+            Console.WriteLine($"🎉 Extraction terminée ! Dossier généré : {extractionDir}");
         }
 
         // =========================================================================
-        // 2. ACTIVATION (Équivalent de run_activation.py)
+        // 2. ACTIVATION (Export CSV au lieu d'Excel)
         // =========================================================================
         private static void RunActivation()
         {
@@ -140,8 +134,7 @@ namespace AutoActivator
             {
                 Console.WriteLine($"\n--- Traitement Source : {oldContractExt} ---");
 
-                // 1. Récupération de l'ID
-                var parameters = new[] { new SqlParameter("@ContractNumber", oldContractExt) };
+                var parameters = new Dictionary<string, object> { { "@ContractNumber", oldContractExt } };
                 var dtId = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
 
                 decimal montantPrime = 100.00m;
@@ -150,24 +143,21 @@ namespace AutoActivator
                 {
                     long idIntSource = Convert.ToInt64(dtId.Rows[0]["NO_CNT"]);
 
-                    // 2. Snapshot XML (Remplace le Pickle)
                     foreach (var table in new[] { "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0", "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0" })
                     {
-                        var pTable = new[] { new SqlParameter("@InternalId", idIntSource) };
+                        var pTable = new Dictionary<string, object> { { "@InternalId", idIntSource } };
                         var dtSource = db.GetData(SqlQueries.Queries[table], pTable);
-                        dtSource.TableName = table; // Nécessaire pour l'export XML
+                        dtSource.TableName = table;
                         dtSource.WriteXml(Path.Combine(Settings.SnapshotDir, $"{oldContractExt}_{table}.xml"), XmlWriteMode.WriteSchema);
                     }
                     Console.WriteLine($"   [Snapshot] 📸 Sauvegarde de l'état source pour {oldContractExt} terminée.");
                 }
 
-                // 3. Simulation Duplication (ELIA)
                 string newContractExt = "999" + oldContractExt.Substring(Math.Max(0, oldContractExt.Length - 6));
                 Console.WriteLine($"   [Simulation] Duplication ELIA : Source {oldContractExt} -> Cible {newContractExt}");
                 Thread.Sleep(500);
 
-                // 4. Injection Paiement
-                var pNewId = new[] { new SqlParameter("@ContractNumber", newContractExt) };
+                var pNewId = new Dictionary<string, object> { { "@ContractNumber", newContractExt } };
                 var dtNewId = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], pNewId);
 
                 long idIntNew = 0;
@@ -191,39 +181,36 @@ namespace AutoActivator
                 });
             }
 
-            // Génération du fichier Pivot
             if (resultats.Any())
             {
-                using var wb = new XLWorkbook();
-                var ws = wb.Worksheets.Add("Mapping");
-
-                // Entêtes
+                string csvOutput = Path.ChangeExtension(Settings.ActivationOutputFile, ".csv");
+                var sb = new StringBuilder();
                 var keys = resultats.First().Keys.ToList();
-                for (int i = 0; i < keys.Count; i++) ws.Cell(1, i + 1).Value = keys[i];
 
-                // Données
-                for (int r = 0; r < resultats.Count; r++)
+                sb.AppendLine(string.Join(";", keys));
+                foreach (var res in resultats)
                 {
-                    for (int c = 0; c < keys.Count; c++)
-                    {
-                        ws.Cell(r + 2, c + 1).Value = resultats[r][keys[c]]?.ToString();
-                    }
+                    var values = keys.Select(k => res[k]?.ToString() ?? "").ToArray();
+                    sb.AppendLine(string.Join(";", values));
                 }
-                wb.SaveAs(Settings.ActivationOutputFile);
-                Console.WriteLine($"\n--- Fichier de suivi généré : {Settings.ActivationOutputFile} ---");
+
+                File.WriteAllText(csvOutput, sb.ToString(), Encoding.UTF8);
+                Console.WriteLine($"\n--- Fichier de suivi généré : {csvOutput} ---");
             }
         }
 
         // =========================================================================
-        // 3. COMPARAISON (Équivalent de run_comparison.py)
+        // 3. COMPARAISON (Lecture de CSV au lieu d'Excel)
         // =========================================================================
         private static void RunComparison()
         {
             Console.WriteLine("\n--- Démarrage du Comparateur Auto-Activator ---");
 
-            if (!File.Exists(Settings.InputFile))
+            string inputCsv = Path.ChangeExtension(Settings.InputFile, ".csv");
+
+            if (!File.Exists(inputCsv))
             {
-                Console.WriteLine($"[ERROR] Fichier d'entrée introuvable : {Settings.InputFile}");
+                Console.WriteLine($"[ERROR] Fichier d'entrée CSV introuvable : {inputCsv}");
                 return;
             }
 
@@ -233,19 +220,21 @@ namespace AutoActivator
             var reportData = new StringBuilder();
             reportData.AppendLine("Reference_Contract;New_Contract;Table;Status;Details");
 
-            // NOUVEAU : Liste pour stocker le statut global de chaque contrat pour les KPIs
             var statsList = new List<(string Product, string Contract, string Status)>();
 
-            // Lecture du fichier Excel de mapping via ClosedXML
-            using var wb = new XLWorkbook(Settings.InputFile);
-            var ws = wb.Worksheet(1);
-            var rows = ws.RangeUsed().RowsUsed().Skip(1);
+            // Lecture du fichier CSV (Séparateur ';')
+            var lines = File.ReadAllLines(inputCsv).Skip(1); // Skip header
 
-            foreach (var row in rows)
+            foreach (var line in lines)
             {
-                string refContract = row.Cell(1).GetString().Trim();
-                string newContract = row.Cell(2).GetString().Trim();
-                string statutJ0 = row.Cell(6).GetString().Trim();
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                var columns = line.Split(';');
+                if (columns.Length < 6) continue;
+
+                string refContract = columns[0].Trim();
+                string newContract = columns[1].Trim();
+                string statutJ0 = columns[5].Trim();
 
                 if (!statutJ0.StartsWith("OK", StringComparison.OrdinalIgnoreCase))
                 {
@@ -256,15 +245,14 @@ namespace AutoActivator
 
                 Console.WriteLine($"\nTraitement : Réf {refContract} vs Nouveau {newContract}");
 
-                var pNewId = new[] { new SqlParameter("@ContractNumber", newContract) };
+                var pNewId = new Dictionary<string, object> { { "@ContractNumber", newContract } };
                 var dtNewId = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], pNewId);
 
                 if (dtNewId.Rows.Count == 0) continue;
                 long idNew = Convert.ToInt64(dtNewId.Rows[0]["NO_CNT"]);
 
-                // Récupération du code Produit (C_PROP_PRINC) depuis la base
                 string productCode = "UNKNOWN";
-                var pProd = new[] { new SqlParameter("@InternalId", idNew) };
+                var pProd = new Dictionary<string, object> { { "@InternalId", idNew } };
                 string qProd = "SELECT TOP 1 C_PROP_PRINC FROM LV.SCNTT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId";
                 var dtProd = db.GetData(qProd, pProd);
                 if (dtProd.Rows.Count > 0 && dtProd.Columns.Contains("C_PROP_PRINC"))
@@ -272,14 +260,11 @@ namespace AutoActivator
                     productCode = dtProd.Rows[0]["C_PROP_PRINC"]?.ToString().Trim();
                 }
 
-                // Variable pour suivre si le contrat est globalement OK ou KO
                 string contractGlobalStatus = "OK";
-
                 var tablesToCheck = new[] { "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0", "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0" };
 
                 foreach (var table in tablesToCheck)
                 {
-                    // 1. Charger Source (Depuis Snapshot XML)
                     var dtRefData = new DataTable();
                     string snapshotPath = Path.Combine(Settings.SnapshotDir, $"{refContract}_{table}.xml");
 
@@ -289,15 +274,13 @@ namespace AutoActivator
                     }
                     else
                     {
-                        Console.WriteLine($"   [!] Snapshot introuvable pour {table}. Impossible de comparer de façon fiable.");
+                        Console.WriteLine($"   [!] Snapshot introuvable pour {table}. Impossible de comparer.");
                         continue;
                     }
 
-                    // 2. Charger Cible (Live DB)
-                    var pTable = new[] { new SqlParameter("@InternalId", idNew) };
+                    var pTable = new Dictionary<string, object> { { "@InternalId", idNew } };
                     var dtNewData = db.GetData(SqlQueries.Queries[table], pTable);
 
-                    // 3. Comparer
                     var (status, details) = Comparator.CompareDataTables(dtRefData, dtNewData, table);
 
                     if (status.StartsWith("KO"))
@@ -306,26 +289,19 @@ namespace AutoActivator
                         contractGlobalStatus = "KO";
                     }
 
-                    // Nettoyage des retours à la ligne pour le CSV
                     string cleanDetails = details?.Replace("\r", "").Replace("\n", " | ") ?? "";
                     reportData.AppendLine($"{refContract};{newContract};{table};{status};{cleanDetails}");
                 }
 
-                // Ajout du résultat global pour ce contrat
                 statsList.Add((productCode, refContract, contractGlobalStatus));
             }
 
-            // Génération du rapport détaillé classique
             string reportPath = Path.Combine(Settings.OutputDir, $"rapport_detaille_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
             File.WriteAllText(reportPath, reportData.ToString(), Encoding.UTF8);
             Console.WriteLine($"\nRapport généré avec succès : {reportPath}");
 
-            // =========================================================================
-            // CALCUL DES KPIS ET GÉNÉRATION DU RAPPORT DE SYNTHÈSE
-            // =========================================================================
             if (statsList.Any())
             {
-
                 var summary = statsList
                     .GroupBy(s => s.Product)
                     .Select(g =>
@@ -333,7 +309,6 @@ namespace AutoActivator
                         int okCount = g.Count(x => x.Status == "OK");
                         int koCount = g.Count(x => x.Status != "OK");
                         int total = okCount + koCount;
-                        // Calcul du taux de succès
                         double successRate = total > 0 ? Math.Round((double)okCount / total * 100, 1) : 0;
 
                         return new
@@ -345,10 +320,9 @@ namespace AutoActivator
                             SuccessRate = successRate
                         };
                     })
-                    .OrderBy(x => x.Product) // Tri alphabétique par produit
+                    .OrderBy(x => x.Product)
                     .ToList();
 
-                // 1. Affichage console formaté en tableau
                 Console.WriteLine("\n============================================================");
                 Console.WriteLine(" SYNTHÈSE DES RÉSULTATS PAR PRODUIT (KPIs)");
                 Console.WriteLine("============================================================");
@@ -365,11 +339,33 @@ namespace AutoActivator
                 }
                 Console.WriteLine("============================================================\n");
 
-                // 2. Export au format CSV
                 string summaryPath = Path.Combine(Settings.OutputDir, $"synthese_par_produit_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
                 File.WriteAllText(summaryPath, summaryCsv.ToString(), Encoding.UTF8);
                 Console.WriteLine($"Rapport de synthèse généré avec succès : {summaryPath}");
             }
+        }
+
+        // =========================================================================
+        // MÉTHODE UTILITAIRE : Convertir un DataTable en fichier CSV
+        // =========================================================================
+        private static void WriteDataTableToCsv(DataTable dataTable, string filePath)
+        {
+            var sb = new StringBuilder();
+
+            // Titres des colonnes
+            var columnNames = dataTable.Columns.Cast<DataColumn>().Select(column => column.ColumnName).ToArray();
+            sb.AppendLine(string.Join(";", columnNames));
+
+            // Données
+            foreach (DataRow row in dataTable.Rows)
+            {
+                var fields = row.ItemArray.Select(field =>
+                    field == null ? "" : field.ToString().Replace(";", ",").Replace("\n", " ").Replace("\r", "")
+                ).ToArray();
+                sb.AppendLine(string.Join(";", fields));
+            }
+
+            File.WriteAllText(filePath, sb.ToString(), Encoding.UTF8);
         }
     }
 }

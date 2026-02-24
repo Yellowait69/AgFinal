@@ -1,6 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
-using Microsoft.Data.SqlClient;
+using System.Data.SqlClient; // Remplace Microsoft.Data.SqlClient
 using AutoActivator.Config;
 
 namespace AutoActivator.Services
@@ -15,9 +16,9 @@ namespace AutoActivator.Services
             _connectionString = Settings.DbConfig.ConnectionString;
         }
 
-
+        /// <summary>
         /// Methode utilitaire pour verifier si la connexion fonctionne.
-
+        /// </summary>
         public bool TestConnection()
         {
             try
@@ -30,7 +31,7 @@ namespace AutoActivator.Services
 
                 if (result != null && result.ToString() == "1")
                 {
-                    Console.WriteLine($"[INFO] Connexion r�ussie � la base : {Settings.DbConfig.Database}");
+                    Console.WriteLine($"[INFO] Connexion réussie à la base : {Settings.DbConfig.Database}");
                     return true;
                 }
 
@@ -38,18 +39,19 @@ namespace AutoActivator.Services
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[ERROR] �chec de la connexion : {e.Message}");
+                Console.WriteLine($"[ERROR] Échec de la connexion : {e.Message}");
                 return false;
             }
         }
 
-
-        /// Execute une requete SQL SELECT et retourne un DataTable
-
+        /// <summary>
+        /// Execute une requete SQL SELECT et retourne un DataTable.
+        /// La signature a été modifiée pour accepter un Dictionary afin de se passer de SqlParameter[]
+        /// </summary>
         /// <param name="query">La requete SQL a executer</param>
-        /// <param name="parameters">Parametres optionnels pour securiser la requete</param>
+        /// <param name="parameters">Dictionnaire de paramètres pour sécuriser la requête (évite l'injection SQL)</param>
         /// <returns>Un DataTable contenant les resultats</returns>
-        public DataTable GetData(string query, SqlParameter[] parameters = null)
+        public DataTable GetData(string query, Dictionary<string, object> parameters = null)
         {
             var dataTable = new DataTable();
 
@@ -58,9 +60,14 @@ namespace AutoActivator.Services
                 using var connection = new SqlConnection(_connectionString);
                 using var command = new SqlCommand(query, connection);
 
+                // Ajout dynamique des paramètres depuis le dictionnaire
                 if (parameters != null)
                 {
-                    command.Parameters.AddRange(parameters);
+                    foreach (var param in parameters)
+                    {
+                        // DBNull.Value gère le cas où la valeur passée serait null
+                        command.Parameters.AddWithValue(param.Key, param.Value ?? DBNull.Value);
+                    }
                 }
 
                 using var adapter = new SqlDataAdapter(command);
@@ -69,7 +76,7 @@ namespace AutoActivator.Services
             }
             catch (SqlException e)
             {
-                Console.WriteLine($"[ERROR] Erreur SQL lors de l'ex�cution de la requ�te : {e.Message}");
+                Console.WriteLine($"[ERROR] Erreur SQL lors de l'exécution de la requête : {e.Message}");
                 // On retourne un DataTable vide en cas d'erreur pour ne pas faire planter le script de comparaison
             }
             catch (Exception e)
@@ -81,10 +88,9 @@ namespace AutoActivator.Services
             return dataTable;
         }
 
-
+        /// <summary>
         /// Insere un paiement dans LV.PRCTT0 pour activer le contrat.
-        /// Se base sur la structure de donnees fournie
-
+        /// </summary>
         public bool InjectPayment(long contractInternalId, decimal amount, DateTime? paymentDate = null)
         {
             // Si pas de date fournie, on prend maintenant
@@ -121,7 +127,7 @@ namespace AutoActivator.Services
                 using var connection = new SqlConnection(_connectionString);
                 using var command = new SqlCommand(query, connection);
 
-                // Ajout des parametres securises
+                // Ajout des parametres securises avec AddWithValue
                 command.Parameters.AddWithValue("@no_cnt", contractInternalId);
                 command.Parameters.AddWithValue("@d_ref", referenceDate.Date);
                 command.Parameters.AddWithValue("@tstamp", timestamp);
@@ -130,10 +136,10 @@ namespace AutoActivator.Services
 
                 connection.Open();
 
-                // Execution de l'insertion (la transaction est geree implicitement, ou vous pouvez ajouter SqlTransaction si besoin)
+                // Execution de l'insertion
                 command.ExecuteNonQuery();
 
-                Console.WriteLine($"[INFO] SUCCES: Paiement de {amount} EUR injecte pour le contrat {contractInternalId} (Date: {referenceDate:yyyy-MM-dd})");
+                Console.WriteLine($"[INFO] SUCCES: Paiement de {amount} EUR injecté pour le contrat {contractInternalId} (Date: {referenceDate:yyyy-MM-dd})");
                 return true;
             }
             catch (Exception e)
