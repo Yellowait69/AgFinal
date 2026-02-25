@@ -94,7 +94,7 @@ namespace AutoActivator.Gui
 
         private string PerformExtractionLogic(string targetContract)
         {
-            targetContract = targetContract.Replace("\u00A0", "");
+            targetContract = targetContract.Replace("\u00A0", "").Trim();
             var db = new DatabaseManager();
 
             if (!db.TestConnection())
@@ -102,7 +102,6 @@ namespace AutoActivator.Gui
 
             var parameters = new Dictionary<string, object> { { "@ContractNumber", targetContract } };
 
-            // Récupération des IDs initiaux
             var dtLisa = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
             var dtElia = db.GetData(SqlQueries.Queries["GET_ELIA_ID"], parameters);
 
@@ -112,7 +111,6 @@ namespace AutoActivator.Gui
             StringBuilder sb = new StringBuilder();
             _lastGeneratedPath = Path.Combine(Settings.OutputDir, $"FULL_EXTRACT_{targetContract}.csv");
 
-            // Variables pour l'affichage des IDs ELIA demandés
             string eliaUconId = "Non trouvé";
             string eliaDemandId = "Non trouvé";
             string lisaId = "Non trouvé";
@@ -120,6 +118,7 @@ namespace AutoActivator.Gui
             // --- SECTION LISA ---
             if (dtLisa.Rows.Count > 0)
             {
+                // Correction : On assigne l'ID interne récupéré à lisaId pour l'affichage final
                 long internalId = Convert.ToInt64(dtLisa.Rows[0]["NO_CNT"]);
                 lisaId = internalId.ToString();
 
@@ -139,17 +138,16 @@ namespace AutoActivator.Gui
             // --- SECTION ELIA ---
             if (dtElia.Rows.Count > 0)
             {
-                eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"].ToString();
+                eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"].ToString().Trim();
 
-                // 1. Récupération du Demand ID pour les tables liées via la table de lien HEPT ou HELT
+                // Récupération du Demand ID via la table de lien HEPT ou HELT
                 var dtDemand = db.GetData(SqlQueries.Queries["GET_ELIA_DEMAND_ID"], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
 
                 if (dtDemand.Rows.Count > 0)
                 {
-                    eliaDemandId = dtDemand.Rows[0]["IT5HDMDAIDN"].ToString();
+                    eliaDemandId = dtDemand.Rows[0]["IT5HDMDAIDN"].ToString().Trim();
                 }
 
-                // 2. Extraction des tables basées sur EliaId
                 var eliaTables = new[] {
                     "FJ1.TB5UCON", "FJ1.TB5UGAR", "FJ1.TB5UASU", "FJ1.TB5UPRP",
                     "FJ1.TB5UAVE", "FJ1.TB5UDCR", "FJ1.TB5UBEN", "FJ1.TB5UPRS",
@@ -162,7 +160,6 @@ namespace AutoActivator.Gui
                     AddTableToBuffer(sb, table, dt);
                 }
 
-                // 3. Extraction des tables basées sur DemandId (si trouvé)
                 if (eliaDemandId != "Non trouvé")
                 {
                     var demandTables = new[] { "FJ1.TB5HDMD", "FJ1.TB5HPRO", "FJ1.TB5HDIC", "FJ1.TB5HEPT" };
@@ -176,8 +173,8 @@ namespace AutoActivator.Gui
 
             File.WriteAllText(_lastGeneratedPath, sb.ToString(), Encoding.UTF8);
 
-            // Retourne la chaîne formatée avec les IDs LISA, UCONAIDN et HDMDAIDN
-            return $"LISA ID: {lisaId} | UCONAIDN: {eliaUconId} | HDMDAIDN: {eliaDemandId}";
+            // Affichage complet des identifiants techniques trouvés
+            return $"LISA ID (NO_CNT): {lisaId} | UCONAIDN: {eliaUconId} | HDMDAIDN: {eliaDemandId}";
         }
 
         private void AddTableToBuffer(StringBuilder sb, string tableName, DataTable dt)
