@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel; // Pour la liste dynamique
+using System.Collections.ObjectModel;
 using System.Data;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks; // Pour l'asynchronisme
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using AutoActivator.Services;
@@ -15,7 +15,6 @@ using AutoActivator.Sql;
 
 namespace AutoActivator.Gui
 {
-    // Classe pour stocker les éléments de l'historique
     public class ExtractionItem
     {
         public string ContractId { get; set; }
@@ -26,16 +25,12 @@ namespace AutoActivator.Gui
     public partial class MainWindow : Window
     {
         private string _lastGeneratedPath = "";
-
-        // Liste observable : toute modification ici met à jour l'interface automatiquement
         public ObservableCollection<ExtractionItem> ExtractionHistory { get; set; } = new ObservableCollection<ExtractionItem>();
 
         public MainWindow()
         {
             InitializeComponent();
             InitializeDirectories();
-
-            // On lie la ListBox à notre liste d'historique
             ListHistory.ItemsSource = ExtractionHistory;
         }
 
@@ -53,7 +48,6 @@ namespace AutoActivator.Gui
             }
         }
 
-        // "async" permet de libérer l'interface pendant le travail de la base de données
         private async void BtnRun_Click(object sender, RoutedEventArgs e)
         {
             string input = TxtContract.Text.Trim();
@@ -65,24 +59,20 @@ namespace AutoActivator.Gui
                 return;
             }
 
-            // Préparation de l'UI
-            PrgLoading.Visibility = Visibility.Visible; // Affiche la roue
+            PrgLoading.Visibility = Visibility.Visible;
             LnkFile.Visibility = Visibility.Collapsed;
-            BtnRun.IsEnabled = false; // Désactive le bouton pour éviter les doubles clics
-            TxtStatus.Text = "Extraction en cours depuis la base de données...";
+            BtnRun.IsEnabled = false;
+            TxtStatus.Text = "Extraction en cours depuis LISA et ELIA...";
             TxtStatus.Foreground = Brushes.Blue;
 
             try
             {
-                // On exécute l'extraction dans une tâche de fond (Task) pour ne pas bloquer l'UI
                 string resultInfo = await Task.Run(() => PerformExtractionLogic(input));
 
-                // Mise à jour UI après succès
                 TxtStatus.Text = $"Terminé ! {resultInfo}";
                 TxtStatus.Foreground = Brushes.Green;
                 LnkFile.Visibility = Visibility.Visible;
 
-                // Ajout à l'historique (au début de la liste)
                 ExtractionHistory.Insert(0, new ExtractionItem
                 {
                     ContractId = input,
@@ -97,12 +87,11 @@ namespace AutoActivator.Gui
             }
             finally
             {
-                PrgLoading.Visibility = Visibility.Collapsed; // Cache la roue
+                PrgLoading.Visibility = Visibility.Collapsed;
                 BtnRun.IsEnabled = true;
             }
         }
 
-        // Logique métier pure (reprise de Program.cs)
         private string PerformExtractionLogic(string targetContract)
         {
             targetContract = targetContract.Replace("\u00A0", "");
@@ -112,6 +101,8 @@ namespace AutoActivator.Gui
                 throw new Exception("Connexion SQL impossible.");
 
             var parameters = new Dictionary<string, object> { { "@ContractNumber", targetContract } };
+
+            // Récupération des IDs initiaux
             var dtLisa = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
             var dtElia = db.GetData(SqlQueries.Queries["GET_ELIA_ID"], parameters);
 
@@ -121,15 +112,23 @@ namespace AutoActivator.Gui
             StringBuilder sb = new StringBuilder();
             _lastGeneratedPath = Path.Combine(Settings.OutputDir, $"FULL_EXTRACT_{targetContract}.csv");
 
-            string infoContrat = "Données trouvées : ";
+            // Variables pour l'affichage des IDs ELIA demandés
+            string eliaUconId = "Non trouvé";
+            string eliaDemandId = "Non trouvé";
+            string lisaId = "Non trouvé";
 
-            // Extraction LISA
+            // --- SECTION LISA ---
             if (dtLisa.Rows.Count > 0)
             {
                 long internalId = Convert.ToInt64(dtLisa.Rows[0]["NO_CNT"]);
-                infoContrat += $"[LISA ID: {internalId}] ";
+                lisaId = internalId.ToString();
 
-                var lisaTables = new[] { "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0", "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0", "LV.MWBGT0", "LV.PRIST0", "LV.FMVGT0" };
+                var lisaTables = new[] {
+                    "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0",
+                    "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0",
+                    "LV.MWBGT0", "LV.PRIST0", "LV.FMVGT0", "LV.ELIAT0"
+                };
+
                 foreach (var table in lisaTables)
                 {
                     var dt = db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@InternalId", internalId } });
@@ -137,22 +136,48 @@ namespace AutoActivator.Gui
                 }
             }
 
-            // Extraction ELIA
+            // --- SECTION ELIA ---
             if (dtElia.Rows.Count > 0)
             {
-                string eliaId = dtElia.Rows[0]["IT5UCONAIDN"].ToString();
-                infoContrat += $"[ELIA ID: {eliaId}]";
+                eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"].ToString();
 
-                var eliaTables = new[] { "FJ1.TB5UCON", "FJ1.TB5UGAR", "FJ1.TB5UASU", "FJ1.TB5UPRP", "FJ1.TB5UAVE", "FJ1.TB5UDCR", "FJ1.TB5UBEN" };
+                // 1. Récupération du Demand ID pour les tables liées via la table de lien HEPT ou HELT
+                var dtDemand = db.GetData(SqlQueries.Queries["GET_ELIA_DEMAND_ID"], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
+
+                if (dtDemand.Rows.Count > 0)
+                {
+                    eliaDemandId = dtDemand.Rows[0]["IT5HDMDAIDN"].ToString();
+                }
+
+                // 2. Extraction des tables basées sur EliaId
+                var eliaTables = new[] {
+                    "FJ1.TB5UCON", "FJ1.TB5UGAR", "FJ1.TB5UASU", "FJ1.TB5UPRP",
+                    "FJ1.TB5UAVE", "FJ1.TB5UDCR", "FJ1.TB5UBEN", "FJ1.TB5UPRS",
+                    "FJ1.TB5URPP", "FJ1.TB5HELT"
+                };
+
                 foreach (var table in eliaTables)
                 {
-                    var dt = db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@EliaId", eliaId } });
+                    var dt = db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
                     AddTableToBuffer(sb, table, dt);
+                }
+
+                // 3. Extraction des tables basées sur DemandId (si trouvé)
+                if (eliaDemandId != "Non trouvé")
+                {
+                    var demandTables = new[] { "FJ1.TB5HDMD", "FJ1.TB5HPRO", "FJ1.TB5HDIC", "FJ1.TB5HEPT" };
+                    foreach (var table in demandTables)
+                    {
+                        var dt = db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@DemandId", eliaDemandId } });
+                        AddTableToBuffer(sb, table, dt);
+                    }
                 }
             }
 
             File.WriteAllText(_lastGeneratedPath, sb.ToString(), Encoding.UTF8);
-            return infoContrat;
+
+            // Retourne la chaîne formatée avec les IDs LISA, UCONAIDN et HDMDAIDN
+            return $"LISA ID: {lisaId} | UCONAIDN: {eliaUconId} | HDMDAIDN: {eliaDemandId}";
         }
 
         private void AddTableToBuffer(StringBuilder sb, string tableName, DataTable dt)
