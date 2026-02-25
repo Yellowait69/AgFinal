@@ -102,6 +102,7 @@ namespace AutoActivator.Gui
 
             var parameters = new Dictionary<string, object> { { "@ContractNumber", targetContract } };
 
+            // Récupération des IDs initiaux via les requêtes optimisées dans SqlQueries.cs
             var dtLisa = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
             var dtElia = db.GetData(SqlQueries.Queries["GET_ELIA_ID"], parameters);
 
@@ -118,20 +119,25 @@ namespace AutoActivator.Gui
             // --- SECTION LISA ---
             if (dtLisa.Rows.Count > 0)
             {
-                // Correction : On assigne l'ID interne récupéré à lisaId pour l'affichage final
+                // Assignation du NO_CNT (LISA ID) pour l'affichage final
                 long internalId = Convert.ToInt64(dtLisa.Rows[0]["NO_CNT"]);
                 lisaId = internalId.ToString();
 
+                // Liste enrichie avec les tables LISA identifiées dans le script SQL (PCONT0, ELIHT0, etc.)
                 var lisaTables = new[] {
                     "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0",
                     "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0",
-                    "LV.MWBGT0", "LV.PRIST0", "LV.FMVGT0", "LV.ELIAT0"
+                    "LV.MWBGT0", "LV.PRIST0", "LV.FMVGT0", "LV.ELIAT0",
+                    "LV.ELIHT0", "LV.PCONT0", "LV.XRSTT0"
                 };
 
                 foreach (var table in lisaTables)
                 {
-                    var dt = db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@InternalId", internalId } });
-                    AddTableToBuffer(sb, table, dt);
+                    if (SqlQueries.Queries.ContainsKey(table))
+                    {
+                        var dt = db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@InternalId", internalId } });
+                        AddTableToBuffer(sb, table, dt);
+                    }
                 }
             }
 
@@ -140,7 +146,7 @@ namespace AutoActivator.Gui
             {
                 eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"].ToString().Trim();
 
-                // Récupération du Demand ID via la table de lien HEPT ou HELT
+                // Récupération du Demand ID (HDMDAIDN) pour lier les tables FJ1 secondaires
                 var dtDemand = db.GetData(SqlQueries.Queries["GET_ELIA_DEMAND_ID"], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
 
                 if (dtDemand.Rows.Count > 0)
@@ -148,32 +154,40 @@ namespace AutoActivator.Gui
                     eliaDemandId = dtDemand.Rows[0]["IT5HDMDAIDN"].ToString().Trim();
                 }
 
+                // Tables ELIA basées sur l'ID de contrat (UCONAIDN)
                 var eliaTables = new[] {
                     "FJ1.TB5UCON", "FJ1.TB5UGAR", "FJ1.TB5UASU", "FJ1.TB5UPRP",
                     "FJ1.TB5UAVE", "FJ1.TB5UDCR", "FJ1.TB5UBEN", "FJ1.TB5UPRS",
-                    "FJ1.TB5URPP", "FJ1.TB5HELT"
+                    "FJ1.TB5URPP", "FJ1.TB5HELT", "FJ1.TB5UCCR", "FJ1.TB5UPNR"
                 };
 
                 foreach (var table in eliaTables)
                 {
-                    var dt = db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
-                    AddTableToBuffer(sb, table, dt);
+                    if (SqlQueries.Queries.ContainsKey(table))
+                    {
+                        var dt = db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
+                        AddTableToBuffer(sb, table, dt);
+                    }
                 }
 
+                // Tables ELIA basées sur l'ID de demande (DemandId)
                 if (eliaDemandId != "Non trouvé")
                 {
-                    var demandTables = new[] { "FJ1.TB5HDMD", "FJ1.TB5HPRO", "FJ1.TB5HDIC", "FJ1.TB5HEPT" };
+                    var demandTables = new[] { "FJ1.TB5HDMD", "FJ1.TB5HPRO", "FJ1.TB5HDIC", "FJ1.TB5HEPT", "FJ1.TB5HDGM", "FJ1.TB5HDGD" };
                     foreach (var table in demandTables)
                     {
-                        var dt = db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@DemandId", eliaDemandId } });
-                        AddTableToBuffer(sb, table, dt);
+                        if (SqlQueries.Queries.ContainsKey(table))
+                        {
+                            var dt = db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@DemandId", eliaDemandId } });
+                            AddTableToBuffer(sb, table, dt);
+                        }
                     }
                 }
             }
 
             File.WriteAllText(_lastGeneratedPath, sb.ToString(), Encoding.UTF8);
 
-            // Affichage complet des identifiants techniques trouvés
+            // Retourne le statut complet avec les identifiants techniques trouvés
             return $"LISA ID (NO_CNT): {lisaId} | UCONAIDN: {eliaUconId} | HDMDAIDN: {eliaDemandId}";
         }
 
