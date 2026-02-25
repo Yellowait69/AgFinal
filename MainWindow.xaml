@@ -1,33 +1,93 @@
 <Window x:Class="AutoActivator.Gui.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="L.I.S.A Auto-Activator" Height="450" Width="800" Background="#F3F3F3">
+        Title="L.I.S.A Auto-Activator (.NET Version)" Height="600" Width="900" Background="#F3F3F3">
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="220"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
         <StackPanel Grid.Column="0" Background="#2C3E50">
-            <TextBlock Text="L.I.S.A" Foreground="White" FontSize="24" Margin="20" FontWeight="Bold"/>
-            <Button Content="Extraction" Padding="10" Margin="5" Click="BtnRun_Click" Background="#34495E" Foreground="White" BorderThickness="0"/>
-            <Button Content="Activation" Padding="10" Margin="5" Click="BtnActivation_Click" Background="#34495E" Foreground="White" BorderThickness="0"/>
-            <Button Content="Comparaison" Padding="10" Margin="5" Click="BtnComparison_Click" Background="#34495E" Foreground="White" BorderThickness="0"/>
+            <TextBlock Text="L.I.S.A" Foreground="White" FontSize="26" Margin="20,30,20,10" FontWeight="Bold" HorizontalAlignment="Center"/>
+            <TextBlock Text="Auto-Activator v2.0" Foreground="#BDC3C7" FontSize="12" Margin="0,0,0,30" HorizontalAlignment="Center"/>
+
+            <Button Content="📥 Extraction" Padding="12" Margin="10,5" Click="BtnRun_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand"/>
+            <Button Content="⚡ Activation" Padding="12" Margin="10,5" Click="BtnActivation_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand"/>
+            <Button Content="📊 Comparaison" Padding="12" Margin="10,5" Click="BtnComparison_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand"/>
         </StackPanel>
 
-        <StackPanel Grid.Column="1" Margin="20">
-            <TextBlock Text="Extraction de Contrat" FontSize="20" FontWeight="Bold" Margin="0,0,0,20"/>
-            <TextBlock Text="Numéro de contrat :"/>
-            <TextBox x:Name="TxtContract" Margin="0,5,0,10" Padding="5"/>
+        <Grid Grid.Column="1" Margin="25">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="*"/>    </Grid.RowDefinitions>
 
-            <Button x:Name="BtnRun" Content="Lancer l'extraction" Click="BtnRun_Click" Background="#27AE60" Foreground="White" Padding="10"/>
+            <StackPanel Grid.Row="0">
+                <TextBlock Text="Module d'Extraction Groupée" FontSize="22" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
 
-            <TextBlock x:Name="TxtStatus" Margin="0,20,0,5" TextWrapping="Wrap"/>
-            <TextBlock x:Name="LnkFile" Visibility="Collapsed">
-                <Hyperlink Click="Hyperlink_Click">
-                    <Run Text="Ouvrir le fichier généré"/>
-                </Hyperlink>
-            </TextBlock>
-        </StackPanel>
+                <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock Text="Numéro de contrat (ex: 182-2728195-31) :" Margin="0,0,0,8" FontWeight="SemiBold"/>
+                        <TextBox x:Name="TxtContract" Margin="0,0,0,15" Padding="8" FontSize="14" BorderBrush="#DCDDE1"/>
+
+                        <Button x:Name="BtnRun" Content="Lancer l'extraction (LISA &amp; ELIA)" Click="BtnRun_Click"
+                                Background="#27AE60" Foreground="White" Padding="12" FontWeight="Bold" BorderThickness="0" Cursor="Hand">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="3"/>
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+
+                        <ProgressBar x:Name="PrgLoading" IsIndeterminate="True" Height="10" Margin="0,15,0,0" Visibility="Collapsed"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <StackPanel Grid.Row="1" Margin="0,20">
+                <TextBlock x:Name="TxtStatus" FontSize="14" TextWrapping="Wrap" Foreground="#2F3640"/>
+
+                <TextBlock x:Name="LnkFile" Visibility="Collapsed" Margin="0,10,0,0" FontSize="14">
+                    <Hyperlink Click="Hyperlink_Click" Foreground="#2980B9" FontWeight="Bold">
+                        <Run Text="📁 Cliquer ici pour ouvrir le fichier généré (CSV)"/>
+                    </Hyperlink>
+                </TextBlock>
+            </StackPanel>
+
+            <Grid Grid.Row="2" Margin="0,10,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="Historique de la session" FontWeight="Bold" Foreground="#7F8C8D" Margin="0,0,0,10"/>
+
+                <ListBox x:Name="ListHistory" Grid.Row="1" Background="White" BorderBrush="#DCDDE1" BorderThickness="1" AlternationCount="2">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="5">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80"/>
+                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Time}" Foreground="#95A5A6" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="{Binding ContractId}" FontWeight="Bold" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Extraction réussie" Foreground="#27AE60" FontStyle="Italic" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="10"/>
+                            <Style.Triggers>
+                                <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                                    <Setter Property="Background" Value="#F9F9F9"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                </ListBox>
+            </Grid>
+        </Grid>
     </Grid>
 </Window>
