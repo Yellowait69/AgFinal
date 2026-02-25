@@ -10,7 +10,7 @@
 
         <StackPanel Grid.Column="0" Background="#2C3E50">
             <TextBlock Text="L.I.S.A" Foreground="White" FontSize="24" Margin="20" FontWeight="Bold"/>
-            <Button Content="Extraction" Padding="10" Margin="5" Click="BtnExtraction_Click" Background="#34495E" Foreground="White" BorderThickness="0"/>
+            <Button Content="Extraction" Padding="10" Margin="5" Click="BtnRun_Click" Background="#34495E" Foreground="White" BorderThickness="0"/>
             <Button Content="Activation" Padding="10" Margin="5" Click="BtnActivation_Click" Background="#34495E" Foreground="White" BorderThickness="0"/>
             <Button Content="Comparaison" Padding="10" Margin="5" Click="BtnComparison_Click" Background="#34495E" Foreground="White" BorderThickness="0"/>
         </StackPanel>
