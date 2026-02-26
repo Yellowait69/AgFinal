@@ -154,7 +154,8 @@ namespace AutoActivator.Gui
 
         private void PerformBatchExtraction(string filePath)
         {
-            string rawText = File.ReadAllText(filePath);
+            // CORRECTION MAJEURE ICI : Suppression du caractère invisible BOM (\uFEFF) généré par Excel
+            string rawText = File.ReadAllText(filePath).Replace("\uFEFF", "");
             string[] lines = rawText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
 
             if (lines.Length <= 1) return;
@@ -253,10 +254,14 @@ namespace AutoActivator.Gui
                 }
             }
 
-            // Sauvegarde des fichiers globaux
+            // Sauvegarde des fichiers globaux (avec sécurité au cas où aucun contrat ne ressortirait)
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
-            File.WriteAllText(Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_LISA_{timestamp}.csv"), globalLisa.ToString(), Encoding.UTF8);
-            File.WriteAllText(Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_ELIA_{timestamp}.csv"), globalElia.ToString(), Encoding.UTF8);
+
+            string finalLisaContent = globalLisa.Length > 0 ? globalLisa.ToString() : "AUCUN CONTRAT LISA TROUVE LORS DE L'EXTRACTION.";
+            File.WriteAllText(Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_LISA_{timestamp}.csv"), finalLisaContent, Encoding.UTF8);
+
+            string finalEliaContent = globalElia.Length > 0 ? globalElia.ToString() : "AUCUN CONTRAT ELIA TROUVE LORS DE L'EXTRACTION.";
+            File.WriteAllText(Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_ELIA_{timestamp}.csv"), finalEliaContent, Encoding.UTF8);
         }
 
         private void Hyperlink_Click(object sender, RoutedEventArgs e)

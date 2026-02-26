@@ -23,7 +23,7 @@ namespace AutoActivator.Sql
                 WHERE IT5UCONLREFEXN = @ContractNumber"
             },
 
-            { "GET_ELIA_DEMAND_ID", @"
+            { "GET_ELIA_DEMAND_IDS", @"
                 SELECT DISTINCT IT5HDMDAIDN
                 FROM FJ1.TB5HELT WITH(NOLOCK)
                 WHERE IT5UCONAIDN = @EliaId"
@@ -34,8 +34,10 @@ namespace AutoActivator.Sql
             // ==========================================
 
             { "LV.PCONT0", "SELECT 'PCON' as PCON, * FROM [LV].[LV5P02TPCONT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
-            { "LV.ELIAT0", "SELECT 'ELIAT0' as ELIA, * FROM LV.ELIAT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+            { "LV.ELIAT0", "SELECT 'ELIAT0' as ELIA, * FROM LV.ELIAT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY C_EVN_LIE, TSTAMP_CRT" },
             { "LV.ELIHT0", "SELECT 'ELIHT0' as ELIH, * FROM LV.ELIHT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+            { "LV.ADMDT0", "SELECT 'ADMD' as ADMD, * FROM LV.ADMDT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+            { "LV.SPERT0", "SELECT 'SPER' as SPER, * FROM LV.SPERT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
 
             { "LV.SCNTT0", @"
                 SELECT 'SCNT' as SCNT, C_STE, NO_CNT, C_PROP_PRINC, D_CRT_CNT, D_PDC_CNT, D_EFF_CNT, C_ETAT_CNT,
@@ -78,19 +80,21 @@ namespace AutoActivator.Sql
 
             { "FJ1.TB5LPPR", "SELECT 'LPPR' as LPPR, * FROM [FJ1].[TB5LPPR] WITH(NOLOCK) WHERE IT5LPPRNCON = @InternalId ORDER BY IT5LPPRNIDNPLNPRI DESC" },
             { "FJ1.TB5LGDR", "SELECT 'LGDR' as LGDR, * FROM FJ1.TB5LGDR WITH(NOLOCK) WHERE IT5LGDRNCON = @InternalId" },
+
+            // ATTENTION: Vérifie que NO_CNT existe bien dans XRSTT0 (le SQL d'origine filtrait sur NM_PROG et D_CRT)
             { "LV.XRSTT0", "SELECT * FROM LV.XRSTT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
 
 
             // ==========================================
-            // DONNEES DEMANDE ELIA - Utilise @DemandId
+            // DONNEES DEMANDE ELIA - Utilise @DemandIds (Collection)
             // ==========================================
 
-            { "FJ1.TB5HDMD", "SELECT 'HDMD' as HDMD, IT2RELANRELGST, IT5HDMDLREFEXN as HDMDLREFEXN, IT5HDMDLREFAGTCUA as HDMDLREFAGTCUA, * FROM [FJ1].[TB5HDMD] WITH(NOLOCK) WHERE IT5HDMDAIDN = @DemandId" },
-            { "FJ1.TB5HDGM", "SELECT 'HDGM' as HDGM, * FROM [FJ1].[TB5HDGM] WITH(NOLOCK) WHERE IT5HDMDAIDN = @DemandId" },
-            { "FJ1.TB5HDGD", "SELECT 'HDGD' as HDGD, * FROM [FJ1].[TB5HDGD] WITH(NOLOCK) WHERE IT5HDMDAIDN = @DemandId" },
-            { "FJ1.TB5HPRO", "SELECT 'HPRO' as HPRO, * FROM [FJ1].[TB5HPRO] WITH(NOLOCK) WHERE IT5HDMDAIDN = @DemandId" },
-            { "FJ1.TB5HDIC", "SELECT * FROM FJ1.TB5HDIC WITH(NOLOCK) WHERE IT5HDMDAIDN = @DemandId" },
-            { "FJ1.TB5HEPT", "SELECT * FROM FJ1.TB5HEPT WITH(NOLOCK) WHERE IT5HDMDAIDN = @DemandId" },
+            { "FJ1.TB5HDMD", "SELECT 'HDMD' as HDMD, IT2RELANRELGST, IT5HDMDLREFEXN as HDMDLREFEXN, IT5HDMDLREFAGTCUA as HDMDLREFAGTCUA, * FROM [FJ1].[TB5HDMD] WITH(NOLOCK) WHERE IT5HDMDAIDN IN @DemandIds" },
+            { "FJ1.TB5HDGM", "SELECT 'HDGM' as HDGM, * FROM [FJ1].[TB5HDGM] WITH(NOLOCK) WHERE IT5HDMDAIDN IN @DemandIds" },
+            { "FJ1.TB5HDGD", "SELECT 'HDGD' as HDGD, * FROM [FJ1].[TB5HDGD] WITH(NOLOCK) WHERE IT5HDMDAIDN IN @DemandIds" },
+            { "FJ1.TB5HPRO", "SELECT 'HPRO' as HPRO, * FROM [FJ1].[TB5HPRO] WITH(NOLOCK) WHERE IT5HDMDAIDN IN @DemandIds" },
+            { "FJ1.TB5HDIC", "SELECT * FROM FJ1.TB5HDIC WITH(NOLOCK) WHERE IT5HDMDAIDN IN @DemandIds" },
+            { "FJ1.TB5HEPT", "SELECT * FROM FJ1.TB5HEPT WITH(NOLOCK) WHERE IT5HDMDAIDN IN @DemandIds" },
 
             // ==========================================
             // DONNEES ELIA (Tables FJ1) - Utilise @EliaId
@@ -109,6 +113,7 @@ namespace AutoActivator.Sql
             { "FJ1.TB5UPRP", "SELECT 'UPRP' as UPRP, IT5UPRPPSPRPMT, IT5UPRPPSPRPMTCMS, IT5UPRPPSPRPMTILM, IT5UPRPPSPRBMI, IT5UPRPPSPRFUM, * FROM [FJ1].[TB5UPRP] WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
             { "FJ1.TB5UPRS", "SELECT 'UPRS' as UPRS, * FROM [FJ1].[TB5UPRS] WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
             { "FJ1.TB5UPMP", "SELECT 'UPMP' as UPMP, * FROM [FJ1].[TB5UPMP] WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
+            { "FJ1.TB5URPP", "SELECT 'URPP' as URPP, * FROM [FJ1].[TB5URPP] WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
 
             // ==========================================
             // DONNEES FINANCIERES (Quittances/Paiements) - @InternalId

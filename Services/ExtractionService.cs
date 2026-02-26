@@ -32,7 +32,8 @@ namespace AutoActivator.Services
 
         public ExtractionResult PerformExtraction(string targetContract)
         {
-            targetContract = targetContract.Replace("\u00A0", "").Trim();
+            // CORRECTION MAJEURE ICI : Nettoyage impératif des espaces insécables ET du BOM (\uFEFF)
+            targetContract = targetContract.Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
 
             if (!_db.TestConnection())
                 throw new Exception("Unable to establish SQL connection.");
