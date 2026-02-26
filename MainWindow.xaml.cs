@@ -166,7 +166,8 @@ namespace AutoActivator.Gui
 
             for (int i = 0; i < headers.Length; i++)
             {
-                string h = headers[i].Trim();
+                // Nettoyage des guillemets potentiels autour des en-têtes
+                string h = headers[i].Trim().Trim('"');
                 if (h.Equals("LISA Contract", StringComparison.OrdinalIgnoreCase)) contractIndex = i;
                 if (h.Equals("Premium", StringComparison.OrdinalIgnoreCase)) premiumIndex = i;
                 if (h.Equals("Product", StringComparison.OrdinalIgnoreCase)) productIndex = i;
@@ -178,9 +179,10 @@ namespace AutoActivator.Gui
 
                 if (columns.Length > contractIndex)
                 {
-                    string contractNumber = columns[contractIndex].Trim();
-                    string premiumAmount = columns.Length > premiumIndex ? columns[premiumIndex].Trim() : "0";
-                    string productValue = columns.Length > productIndex ? columns[productIndex].Trim() : "N/A";
+                    // Suppression impérative des guillemets autour des valeurs (essentiel pour la BDD)
+                    string contractNumber = columns[contractIndex].Trim().Trim('"');
+                    string premiumAmount = columns.Length > premiumIndex ? columns[premiumIndex].Trim().Trim('"') : "0";
+                    string productValue = columns.Length > productIndex ? columns[productIndex].Trim().Trim('"') : "N/A";
 
                     if (!string.IsNullOrEmpty(contractNumber))
                     {
@@ -188,19 +190,25 @@ namespace AutoActivator.Gui
                         {
                             ExtractionResult result = _extractionService.PerformExtraction(contractNumber);
 
-                            // Accumulation LISA
-                            globalLisa.AppendLine("############################################################");
-                            globalLisa.AppendLine($"### CONTRACT: {contractNumber} | PRODUCT: {productValue}");
-                            globalLisa.AppendLine("############################################################");
-                            globalLisa.Append(result.LisaContent);
-                            globalLisa.AppendLine();
+                            // Accumulation LISA uniquement si le contenu n'est pas vide
+                            if (!string.IsNullOrWhiteSpace(result.LisaContent))
+                            {
+                                globalLisa.AppendLine("############################################################");
+                                globalLisa.AppendLine($"### CONTRACT: {contractNumber} | PRODUCT: {productValue}");
+                                globalLisa.AppendLine("############################################################");
+                                globalLisa.Append(result.LisaContent);
+                                globalLisa.AppendLine();
+                            }
 
-                            // Accumulation ELIA
-                            globalElia.AppendLine("############################################################");
-                            globalElia.AppendLine($"### CONTRACT: {contractNumber} | UCON: {result.UconId}");
-                            globalElia.AppendLine("############################################################");
-                            globalElia.Append(result.EliaContent);
-                            globalElia.AppendLine();
+                            // Accumulation ELIA uniquement si le contenu n'est pas vide
+                            if (!string.IsNullOrWhiteSpace(result.EliaContent))
+                            {
+                                globalElia.AppendLine("############################################################");
+                                globalElia.AppendLine($"### CONTRACT: {contractNumber} | UCON: {result.UconId}");
+                                globalElia.AppendLine("############################################################");
+                                globalElia.Append(result.EliaContent);
+                                globalElia.AppendLine();
+                            }
 
                             Application.Current.Dispatcher.Invoke(() =>
                             {

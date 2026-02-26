@@ -81,10 +81,19 @@ namespace AutoActivator.Services
             {
                 eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"].ToString().Trim();
 
+                // NOUVEAU : Récupération d'une liste de TOUTES les DemandIds associées
                 var dtDemand = _db.GetData(SqlQueries.Queries["GET_ELIA_DEMAND_ID"], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
-                if (dtDemand.Rows.Count > 0)
+                List<string> demandIds = new List<string>();
+                foreach (DataRow row in dtDemand.Rows)
                 {
-                    eliaDemandId = dtDemand.Rows[0]["IT5HDMDAIDN"].ToString().Trim();
+                    string dId = row["IT5HDMDAIDN"].ToString().Trim();
+                    if (!string.IsNullOrEmpty(dId)) demandIds.Add(dId);
+                }
+
+                if (demandIds.Count > 0)
+                {
+                    // Met à jour le status pour voir toutes les demandes
+                    eliaDemandId = string.Join(", ", demandIds);
                 }
 
                 var eliaTables = new[] {
@@ -102,15 +111,23 @@ namespace AutoActivator.Services
                     }
                 }
 
-                if (eliaDemandId != "Not found")
+                // NOUVEAU : On itère sur toutes les demandes trouvées
+                if (demandIds.Count > 0)
                 {
                     var demandTables = new[] { "FJ1.TB5HDMD", "FJ1.TB5HPRO", "FJ1.TB5HDIC", "FJ1.TB5HEPT", "FJ1.TB5HDGM", "FJ1.TB5HDGD" };
-                    foreach (var table in demandTables)
+                    foreach (var dId in demandIds)
                     {
-                        if (SqlQueries.Queries.ContainsKey(table))
+                        sbElia.AppendLine($"################################################################################");
+                        sbElia.AppendLine($"### --- DEMAND ID : {dId} ---");
+                        sbElia.AppendLine($"################################################################################");
+
+                        foreach (var table in demandTables)
                         {
-                            var dt = _db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@DemandId", eliaDemandId } });
-                            AddTableToBuffer(sbElia, table, dt); // Ajout au tampon ELIA
+                            if (SqlQueries.Queries.ContainsKey(table))
+                            {
+                                var dt = _db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@DemandId", dId } });
+                                AddTableToBuffer(sbElia, table, dt); // Ajout au tampon ELIA
+                            }
                         }
                     }
                 }
