@@ -12,12 +12,12 @@ namespace AutoActivator.Services
 
         public DatabaseManager()
         {
-            // Secure retrieval of the connection string
+            // Récupération sécurisée de la chaîne de connexion depuis les réglages
             _connectionString = Settings.DbConfig.ConnectionString;
         }
 
         /// <summary>
-        /// Checks the validity of the connection to SQL Server.
+        /// Vérifie la validité de la connexion au serveur SQL.
         /// </summary>
         public bool TestConnection()
         {
@@ -31,7 +31,7 @@ namespace AutoActivator.Services
                         var result = command.ExecuteScalar();
                         if (result != null && result.ToString() == "1")
                         {
-                            Console.WriteLine($"[INFO] Successful connection to the database: {Settings.DbConfig.Database}");
+                            Console.WriteLine($"[INFO] Connexion réussie à la base de données : {Settings.DbConfig.Database}");
                             return true;
                         }
                     }
@@ -40,23 +40,21 @@ namespace AutoActivator.Services
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[ERROR] Connection failed: {e.Message}");
+                Console.WriteLine($"[ERROR] Échec de la connexion : {e.Message}");
                 return false;
             }
         }
 
         /// <summary>
-        /// Executes a SELECT query with parameters to prevent SQL injection.
+        /// Exécute une requête SELECT avec des paramètres pour prévenir les injections SQL.
         /// </summary>
         public DataTable GetData(string query, Dictionary<string, object> parameters = null)
         {
             DataTable dataTable = new DataTable();
 
-            // CORRECTION MINEURE : Correction automatique de la syntaxe IN si on a passé un paramètre simple (pour éviter l'erreur SQL)
-            if (query.Contains("IN @DemandIds"))
-            {
-                query = query.Replace("IN @DemandIds", "= @DemandIds");
-            }
+            // SUPPRESSION DU BLOC DE REMPLACEMENT "IN @DemandIds" :
+            // Ce bloc était dangereux car il risquait de corrompre les requêtes SQL complexes
+            // utilisant STRING_SPLIT ou des clauses IN légitimes.
 
             try
             {
@@ -68,7 +66,7 @@ namespace AutoActivator.Services
                         {
                             foreach (var param in parameters)
                             {
-                                // Proper handling of null values
+                                // Gestion propre des valeurs nulles
                                 command.Parameters.AddWithValue(param.Key, param.Value ?? DBNull.Value);
                             }
                         }
@@ -80,32 +78,34 @@ namespace AutoActivator.Services
                     }
                 }
             }
-            catch (Exception e) // CORRECTION MAJEURE : On catch tout et on throw pour que l'UI affiche "Erreur SQL"
+            catch (Exception e)
             {
-                Console.WriteLine($"[ERROR] SQL Error on query : {query}\nDetails: {e.Message}");
-                // On remonte l'erreur pour que l'interface graphique (ExtractionService -> MainWindow) soit au courant
-                throw new Exception($"Erreur SQL: {e.Message}");
+                Console.WriteLine($"[ERROR] Erreur SQL sur la requête : {query}\nDétails : {e.Message}");
+                // On remonte l'erreur pour que l'interface utilisateur soit informée
+                throw new Exception($"Erreur SQL : {e.Message}");
             }
 
             return dataTable;
         }
 
         /// <summary>
-        /// Injects a test payment into the LV.PRCTT0 table.
+        /// Injecte un paiement de test dans la table LV.PRCTT0.
         /// </summary>
-        public bool InjectPayment(long contractInternalId, decimal amount, DateTime? paymentDate = null)
+        public bool InjectPayment(string contractInternalId, decimal amount, DateTime? paymentDate = null)
         {
+            // CORRECTION : On utilise 'string' pour contractInternalId pour préserver les zéros initiaux (ex: 0822...)
+            // comme recommandé pour résoudre les problèmes d'extraction LISA.
+
             DateTime now = DateTime.Now;
             DateTime referenceDate = paymentDate ?? now;
             DateTime timestamp = (paymentDate.HasValue && paymentDate.Value.TimeOfDay == TimeSpan.Zero)
                 ? paymentDate.Value.AddHours(12)
                 : now;
 
-            // Generation of a structured communication
-            string idStr = contractInternalId.ToString();
+            // Génération d'une communication structurée fictive
+            string idStr = contractInternalId?.Trim() ?? "";
             string fakeCommu = $"820{(idStr.Length > 9 ? idStr.Substring(0, 9) : idStr)}99";
 
-            // Native insert query
             string query = @"
                 INSERT INTO LV.PRCTT0 (
                     C_STE, NO_CNT, C_MD_PMT, D_REF_PRM, NO_ORD_RCP, TSTAMP_CRT_RCT,
@@ -136,14 +136,14 @@ namespace AutoActivator.Services
                         connection.Open();
                         command.ExecuteNonQuery();
 
-                        Console.WriteLine($"[INFO] Payment of {amount} EUR injected (Contract: {contractInternalId})");
+                        Console.WriteLine($"[INFO] Paiement de {amount} EUR injecté (Contrat : {contractInternalId})");
                         return true;
                     }
                 }
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[ERROR] FAILED payment injection: {e.Message}");
+                Console.WriteLine($"[ERROR] ÉCHEC de l'injection du paiement : {e.Message}");
                 return false;
             }
         }

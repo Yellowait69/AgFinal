@@ -15,13 +15,13 @@ namespace AutoActivator.Sql
             { "GET_INTERNAL_ID", @"
                 SELECT TOP 1 NO_CNT
                 FROM LV.SCNTT0 WITH(NOLOCK)
-                WHERE NO_CNT_EXTENDED = @ContractNumber"
+                WHERE NO_CNT_EXTENDED LIKE @ContractNumber + '%'"
             },
 
             { "GET_ELIA_ID", @"
                 SELECT TOP 1 IT5UCONAIDN
                 FROM FJ1.TB5UCON WITH(NOLOCK)
-                WHERE IT5UCONLREFEXN = @ContractNumber"
+                WHERE IT5UCONLREFEXN LIKE @ContractNumber + '%'"
             },
 
             { "GET_ELIA_DEMAND_IDS", @"
