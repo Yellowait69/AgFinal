@@ -69,17 +69,27 @@ namespace AutoActivator.Services
 
             if (dtLisa.Rows.Count > 0)
             {
-                // CORRECTION : On convertit explicitement en Int64 (long) comme dans le script de test
-                // pour éviter les erreurs de typage lors du passage de paramètre SQL.
+                // Conversion explicite en Int64 (long) pour éviter les erreurs de typage SQL
                 long internalId = Convert.ToInt64(dtLisa.Rows[0]["NO_CNT"]);
                 internalIdString = internalId.ToString();
 
-                // CORRECTION : Utilisation de la liste exacte et validée du script de test
+                // Liste exhaustive des tables LISA basées sur SqlQueries.cs
                 var lisaTables = new[]
                 {
-                    "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0",
-                    "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0",
-                    "LV.MWBGT0", "LV.PRIST0", "LV.FMVGT0"
+                    // Contrats et Avenants
+                    "LV.PCONT0", "LV.ELIAT0", "LV.ELIHT0", "LV.SCNTT0", "LV.SWBGT0", "LV.SAVTT0", "LV.XRSTT0",
+                    // Plans et Garanties (utilisant @InternalId)
+                    "FJ1.TB5LPPL", "FJ1.TB5LPPR", "FJ1.TB5LGDR",
+                    // Données Financières
+                    "LV.PRIST0", "LV.PECHT0", "LV.PFIET0", "LV.PMNTT0", "LV.PRCTT0", "LV.PSUMT0", "LV.SELTT0",
+                    // Données Fonds (LISA)
+                    "FJ1.TB5LPPF", "LV.FMVGT0", "LV.FMVDT0", "LV.SFTS", "LV.PINCT0",
+                    // Clauses
+                    "LV.SCLST0", "LV.SCLRT0", "LV.SCLDT0",
+                    // Réserves
+                    "LV.BSPDT0", "LV.BSPGT0", "LV.BPBAT0", "LV.BPPAT0",
+                    // Modifications
+                    "LV.MWBGT0"
                 };
 
                 foreach (var table in lisaTables)
@@ -125,13 +135,16 @@ namespace AutoActivator.Services
                 if (demandIds.Count > 0)
                     eliaDemandId = string.Join(", ", demandIds);
 
-                // Note : Je n'ai pas touché à tes tables ELIA car tu as précisé que seule
-                // l'extraction LISA posait souci et que ta logique ELIA ici est plus complète.
+                // Liste exhaustive des tables ELIA basées sur SqlQueries.cs
                 var eliaTables = new[]
                 {
+                    // Contrat
                     "FJ1.TB5HELT", "FJ1.TB5UCON", "FJ1.TB5UGAR", "FJ1.TB5UASU", "FJ1.TB5UCCR",
                     "FJ1.TB5UAVE", "FJ1.TB5UPNR", "FJ1.TB5UPRP", "FJ1.TB5UPRS", "FJ1.TB5UPMP",
-                    "FJ1.TB5UPRF", "FJ1.TB5UFML", "FJ1.TB5UCRB", "FJ1.TB5UDCR", "FJ1.TB5UBEN"
+                    // Fonds (ELIA)
+                    "FJ1.TB5UPRF", "FJ1.TB5UFML",
+                    // Clauses (ELIA)
+                    "FJ1.TB5UCRB", "FJ1.TB5UDCR", "FJ1.TB5UBEN"
                 };
 
                 foreach (var table in eliaTables)
@@ -146,6 +159,7 @@ namespace AutoActivator.Services
                     }
                 }
 
+                // Récupération des tables liées à la Demande ELIA
                 if (demandIds.Count > 0)
                 {
                     var demandTables = new[] { "FJ1.TB5HDMD", "FJ1.TB5HDGM", "FJ1.TB5HDGD", "FJ1.TB5HPRO" };
@@ -223,7 +237,6 @@ namespace AutoActivator.Services
 
             foreach (DataRow row in dt.Rows)
             {
-                // Excellente pratique conservée ici : le fallback DBNull.Value
                 var fields = row.ItemArray.Select(f =>
                     f == DBNull.Value ? "" : f.ToString().Replace(";", " ").Replace("\n", " ").Trim());
                 sb.AppendLine(string.Join(";", fields));
