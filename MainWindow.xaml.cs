@@ -135,8 +135,26 @@ namespace AutoActivator.Gui
 
         private void PerformBatchExtraction(string filePath)
         {
-            string[] lines = File.ReadAllLines(filePath);
+            // 1. Lire tout le fichier et séparer les lignes de manière universelle (corrige les problèmes Excel/Mac)
+            string rawText = File.ReadAllText(filePath);
+            string[] lines = rawText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
 
+            if (lines.Length <= 1) return; // Si le fichier est vide ou n'a qu'un en-tête, on arrête
+
+            // 2. Détecter automatiquement à quel index se trouve la colonne "LISA Contract" et "Premium"
+            string[] headers = lines[0].Split(new[] { ';', ',' });
+            int contractIndex = 4; // Valeur par défaut
+            int premiumIndex = 5;
+
+            for (int i = 0; i < headers.Length; i++)
+            {
+                if (headers[i].Trim().Equals("LISA Contract", StringComparison.OrdinalIgnoreCase))
+                    contractIndex = i;
+                if (headers[i].Trim().Equals("Premium", StringComparison.OrdinalIgnoreCase))
+                    premiumIndex = i;
+            }
+
+            // 3. Boucle d'extraction
             for (int i = 1; i < lines.Length; i++)
             {
                 string line = lines[i];
@@ -144,16 +162,17 @@ namespace AutoActivator.Gui
 
                 string[] columns = line.Split(new[] { ';', ',' });
 
-                if (columns.Length > 4)
+                // On vérifie que la ligne contient suffisamment de colonnes pour atteindre notre index
+                if (columns.Length > contractIndex)
                 {
-                    string contractNumber = columns[4].Trim();
-                    string premiumAmount = columns.Length > 5 ? columns[5].Trim() : "0";
+                    string contractNumber = columns[contractIndex].Trim();
+                    string premiumAmount = columns.Length > premiumIndex ? columns[premiumIndex].Trim() : "0";
 
                     if (!string.IsNullOrEmpty(contractNumber))
                     {
                         try
                         {
-                            // Appel simplifié au service d'extraction
+                            // Appel au service d'extraction
                             ExtractionResult result = _extractionService.PerformExtraction(contractNumber);
                             _lastGeneratedPath = result.FilePath;
 
