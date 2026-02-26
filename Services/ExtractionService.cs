@@ -69,19 +69,17 @@ namespace AutoActivator.Services
 
             if (dtLisa.Rows.Count > 0)
             {
-                // IMPORTANT : On garde l'objet brut pour ne pas perdre les zéros non significatifs (ex: 0822...)
-                // On ne convertit PAS en long.
-                object internalId = dtLisa.Rows[0]["NO_CNT"];
-                internalIdString = internalId?.ToString()?.Trim() ?? "Not found";
+                // CORRECTION : On convertit explicitement en Int64 (long) comme dans le script de test
+                // pour éviter les erreurs de typage lors du passage de paramètre SQL.
+                long internalId = Convert.ToInt64(dtLisa.Rows[0]["NO_CNT"]);
+                internalIdString = internalId.ToString();
 
+                // CORRECTION : Utilisation de la liste exacte et validée du script de test
                 var lisaTables = new[]
                 {
-                    "LV.SCNTT0", "LV.SAVTT0", "LV.SWBGT0", "LV.PCONT0", "LV.ELIAT0", "LV.ELIHT0",
-                    "FJ1.TB5LPPL", "FJ1.TB5LPPR", "FJ1.TB5LGDR",
-                    "LV.PRIST0", "LV.PECHT0", "LV.PFIET0", "LV.PMNTT0", "LV.PRCTT0", "LV.PSUMT0", "LV.SELTT0",
-                    "FJ1.TB5LPPF", "LV.FMVGT0", "LV.FMVDT0", "LV.SFTS", "LV.PINCT0",
-                    "LV.SCLST0", "LV.SCLRT0", "LV.SCLDT0",
-                    "LV.BSPDT0", "LV.BSPGT0", "LV.BPBAT0", "LV.BPPAT0", "LV.MWBGT0"
+                    "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0",
+                    "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0",
+                    "LV.MWBGT0", "LV.PRIST0", "LV.FMVGT0"
                 };
 
                 foreach (var table in lisaTables)
@@ -127,6 +125,8 @@ namespace AutoActivator.Services
                 if (demandIds.Count > 0)
                     eliaDemandId = string.Join(", ", demandIds);
 
+                // Note : Je n'ai pas touché à tes tables ELIA car tu as précisé que seule
+                // l'extraction LISA posait souci et que ta logique ELIA ici est plus complète.
                 var eliaTables = new[]
                 {
                     "FJ1.TB5HELT", "FJ1.TB5UCON", "FJ1.TB5UGAR", "FJ1.TB5UASU", "FJ1.TB5UCCR",
@@ -223,6 +223,7 @@ namespace AutoActivator.Services
 
             foreach (DataRow row in dt.Rows)
             {
+                // Excellente pratique conservée ici : le fallback DBNull.Value
                 var fields = row.ItemArray.Select(f =>
                     f == DBNull.Value ? "" : f.ToString().Replace(";", " ").Replace("\n", " ").Trim());
                 sb.AppendLine(string.Join(";", fields));
