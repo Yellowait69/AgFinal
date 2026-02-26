@@ -12,11 +12,12 @@ namespace AutoActivator.Sql
             // RECUPERATION DES CLES (LISA & ELIA)
             // ==========================================
 
-            { "GET_INTERNAL_ID", @"
-                SELECT TOP 1 NO_CNT
-                FROM LV.SCNTT0 WITH(NOLOCK)
-                WHERE LTRIM(RTRIM(NO_CNT_EXTENDED)) = LTRIM(RTRIM(@ContractNumber))"
-            },
+               { "GET_INTERNAL_ID", @"
+                           SELECT TOP 1 NO_CNT
+                           FROM LV.SCNTT0 WITH(NOLOCK)
+                           WHERE NO_CNT_EXTENDED LIKE @ContractNumber + '%'
+                           OR NO_CNT_EXTENDED = REPLACE(@ContractNumber, '-', '')"
+               },
 
             { "GET_ELIA_ID", @"
                 SELECT TOP 1 IT5UCONAIDN
