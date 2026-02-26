@@ -31,7 +31,7 @@ namespace AutoActivator.Sql
             },
 
             // ==========================================
-            // DONNEES LISA
+            // DONNEES LISA (CONTRAT ET AVENANTS)
             // ==========================================
 
             { "LV.PCONT0",
@@ -92,8 +92,12 @@ namespace AutoActivator.Sql
                 ORDER BY NO_AVT, NO_CNT"
             },
 
+            // ==========================================
+            // DONNEES LISA (PLANS ET GARANTIES)
+            // ==========================================
+
             { "FJ1.TB5LPPL",
-                "SELECT 'LPPL' as LPPL, * FROM [FJ1].[TB5LPPL] WITH(NOLOCK) WHERE IT5LPPLNCON = @InternalId" },
+                "SELECT 'LPPL' as LPPL, * FROM [FJ1].[TB5LPPL] WITH(NOLOCK) WHERE IT5LPPLNCON = @InternalId ORDER BY IT5LPPLNAVEREF, IT5LPPLLGAR, IT5LPPLNCON" },
 
             { "FJ1.TB5LPPR",
                 "SELECT 'LPPR' as LPPR, * FROM [FJ1].[TB5LPPR] WITH(NOLOCK) WHERE IT5LPPRNCON = @InternalId ORDER BY IT5LPPRNIDNPLNPRI DESC" },
@@ -125,7 +129,7 @@ namespace AutoActivator.Sql
                 "SELECT 'HPRO' as HPRO, * FROM FJ1.TB5HPRO WITH(NOLOCK) WHERE IT5HDMDAIDN IN (SELECT value FROM STRING_SPLIT(@DemandIds, ','))" },
 
             // ==========================================
-            // DONNEES ELIA
+            // DONNEES ELIA (CONTRAT)
             // ==========================================
 
             { "FJ1.TB5HELT",
@@ -135,30 +139,30 @@ namespace AutoActivator.Sql
                 "SELECT 'UCON' as UCON, * FROM FJ1.TB5UCON WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
 
             { "FJ1.TB5UGAR",
-                "SELECT 'UGAR' as UGAR, * FROM FJ1.TB5UGAR WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
+                "SELECT 'UGAR' as UGAR, IT5UGARCSEGTAR, IT5UGARBTARNONFUM, IT5UGARPDRGPRI, * FROM FJ1.TB5UGAR WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
 
             { "FJ1.TB5UASU", @"
-                SELECT 'UASU' as UASU, *
+                SELECT 'UASU' as UASU, IT5UASUBECLCLUPEN, IT5UASULCRAREFEXN, *
                 FROM FJ1.TB5UASU WITH(NOLOCK)
                 WHERE IT5UASUAIDN IN
-                    (SELECT IT5UASUAIDN FROM FJ1.TB5UGAR WHERE IT5UCONAIDN = @EliaId)"
+                    (SELECT IT5UASUAIDN FROM FJ1.TB5UGAR WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId)"
             },
 
             { "FJ1.TB5UCCR",
                 "SELECT 'UCCR' as UCCR, * FROM FJ1.TB5UCCR WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
 
             { "FJ1.TB5UAVE",
-                "SELECT 'UAVE' as UAVE, * FROM FJ1.TB5UAVE WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
+                "SELECT 'UAVE' as UAVE, IT5UAVELREFAGTCUA as UAVELREFAGTCUA, * FROM FJ1.TB5UAVE WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
 
             { "FJ1.TB5UPNR", @"
-                SELECT 'UPNR' as UPNR, *
+                SELECT 'UPNR' as UPNR, IT5UPNRCACTPFS, *
                 FROM FJ1.TB5UPNR WITH(NOLOCK)
                 WHERE IT5UPNRAIDN IN
-                    (SELECT IT5UPNRAIDN FROM FJ1.TB5UAVE WHERE IT5UCONAIDN = @EliaId)"
+                    (SELECT IT5UPNRAIDN FROM FJ1.TB5UAVE WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId)"
             },
 
             { "FJ1.TB5UPRP",
-                "SELECT 'UPRP' as UPRP, * FROM FJ1.TB5UPRP WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
+                "SELECT 'UPRP' as UPRP, IT5UPRPPSPRPMT, IT5UPRPPSPRPMTCMS, * FROM FJ1.TB5UPRP WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
 
             { "FJ1.TB5UPRS",
                 "SELECT 'UPRS' as UPRS, * FROM FJ1.TB5UPRS WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
@@ -167,7 +171,7 @@ namespace AutoActivator.Sql
                 "SELECT 'UPMP' as UPMP, * FROM FJ1.TB5UPMP WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
 
             // ==========================================
-            // DONNEES FINANCIERES
+            // DONNEES FINANCIERES (LISA)
             // ==========================================
 
             { "LV.PRIST0",
@@ -192,7 +196,56 @@ namespace AutoActivator.Sql
                 "SELECT 'SELT' as SELT, * FROM LV.SELTT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
 
             // ==========================================
-            // DONNEES RESERVES
+            // DONNEES FONDS (LISA & ELIA)
+            // ==========================================
+
+            { "FJ1.TB5LPPF",
+                "SELECT 'LPPF' as LPPF, * FROM [FJ1].[TB5LPPF] WITH(NOLOCK) WHERE IT5LPPFNCON = @InternalId ORDER BY IT5LPPFCFDS" },
+
+            { "FJ1.TB5UPRF",
+                "SELECT 'UPRF' as UPRF, * FROM [FJ1].[TB5UPRF] WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
+
+            { "FJ1.TB5UFML",
+                "SELECT 'UFML' as UFML, * FROM [FJ1].[TB5UFML] WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
+
+            { "LV.FMVGT0",
+                "SELECT 'FMVG' as FMVG, * FROM [LV].[FMVGT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY TSTAMP_DMOD" },
+
+            { "LV.FMVDT0",
+                "SELECT 'FMVD' as FMVD, * FROM [LV].[FMVDT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY TSTAMP_DMOD" },
+
+            { "LV.SFTS",
+                "SELECT 'SFTS' as SFTS, * FROM [LV].[LV5S18TSFTST0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+
+            { "LV.PINCT0",
+                "SELECT 'PINC' as PINC, * FROM [LV].[PINCT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+
+            // ==========================================
+            // DONNEES CLAUSES (LISA & ELIA)
+            // ==========================================
+
+            { "LV.SCLST0",
+                "SELECT 'SCLS' as SCLS, * FROM [LV].[SCLST0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+
+            { "LV.SCLRT0",
+                "SELECT 'SCLR' as SCLR, * FROM [LV].[LV5S16TSCLRT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+
+            { "LV.SCLDT0",
+                "SELECT 'SCLD' as SCLD, * FROM [LV].[LV5S17TSCLDT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+
+            { "FJ1.TB5UCRB",
+                "SELECT 'UCRB' as UCRB, * FROM [FJ1].[TB5UCRB] WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
+
+            { "FJ1.TB5UDCR",
+                "SELECT 'UDCR' as UDCR, * FROM [FJ1].[TB5UDCR] WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
+
+            { "FJ1.TB5UBEN", @"
+                SELECT 'UBEN' as UBEN, * FROM [FJ1].[TB5UBEN] WITH(NOLOCK)
+                WHERE IT5UBENAIDN IN (SELECT IT5UBENAIDN FROM [FJ1].[TB5UDCR] WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId)"
+            },
+
+            // ==========================================
+            // DONNEES RESERVES (LISA)
             // ==========================================
 
             { "LV.BSPDT0",
@@ -208,7 +261,7 @@ namespace AutoActivator.Sql
                 "SELECT 'BPPA' as BPPA, * FROM LV.BPPAT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
 
             // ==========================================
-            // DONNEES MODIFICATION
+            // DONNEES MODIFICATION (LISA)
             // ==========================================
 
             { "LV.MWBGT0", @"

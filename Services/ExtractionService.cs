@@ -32,27 +32,28 @@ namespace AutoActivator.Services
         public ExtractionResult PerformExtraction(string targetContract, bool saveIndividualFile = true)
         {
             if (string.IsNullOrWhiteSpace(targetContract))
-                throw new ArgumentException("Contract number is empty.");
+                throw new ArgumentException("Le numéro de contrat est vide.");
 
-            // Nettoyage BOM + espaces insécables
+            // Nettoyage (BOM, espaces insécables)
             targetContract = targetContract
                 .Replace("\u00A0", "")
                 .Replace("\uFEFF", "")
                 .Trim();
 
             if (!_db.TestConnection())
-                throw new Exception("Unable to establish SQL connection.");
+                throw new Exception("Impossible d'établir la connexion SQL.");
 
             var parameters = new Dictionary<string, object>
             {
                 { "@ContractNumber", targetContract }
             };
 
+            // Récupération des clés
             var dtLisa = _db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
             var dtElia = _db.GetData(SqlQueries.Queries["GET_ELIA_ID"], parameters);
 
             if (dtLisa.Rows.Count == 0 && dtElia.Rows.Count == 0)
-                throw new Exception($"Contract {targetContract} not found.");
+                throw new Exception($"Contrat {targetContract} introuvable dans LISA et ELIA.");
 
             var sbLisa = new StringBuilder();
             var sbElia = new StringBuilder();
@@ -63,22 +64,24 @@ namespace AutoActivator.Services
             string eliaDemandId = "Not found";
             string internalIdString = "Not found";
 
-            #region LISA SECTION
+            #region SECTION LISA
 
-            if (dtLisa.Rows.Count > 0 && dtLisa.Columns.Contains("NO_CNT"))
+            if (dtLisa.Rows.Count > 0)
             {
-                long internalId = Convert.ToInt64(dtLisa.Rows[0]["NO_CNT"]);
-                internalIdString = internalId.ToString();
+                // On récupère la valeur brute (object) pour éviter les problèmes de conversion
+                // (ex: perte des zéros au début si on convertit en long alors que c'est un string)
+                object internalId = dtLisa.Rows[0]["NO_CNT"];
+                internalIdString = internalId?.ToString()?.Trim() ?? "Not found";
 
+                // Liste mise à jour pour correspondre exactement aux clés de SqlQueries.Queries
                 var lisaTables = new[]
                 {
-                    "LV.SCNTT0","LV.SAVTT0","LV.SWBGT0","LV.PCONT0","LV.ELIAT0","LV.ELIHT0",
-                    "LV.ADMDT0","LV.SPERT0",
-                    "FJ1.TB5LPPL","FJ1.TB5LPPR","FJ1.TB5LGDR","LV.XRSTT0",
-                    "LV.PRIST0","LV.PECHT0","LV.PFIET0","LV.PMNTT0","LV.PRCTT0","LV.PSUMT0","LV.SELTT0",
-                    "FJ1.TB5LPPF","LV.FMVGT0","LV.FMVDT0","LV.SFTS","LV.PINCT0",
-                    "LV.SCLST0","LV.SCLRT0","LV.SCLDT0",
-                    "LV.BSPDT0","LV.BSPGT0","LV.BPBAT0","LV.BPPAT0",
+                    "LV.SCNTT0", "LV.SAVTT0", "LV.SWBGT0", "LV.PCONT0", "LV.ELIAT0", "LV.ELIHT0",
+                    "FJ1.TB5LPPL", "FJ1.TB5LPPR", "FJ1.TB5LGDR",
+                    "LV.PRIST0", "LV.PECHT0", "LV.PFIET0", "LV.PMNTT0", "LV.PRCTT0", "LV.PSUMT0", "LV.SELTT0",
+                    "FJ1.TB5LPPF", "LV.FMVGT0", "LV.FMVDT0", "LV.SFTS", "LV.PINCT0",
+                    "LV.SCLST0", "LV.SCLRT0", "LV.SCLDT0",
+                    "LV.BSPDT0", "LV.BSPGT0", "LV.BPBAT0", "LV.BPPAT0",
                     "LV.MWBGT0"
                 };
 
@@ -94,12 +97,16 @@ namespace AutoActivator.Services
                     }
                 }
             }
+            else
+            {
+                sbLisa.AppendLine("### LISA SECTION : AUCUNE DONNEE TROUVÉE POUR CE CONTRAT DANS LV.SCNTT0 ###");
+            }
 
             #endregion
 
-            #region ELIA SECTION
+            #region SECTION ELIA
 
-            if (dtElia.Rows.Count > 0 && dtElia.Columns.Contains("IT5UCONAIDN"))
+            if (dtElia.Rows.Count > 0)
             {
                 eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"]?.ToString()?.Trim() ?? "Not found";
 
@@ -124,10 +131,9 @@ namespace AutoActivator.Services
 
                 var eliaTables = new[]
                 {
-                    "FJ1.TB5HELT","FJ1.TB5UCON","FJ1.TB5UGAR","FJ1.TB5UASU","FJ1.TB5UCCR",
-                    "FJ1.TB5UAVE","FJ1.TB5UPNR","FJ1.TB5UPRP","FJ1.TB5UPRS","FJ1.TB5UPMP",
-                    "FJ1.TB5URPP","FJ1.TB5UPRF","FJ1.TB5UFML",
-                    "FJ1.TB5UCRB","FJ1.TB5UDCR","FJ1.TB5UBEN"
+                    "FJ1.TB5HELT", "FJ1.TB5UCON", "FJ1.TB5UGAR", "FJ1.TB5UASU", "FJ1.TB5UCCR",
+                    "FJ1.TB5UAVE", "FJ1.TB5UPNR", "FJ1.TB5UPRP", "FJ1.TB5UPRS", "FJ1.TB5UPMP",
+                    "FJ1.TB5UPRF", "FJ1.TB5UFML", "FJ1.TB5UCRB", "FJ1.TB5UDCR", "FJ1.TB5UBEN"
                 };
 
                 foreach (var table in eliaTables)
@@ -146,33 +152,27 @@ namespace AutoActivator.Services
                 {
                     var demandTables = new[]
                     {
-                        "FJ1.TB5HDMD","FJ1.TB5HDGM","FJ1.TB5HDGD",
-                        "FJ1.TB5HPRO","FJ1.TB5HDIC","FJ1.TB5HEPT"
+                        "FJ1.TB5HDMD", "FJ1.TB5HDGM", "FJ1.TB5HDGD", "FJ1.TB5HPRO"
                     };
 
-                    foreach (var dId in demandIds)
+                    string demandIdsString = string.Join(",", demandIds);
+
+                    foreach (var table in demandTables)
                     {
-                        sbElia.AppendLine("--------------------------------------------------------------------------------");
-                        sbElia.AppendLine($"### --- DEMAND ID : {dId} ---");
-                        sbElia.AppendLine("--------------------------------------------------------------------------------");
-
-                        foreach (var table in demandTables)
+                        if (SqlQueries.Queries.ContainsKey(table))
                         {
-                            if (SqlQueries.Queries.ContainsKey(table))
-                            {
-                                var dt = _db.GetData(
-                                    SqlQueries.Queries[table],
-                                    new Dictionary<string, object>
-                                    {
-                                        { "@DemandId", dId },
-                                        { "@DemandIds", dId }
-                                    });
+                            var dt = _db.GetData(
+                                SqlQueries.Queries[table],
+                                new Dictionary<string, object> { { "@DemandIds", demandIdsString } });
 
-                                AddTableToBuffer(sbElia, table, dt);
-                            }
+                            AddTableToBuffer(sbElia, table, dt);
                         }
                     }
                 }
+            }
+            else
+            {
+                sbElia.AppendLine("### ELIA SECTION : AUCUNE DONNEE TROUVÉE DANS FJ1.TB5UCON ###");
             }
 
             #endregion
@@ -182,19 +182,20 @@ namespace AutoActivator.Services
                 try
                 {
                     Directory.CreateDirectory(Settings.OutputDir);
-                    string fullContent = sbLisa + Environment.NewLine + sbElia.ToString();
+                    string fullContent = "=== LISA SECTION ===" + Environment.NewLine + sbLisa.ToString() +
+                                       Environment.NewLine + "=== ELIA SECTION ===" + Environment.NewLine + sbElia.ToString();
                     File.WriteAllText(generatedPath, fullContent, Encoding.UTF8);
                 }
                 catch (Exception ex)
                 {
-                    throw new Exception($"File generation failed: {ex.Message}");
+                    throw new Exception($"Échec de génération du fichier : {ex.Message}");
                 }
             }
 
             return new ExtractionResult
             {
                 FilePath = saveIndividualFile ? generatedPath : string.Empty,
-                StatusMessage = $"UCONAIDN: {eliaUconId} | HDMDAIDN: {eliaDemandId}",
+                StatusMessage = $"LISA: {internalIdString} | ELIA UCON: {eliaUconId}",
                 InternalId = internalIdString,
                 UconId = eliaUconId,
                 DemandId = eliaDemandId,
@@ -206,12 +207,12 @@ namespace AutoActivator.Services
         private void AddTableToBuffer(StringBuilder sb, string tableName, DataTable dt)
         {
             sb.AppendLine("--------------------------------------------------------------------------------");
-            sb.AppendLine($"### TABLE : {tableName} | Rows : {dt?.Rows.Count ?? 0}");
+            sb.AppendLine($"### TABLE : {tableName} | Lignes : {dt?.Rows.Count ?? 0}");
             sb.AppendLine("--------------------------------------------------------------------------------");
 
             if (dt == null || dt.Rows.Count == 0)
             {
-                sb.AppendLine("NO DATA FOUND");
+                sb.AppendLine("AUCUNE DONNÉE TROUVÉE");
                 sb.AppendLine();
                 return;
             }
