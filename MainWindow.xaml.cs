@@ -18,13 +18,13 @@ namespace AutoActivator.Gui
     public class ExtractionItem
     {
         public string ContractId { get; set; }
-        public string InternalId { get; set; }
+        public string InternalId { get; set; } // Numéro interne (NO_CNT)
         public string Product { get; set; }
         public string Premium { get; set; }
         public string Ucon { get; set; }
         public string Hdmd { get; set; }
         public string Time { get; set; }
-        public string Test { get; set; }
+        public string Test { get; set; } // Statut ou valeur de test
         public string FilePath { get; set; }
     }
 
@@ -32,15 +32,15 @@ namespace AutoActivator.Gui
     {
         private string _lastGeneratedPath = "";
         private readonly ExtractionService _extractionService;
-        public ObservableCollection<ExtractionItem> ExtractionHistory { get; set; } = new();
+        public ObservableCollection<ExtractionItem> ExtractionHistory { get; set; } = new ObservableCollection<ExtractionItem>();
 
         public MainWindow()
         {
             InitializeComponent();
             InitializeDirectories();
-
             ListHistory.ItemsSource = ExtractionHistory;
 
+            // Tri automatique de l'historique par la colonne "Product"
             ICollectionView view = CollectionViewSource.GetDefaultView(ExtractionHistory);
             view.SortDescriptions.Add(new SortDescription("Product", ListSortDirection.Ascending));
 
@@ -51,9 +51,9 @@ namespace AutoActivator.Gui
         {
             try
             {
-                Directory.CreateDirectory(Settings.OutputDir);
-                Directory.CreateDirectory(Settings.SnapshotDir);
-                Directory.CreateDirectory(Settings.InputDir);
+                if (!Directory.Exists(Settings.OutputDir)) Directory.CreateDirectory(Settings.OutputDir);
+                if (!Directory.Exists(Settings.SnapshotDir)) Directory.CreateDirectory(Settings.SnapshotDir);
+                if (!Directory.Exists(Settings.InputDir)) Directory.CreateDirectory(Settings.InputDir);
             }
             catch (Exception ex)
             {
@@ -63,29 +63,31 @@ namespace AutoActivator.Gui
 
         private void TxtContract_TextChanged(object sender, TextChangedEventArgs e)
         {
-            if (TxtFilePath != null && !string.IsNullOrWhiteSpace(TxtContract.Text))
+            if (TxtFilePath != null && !string.IsNullOrEmpty(TxtContract.Text))
+            {
                 TxtFilePath.Text = string.Empty;
+            }
         }
 
         private void BtnBrowse_Click(object sender, RoutedEventArgs e)
         {
-            var dialog = new OpenFileDialog
+            OpenFileDialog openFileDialog = new OpenFileDialog
             {
                 Filter = "Fichiers CSV|*.csv",
                 Title = "Sélectionnez un fichier CSV contenant les contrats"
             };
 
-            if (dialog.ShowDialog() == true)
+            if (openFileDialog.ShowDialog() == true)
             {
-                TxtFilePath.Text = dialog.FileName;
+                TxtFilePath.Text = openFileDialog.FileName;
                 TxtContract.Text = string.Empty;
             }
         }
 
         private async void BtnRun_Click(object sender, RoutedEventArgs e)
         {
-            string singleInput = TxtContract.Text?.Trim();
-            string fileInput = TxtFilePath?.Text?.Trim();
+            string singleInput = TxtContract.Text.Trim();
+            string fileInput = TxtFilePath?.Text.Trim();
 
             if (string.IsNullOrEmpty(singleInput) && string.IsNullOrEmpty(fileInput))
             {
@@ -94,33 +96,32 @@ namespace AutoActivator.Gui
                 return;
             }
 
-            ToggleUi(false);
+            PrgLoading.Visibility = Visibility.Visible;
+            LnkFile.Visibility = Visibility.Collapsed;
+            BtnRun.IsEnabled = false;
+            if (BtnBrowse != null) BtnBrowse.IsEnabled = false;
+
+            TxtStatus.Text = string.IsNullOrEmpty(fileInput) ? "Extraction in progress..." : "Batch extraction in progress...";
+            TxtStatus.Foreground = Brushes.Blue;
 
             try
             {
                 if (!string.IsNullOrEmpty(fileInput))
                 {
-                    TxtStatus.Text = "Batch extraction in progress...";
-                    TxtStatus.Foreground = Brushes.Blue;
-
                     await Task.Run(() => PerformBatchExtraction(fileInput));
-
-                    TxtStatus.Text = "Batch extraction completed!";
+                    TxtStatus.Text = "Batch extraction completed! Global files saved in Output folder.";
                     TxtStatus.Foreground = Brushes.Green;
 
+                    // Pour le batch, le lien ouvrira le dossier de sortie
                     _lastGeneratedPath = Settings.OutputDir;
                     LnkFile.Visibility = Visibility.Visible;
                 }
                 else
                 {
-                    TxtStatus.Text = "Extraction in progress...";
-                    TxtStatus.Foreground = Brushes.Blue;
-
-                    var result = await Task.Run(() =>
-                        _extractionService.PerformExtraction(singleInput, true));
+                    // Pour un contrat unique, on garde la sauvegarde du fichier individuel
+                    ExtractionResult result = await Task.Run(() => _extractionService.PerformExtraction(singleInput, true));
 
                     _lastGeneratedPath = result.FilePath;
-
                     TxtStatus.Text = $"Completed! {result.StatusMessage}";
                     TxtStatus.Foreground = Brushes.Green;
                     LnkFile.Visibility = Visibility.Visible;
@@ -146,175 +147,140 @@ namespace AutoActivator.Gui
             }
             finally
             {
-                ToggleUi(true);
+                PrgLoading.Visibility = Visibility.Collapsed;
+                BtnRun.IsEnabled = true;
+                if (BtnBrowse != null) BtnBrowse.IsEnabled = true;
             }
-        }
-
-        private void ToggleUi(bool enabled)
-        {
-            PrgLoading.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
-            BtnRun.IsEnabled = enabled;
-            if (BtnBrowse != null) BtnBrowse.IsEnabled = enabled;
         }
 
         private void PerformBatchExtraction(string filePath)
         {
-            if (!File.Exists(filePath))
-                throw new FileNotFoundException("CSV file not found.");
-
             string rawText = File.ReadAllText(filePath).Replace("\uFEFF", "");
-            string[] lines = rawText
-                .Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries);
+            string[] lines = rawText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
 
             if (lines.Length <= 1)
-                throw new Exception("CSV file is empty or contains only header.");
+            {
+                MessageBox.Show("Le fichier CSV est vide ou ne contient que l'en-tête.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
-            StringBuilder globalLisa = new();
-            StringBuilder globalElia = new();
+            StringBuilder globalLisa = new StringBuilder();
+            StringBuilder globalElia = new StringBuilder();
 
-            string[] headers = lines[0].Split(';', ',');
-
-            int contractIndex = 0;
+            string[] headers = lines[0].Split(new[] { ';', ',' });
+            int contractIndex = -1;
             int premiumIndex = -1;
             int productIndex = -1;
 
             for (int i = 0; i < headers.Length; i++)
             {
                 string h = headers[i].Trim().Trim('"').ToLower();
-                if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa"))
-                    contractIndex = i;
-                if (h.Contains("premium") || h.Contains("prime"))
-                    premiumIndex = i;
-                if (h.Contains("product") || h.Contains("produit"))
-                    productIndex = i;
+                if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa")) contractIndex = i;
+                if (h.Contains("premium") || h.Contains("prime")) premiumIndex = i;
+                if (h.Contains("product") || h.Contains("produit")) productIndex = i;
             }
+
+            if (contractIndex == -1) contractIndex = 0;
 
             for (int i = 1; i < lines.Length; i++)
             {
-                string line = lines[i];
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
+                string[] columns = lines[i].Split(new[] { ';', ',' });
 
-                string[] columns = line.Split(';', ',');
-
-                if (columns.Length <= contractIndex)
-                    continue;
-
-                string contractNumber = CleanCsvValue(columns[contractIndex]);
-                if (string.IsNullOrWhiteSpace(contractNumber))
-                    continue;
-
-                string premium = premiumIndex >= 0 && columns.Length > premiumIndex
-                    ? CleanCsvValue(columns[premiumIndex])
-                    : "0";
-
-                string product = productIndex >= 0 && columns.Length > productIndex
-                    ? CleanCsvValue(columns[productIndex])
-                    : "N/A";
-
-                try
+                if (columns.Length > contractIndex)
                 {
-                    var result = _extractionService.PerformExtraction(contractNumber, false);
+                    string contractNumber = columns[contractIndex].Replace("=", "").Replace("\"", "").Trim();
+                    string premiumAmount = (premiumIndex != -1 && columns.Length > premiumIndex)
+                        ? columns[premiumIndex].Replace("=", "").Replace("\"", "").Trim() : "0";
+                    string productValue = (productIndex != -1 && columns.Length > productIndex)
+                        ? columns[productIndex].Replace("=", "").Replace("\"", "").Trim() : "N/A";
 
-                    if (!string.IsNullOrWhiteSpace(result.LisaContent))
+                    if (!string.IsNullOrEmpty(contractNumber))
                     {
-                        globalLisa.AppendLine($"### CONTRACT: {contractNumber} | PRODUCT: {product}");
-                        globalLisa.Append(result.LisaContent);
-                        globalLisa.AppendLine();
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(result.EliaContent))
-                    {
-                        globalElia.AppendLine($"### CONTRACT: {contractNumber} | UCON: {result.UconId}");
-                        globalElia.Append(result.EliaContent);
-                        globalElia.AppendLine();
-                    }
-
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        ExtractionHistory.Add(new ExtractionItem
+                        try
                         {
-                            ContractId = contractNumber,
-                            InternalId = result.InternalId,
-                            Product = product,
-                            Premium = premium,
-                            Ucon = result.UconId,
-                            Hdmd = result.DemandId,
-                            Time = DateTime.Now.ToString("HH:mm:ss"),
-                            Test = "OK"
-                        });
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        ExtractionHistory.Add(new ExtractionItem
+                            // MODIFICATION ICI : On passe 'false' pour ne pas créer de fichier individuel .csv pour chaque contrat
+                            ExtractionResult result = _extractionService.PerformExtraction(contractNumber, false);
+
+                            if (!string.IsNullOrWhiteSpace(result.LisaContent))
+                            {
+                                globalLisa.AppendLine("------------------------------------------------------------");
+                                globalLisa.AppendLine($"### CONTRACT: {contractNumber} | PRODUCT: {productValue}");
+                                globalLisa.AppendLine("------------------------------------------------------------");
+                                globalLisa.Append(result.LisaContent);
+                                globalLisa.AppendLine();
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(result.EliaContent))
+                            {
+                                globalElia.AppendLine("------------------------------------------------------------");
+                                globalElia.AppendLine($"### CONTRACT: {contractNumber} | UCON: {result.UconId}");
+                                globalElia.AppendLine("------------------------------------------------------------");
+                                globalElia.Append(result.EliaContent);
+                                globalElia.AppendLine();
+                            }
+
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                ExtractionHistory.Add(new ExtractionItem
+                                {
+                                    ContractId = contractNumber,
+                                    InternalId = result.InternalId,
+                                    Product = productValue,
+                                    Premium = premiumAmount,
+                                    Ucon = result.UconId,
+                                    Hdmd = result.DemandId,
+                                    Time = DateTime.Now.ToString("HH:mm:ss"),
+                                    Test = "OK",
+                                    FilePath = string.Empty // Pas de fichier individuel en batch
+                                });
+                            });
+                        }
+                        catch (Exception ex)
                         {
-                            ContractId = contractNumber,
-                            InternalId = "Error",
-                            Product = product,
-                            Premium = premium,
-                            Ucon = "Error",
-                            Hdmd = "Error",
-                            Time = DateTime.Now.ToString("HH:mm:ss"),
-                            Test = ex.Message.Contains("not found")
-                                ? "Non trouvé en BDD"
-                                : "Erreur SQL"
-                        });
-                    });
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                ExtractionHistory.Add(new ExtractionItem
+                                {
+                                    ContractId = $"{contractNumber} (FAILED)",
+                                    InternalId = "Error",
+                                    Product = productValue,
+                                    Premium = premiumAmount,
+                                    Ucon = "Error",
+                                    Hdmd = "Error",
+                                    Time = DateTime.Now.ToString("HH:mm:ss"),
+                                    Test = ex.Message.Contains("not found") ? "Non trouvé en BDD" : "Erreur SQL",
+                                    FilePath = string.Empty
+                                });
+                            });
+                        }
+                    }
                 }
             }
 
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
 
-            File.WriteAllText(
-                Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_LISA_{timestamp}.csv"),
-                globalLisa.Length > 0 ? globalLisa.ToString() : "AUCUN CONTRAT LISA TROUVE.",
-                Encoding.UTF8);
+            // Fichier global LISA
+            string finalLisaContent = globalLisa.Length > 0 ? globalLisa.ToString() : "AUCUN CONTRAT LISA TROUVE.";
+            File.WriteAllText(Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_LISA_{timestamp}.csv"), finalLisaContent, Encoding.UTF8);
 
-            File.WriteAllText(
-                Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_ELIA_{timestamp}.csv"),
-                globalElia.Length > 0 ? globalElia.ToString() : "AUCUN CONTRAT ELIA TROUVE.",
-                Encoding.UTF8);
-        }
-
-        private static string CleanCsvValue(string value)
-        {
-            return value?
-                .Replace("=", "")
-                .Replace("\"", "")
-                .Trim() ?? string.Empty;
+            // Fichier global ELIA
+            string finalEliaContent = globalElia.Length > 0 ? globalElia.ToString() : "AUCUN CONTRAT ELIA TROUVE.";
+            File.WriteAllText(Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_ELIA_{timestamp}.csv"), finalEliaContent, Encoding.UTF8);
         }
 
         private void Hyperlink_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(_lastGeneratedPath))
-                return;
-
             if (Directory.Exists(_lastGeneratedPath))
             {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = _lastGeneratedPath,
-                    UseShellExecute = true
-                });
+                Process.Start("explorer.exe", _lastGeneratedPath);
             }
             else if (File.Exists(_lastGeneratedPath))
             {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "explorer.exe",
-                    Arguments = $"/select,\"{_lastGeneratedPath}\"",
-                    UseShellExecute = true
-                });
+                Process.Start("explorer.exe", $"/select,\"{_lastGeneratedPath}\"");
             }
         }
 
-        private void BtnActivation_Click(object sender, RoutedEventArgs e)
-            => TxtStatus.Text = "Activation Module selected.";
-
-        private void BtnComparison_Click(object sender, RoutedEventArgs e)
-            => TxtStatus.Text = "Comparison Module selected.";
+        private void BtnActivation_Click(object sender, RoutedEventArgs e) { TxtStatus.Text = "Activation Module selected."; }
+        private void BtnComparison_Click(object sender, RoutedEventArgs e) { TxtStatus.Text = "Comparison Module selected."; }
     }
 }

@@ -12,87 +12,101 @@ namespace AutoActivator.Services
 
         public DatabaseManager()
         {
-            _connectionString = Settings.DbConfig.ConnectionString
-                ?? throw new InvalidOperationException("Connection string is null.");
+            // Secure retrieval of the connection string
+            _connectionString = Settings.DbConfig.ConnectionString;
         }
 
         /// <summary>
-        /// Tests SQL Server connectivity.
+        /// Checks the validity of the connection to SQL Server.
         /// </summary>
         public bool TestConnection()
         {
             try
             {
-                using var connection = new SqlConnection(_connectionString);
-                using var command = new SqlCommand("SELECT 1", connection)
+                using (SqlConnection connection = new SqlConnection(_connectionString))
                 {
-                    CommandTimeout = 5
-                };
-
-                connection.Open();
-                var result = command.ExecuteScalar();
-
-                return result != null && Convert.ToInt32(result) == 1;
+                    connection.Open();
+                    using (SqlCommand command = new SqlCommand("SELECT 1", connection))
+                    {
+                        var result = command.ExecuteScalar();
+                        if (result != null && result.ToString() == "1")
+                        {
+                            Console.WriteLine($"[INFO] Successful connection to the database: {Settings.DbConfig.Database}");
+                            return true;
+                        }
+                    }
+                }
+                return false;
             }
-            catch
+            catch (Exception e)
             {
+                Console.WriteLine($"[ERROR] Connection failed: {e.Message}");
                 return false;
             }
         }
 
         /// <summary>
-        /// Executes a parameterized SELECT query safely.
+        /// Executes a SELECT query with parameters to prevent SQL injection.
         /// </summary>
         public DataTable GetData(string query, Dictionary<string, object> parameters = null)
         {
-            if (string.IsNullOrWhiteSpace(query))
-                throw new ArgumentException("Query is null or empty.");
+            DataTable dataTable = new DataTable();
 
-            var dataTable = new DataTable();
+            // CORRECTION MINEURE : Correction automatique de la syntaxe IN si on a passé un paramètre simple (pour éviter l'erreur SQL)
+            if (query.Contains("IN @DemandIds"))
+            {
+                query = query.Replace("IN @DemandIds", "= @DemandIds");
+            }
 
             try
             {
-                using var connection = new SqlConnection(_connectionString);
-                using var command = new SqlCommand(query, connection)
+                using (SqlConnection connection = new SqlConnection(_connectionString))
                 {
-                    CommandTimeout = 60
-                };
-
-                if (parameters != null)
-                {
-                    foreach (var param in parameters)
+                    using (SqlCommand command = new SqlCommand(query, connection))
                     {
-                        var sqlParam = command.Parameters.Add(param.Key, SqlDbType.Variant);
-                        sqlParam.Value = param.Value ?? DBNull.Value;
+                        if (parameters != null)
+                        {
+                            foreach (var param in parameters)
+                            {
+                                // Proper handling of null values
+                                command.Parameters.AddWithValue(param.Key, param.Value ?? DBNull.Value);
+                            }
+                        }
+
+                        using (SqlDataAdapter adapter = new SqlDataAdapter(command))
+                        {
+                            adapter.Fill(dataTable);
+                        }
                     }
                 }
-
-                using var adapter = new SqlDataAdapter(command);
-                adapter.Fill(dataTable);
             }
-            catch (SqlException ex)
+            catch (Exception e) // CORRECTION MAJEURE : On catch tout et on throw pour que l'UI affiche "Erreur SQL"
             {
-                throw new Exception($"SQL Error: {ex.Message}", ex);
+                Console.WriteLine($"[ERROR] SQL Error on query : {query}\nDetails: {e.Message}");
+                // On remonte l'erreur pour que l'interface graphique (ExtractionService -> MainWindow) soit au courant
+                throw new Exception($"Erreur SQL: {e.Message}");
             }
 
             return dataTable;
         }
 
         /// <summary>
-        /// Injects a test payment into LV.PRCTT0.
+        /// Injects a test payment into the LV.PRCTT0 table.
         /// </summary>
         public bool InjectPayment(long contractInternalId, decimal amount, DateTime? paymentDate = null)
         {
             DateTime now = DateTime.Now;
-            DateTime referenceDate = paymentDate?.Date ?? now.Date;
-            DateTime timestamp = paymentDate?.TimeOfDay == TimeSpan.Zero
-                ? paymentDate.Value.Date.AddHours(12)
+            DateTime referenceDate = paymentDate ?? now;
+            DateTime timestamp = (paymentDate.HasValue && paymentDate.Value.TimeOfDay == TimeSpan.Zero)
+                ? paymentDate.Value.AddHours(12)
                 : now;
 
+            // Generation of a structured communication
             string idStr = contractInternalId.ToString();
-            string fakeCommu = $"820{(idStr.Length > 9 ? idStr[..9] : idStr)}99";
+            string fakeCommu = $"820{(idStr.Length > 9 ? idStr.Substring(0, 9) : idStr)}99";
 
-            const string query = @"
+            // Native insert query
+            string query = @"
                 INSERT INTO LV.PRCTT0 (
                     C_STE, NO_CNT, C_MD_PMT, D_REF_PRM, NO_ORD_RCP, TSTAMP_CRT_RCT,
                     C_TY_RCT, D_BISM_DVA, D_BISM_DCOR, M_PAY, NM_CP,
@@ -109,27 +123,27 @@ namespace AutoActivator.Services
 
             try
             {
-                using var connection = new SqlConnection(_connectionString);
-                using var command = new SqlCommand(query, connection)
+                using (SqlConnection connection = new SqlConnection(_connectionString))
                 {
-                    CommandTimeout = 30
-                };
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@no_cnt", contractInternalId);
+                        command.Parameters.AddWithValue("@d_ref", referenceDate.Date);
+                        command.Parameters.AddWithValue("@tstamp", timestamp);
+                        command.Parameters.AddWithValue("@amount", amount);
+                        command.Parameters.AddWithValue("@commu", fakeCommu);
 
-                command.Parameters.Add("@no_cnt", SqlDbType.BigInt).Value = contractInternalId;
-                command.Parameters.Add("@d_ref", SqlDbType.Date).Value = referenceDate;
-                command.Parameters.Add("@tstamp", SqlDbType.DateTime).Value = timestamp;
-                command.Parameters.Add("@amount", SqlDbType.Decimal).Value = amount;
-                command.Parameters["@amount"].Precision = 18;
-                command.Parameters["@amount"].Scale = 2;
-                command.Parameters.Add("@commu", SqlDbType.VarChar, 50).Value = fakeCommu;
+                        connection.Open();
+                        command.ExecuteNonQuery();
 
-                connection.Open();
-                command.ExecuteNonQuery();
-
-                return true;
+                        Console.WriteLine($"[INFO] Payment of {amount} EUR injected (Contract: {contractInternalId})");
+                        return true;
+                    }
+                }
             }
-            catch (SqlException)
+            catch (Exception e)
             {
+                Console.WriteLine($"[ERROR] FAILED payment injection: {e.Message}");
                 return false;
             }
         }
