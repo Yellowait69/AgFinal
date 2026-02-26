@@ -34,7 +34,7 @@ namespace AutoActivator.Services
             if (string.IsNullOrWhiteSpace(targetContract))
                 throw new ArgumentException("Le numéro de contrat est vide.");
 
-            // Nettoyage (BOM, espaces insécables)
+            // Nettoyage (BOM, espaces insécables, espaces de fin)
             targetContract = targetContract
                 .Replace("\u00A0", "")
                 .Replace("\uFEFF", "")
@@ -48,12 +48,12 @@ namespace AutoActivator.Services
                 { "@ContractNumber", targetContract }
             };
 
-            // Récupération des clés
+            // 1. Récupération des identifiants pivots (LISA et ELIA)
             var dtLisa = _db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
             var dtElia = _db.GetData(SqlQueries.Queries["GET_ELIA_ID"], parameters);
 
             if (dtLisa.Rows.Count == 0 && dtElia.Rows.Count == 0)
-                throw new Exception($"Contrat {targetContract} introuvable dans LISA et ELIA.");
+                throw new Exception($"Contrat {targetContract} introuvable dans LISA (LV.SCNTT0) et ELIA (FJ1.TB5UCON).");
 
             var sbLisa = new StringBuilder();
             var sbElia = new StringBuilder();
@@ -68,12 +68,11 @@ namespace AutoActivator.Services
 
             if (dtLisa.Rows.Count > 0)
             {
-                // On récupère la valeur brute (object) pour éviter les problèmes de conversion
-                // (ex: perte des zéros au début si on convertit en long alors que c'est un string)
+                // IMPORTANT : On garde l'objet brut pour ne pas perdre les zéros non significatifs (ex: 0822...)
                 object internalId = dtLisa.Rows[0]["NO_CNT"];
                 internalIdString = internalId?.ToString()?.Trim() ?? "Not found";
 
-                // Liste mise à jour pour correspondre exactement aux clés de SqlQueries.Queries
+                // Liste des tables LISA à extraire (doivent exister dans SqlQueries.Queries)
                 var lisaTables = new[]
                 {
                     "LV.SCNTT0", "LV.SAVTT0", "LV.SWBGT0", "LV.PCONT0", "LV.ELIAT0", "LV.ELIHT0",
@@ -81,8 +80,7 @@ namespace AutoActivator.Services
                     "LV.PRIST0", "LV.PECHT0", "LV.PFIET0", "LV.PMNTT0", "LV.PRCTT0", "LV.PSUMT0", "LV.SELTT0",
                     "FJ1.TB5LPPF", "LV.FMVGT0", "LV.FMVDT0", "LV.SFTS", "LV.PINCT0",
                     "LV.SCLST0", "LV.SCLRT0", "LV.SCLDT0",
-                    "LV.BSPDT0", "LV.BSPGT0", "LV.BPBAT0", "LV.BPPAT0",
-                    "LV.MWBGT0"
+                    "LV.BSPDT0", "LV.BSPGT0", "LV.BPBAT0", "LV.BPPAT0", "LV.MWBGT0"
                 };
 
                 foreach (var table in lisaTables)
@@ -99,7 +97,7 @@ namespace AutoActivator.Services
             }
             else
             {
-                sbLisa.AppendLine("### LISA SECTION : AUCUNE DONNEE TROUVÉE POUR CE CONTRAT DANS LV.SCNTT0 ###");
+                sbLisa.AppendLine("### LISA SECTION : AUCUNE DONNEE TROUVÉE DANS LV.SCNTT0 ###");
             }
 
             #endregion
@@ -110,12 +108,12 @@ namespace AutoActivator.Services
             {
                 eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"]?.ToString()?.Trim() ?? "Not found";
 
+                // Récupération des IDs de demande liés au contrat ELIA
                 var dtDemand = _db.GetData(
                     SqlQueries.Queries["GET_ELIA_DEMAND_IDS"],
                     new Dictionary<string, object> { { "@EliaId", eliaUconId } });
 
                 var demandIds = new List<string>();
-
                 if (dtDemand.Columns.Contains("IT5HDMDAIDN"))
                 {
                     foreach (DataRow row in dtDemand.Rows)
@@ -129,6 +127,7 @@ namespace AutoActivator.Services
                 if (demandIds.Count > 0)
                     eliaDemandId = string.Join(", ", demandIds);
 
+                // 1. Tables liées à l'UCON ID (Contrat ELIA)
                 var eliaTables = new[]
                 {
                     "FJ1.TB5HELT", "FJ1.TB5UCON", "FJ1.TB5UGAR", "FJ1.TB5UASU", "FJ1.TB5UCCR",
@@ -148,6 +147,7 @@ namespace AutoActivator.Services
                     }
                 }
 
+                // 2. Tables liées aux Demand IDs (Utilisation de STRING_SPLIT côté SQL)
                 if (demandIds.Count > 0)
                 {
                     var demandTables = new[]
@@ -182,8 +182,15 @@ namespace AutoActivator.Services
                 try
                 {
                     Directory.CreateDirectory(Settings.OutputDir);
-                    string fullContent = "=== LISA SECTION ===" + Environment.NewLine + sbLisa.ToString() +
-                                       Environment.NewLine + "=== ELIA SECTION ===" + Environment.NewLine + sbElia.ToString();
+                    string fullContent = "================================================================================\n" +
+                                       "=== SECTION LISA (INTERNAL ID: " + internalIdString + ") ===\n" +
+                                       "================================================================================\n" +
+                                       sbLisa.ToString() + "\n\n" +
+                                       "================================================================================\n" +
+                                       "=== SECTION ELIA (UCON ID: " + eliaUconId + ") ===\n" +
+                                       "================================================================================\n" +
+                                       sbElia.ToString();
+
                     File.WriteAllText(generatedPath, fullContent, Encoding.UTF8);
                 }
                 catch (Exception ex)
@@ -195,7 +202,7 @@ namespace AutoActivator.Services
             return new ExtractionResult
             {
                 FilePath = saveIndividualFile ? generatedPath : string.Empty,
-                StatusMessage = $"LISA: {internalIdString} | ELIA UCON: {eliaUconId}",
+                StatusMessage = $"LISA: {internalIdString} | ELIA: {eliaUconId}",
                 InternalId = internalIdString,
                 UconId = eliaUconId,
                 DemandId = eliaDemandId,
@@ -217,16 +224,18 @@ namespace AutoActivator.Services
                 return;
             }
 
+            // Entêtes de colonnes
             var columns = dt.Columns.Cast<DataColumn>().Select(c => c.ColumnName);
             sb.AppendLine(string.Join(";", columns));
 
+            // Données
             foreach (DataRow row in dt.Rows)
             {
                 var fields = row.ItemArray.Select(f =>
                     f == DBNull.Value
                         ? ""
                         : f.ToString()
-                            .Replace(";", " ")
+                            .Replace(";", " ") // Évite de casser le format CSV
                             .Replace("\r", " ")
                             .Replace("\n", " ")
                             .Trim());
