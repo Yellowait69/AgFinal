@@ -15,13 +15,14 @@ namespace AutoActivator.Sql
             { "GET_INTERNAL_ID", @"
                 SELECT TOP 1 NO_CNT
                 FROM LV.SCNTT0 WITH(NOLOCK)
-                WHERE NO_CNT_EXTENDED = @ContractNumber"
+                WHERE NO_CNT_EXTENDED LIKE @ContractNumber + '%'
+                OR NO_CNT_EXTENDED = REPLACE(@ContractNumber, '-', '')"
             },
 
             { "GET_ELIA_ID", @"
                 SELECT TOP 1 IT5UCONAIDN
                 FROM FJ1.TB5UCON WITH(NOLOCK)
-                WHERE IT5UCONLREFEXN = @ContractNumber"
+                WHERE IT5UCONLREFEXN LIKE @ContractNumber + '%'"
             },
 
             { "GET_ELIA_DEMAND_IDS", @"
@@ -44,9 +45,7 @@ namespace AutoActivator.Sql
             },
 
             { "LV.SWBGT0", @"
-                SELECT NO_CNT, NO_AVT, C_PROP, C_TRF, C_SEX_ASS, C_PER_PRM, DU_GAR, D_TRM_GAR,
-                       D_TRM_GAR_CLI, B_TAX_PRM_ETAL, C_VALID_INTRT_DRG, PC_ANN_COM,
-                       PC_FR_GEST_ANN, C_APPL_GAR, * FROM LV.SWBGT0 WITH(NOLOCK)
+                SELECT * FROM LV.SWBGT0 WITH(NOLOCK)
                 WHERE NO_CNT = @InternalId
                 ORDER BY NO_AVT, C_PROP DESC"
             },
@@ -56,6 +55,8 @@ namespace AutoActivator.Sql
                 WHERE NO_CNT = @InternalId
                 ORDER BY NO_AVT, NO_CNT"
             },
+
+            { "LV.XRSTT0", "SELECT * FROM LV.XRSTT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
 
             // ==========================================
             // DONNEES LISA (PLANS ET GARANTIES)
@@ -80,8 +81,7 @@ namespace AutoActivator.Sql
             // ==========================================
 
             { "FJ1.TB5HDMD", @"
-                SELECT IT2RELANRELGST, IT5HDMDLREFEXN AS HDMDLREFEXN,
-                       IT5HDMDLREFAGTCUA AS HDMDLREFAGTCUA, * FROM FJ1.TB5HDMD WITH(NOLOCK)
+                SELECT * FROM FJ1.TB5HDMD WITH(NOLOCK)
                 WHERE IT5HDMDAIDN IN (SELECT value FROM STRING_SPLIT(@DemandIds, ','))"
             },
 
@@ -102,6 +102,8 @@ namespace AutoActivator.Sql
                 WHERE IT5UASUAIDN IN (SELECT IT5UASUAIDN FROM FJ1.TB5UGAR WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId)"
             },
 
+            { "FJ1.TB5UCCR", "SELECT * FROM FJ1.TB5UCCR WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
+
             { "FJ1.TB5UAVE", "SELECT * FROM FJ1.TB5UAVE WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
 
             { "FJ1.TB5UPNR", @"
@@ -117,22 +119,46 @@ namespace AutoActivator.Sql
             // DONNEES FINANCIERES & FONDS
             // ==========================================
 
-            { "LV.PRIST0", "SELECT * FROM LV.PRIST0 WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY NO_AVT, D_ECH, NO_ORD_QUITT" },
+            { "LV.PRIST0", "SELECT * FROM LV.PRIST0 WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY NO_AVT, D_ECH" },
             { "LV.PECHT0", "SELECT * FROM LV.PECHT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY NO_AVT, D_ECH, NO_ORD_QUITT" },
             { "LV.PFIET0", "SELECT * FROM LV.PFIET0 WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY D_CRT_INST, NO_ORD_INST" },
+            { "LV.PMNTT0", "SELECT * FROM LV.PMNTT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY NO_AVT, NO_ORD_QUITT" },
+            { "LV.PRCTT0", "SELECT * FROM LV.PRCTT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+            { "LV.PSUMT0", "SELECT * FROM LV.PSUMT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+            { "LV.SELTT0", "SELECT * FROM LV.SELTT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+
             { "FJ1.TB5LPPF", "SELECT * FROM [FJ1].[TB5LPPF] WITH(NOLOCK) WHERE IT5LPPFNCON = @InternalId ORDER BY IT5LPPFCFDS" },
-            { "LV.FMVGT0", "SELECT * FROM [LV].[FMVGT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY TSTAMP_DMOD" },
+            { "FJ1.TB5UPRF", "SELECT * FROM [FJ1].[TB5UPRF] WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
+            { "FJ1.TB5UFML", "SELECT * FROM [FJ1].[TB5UFML] WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
+            { "LV.FMVGT0",   "SELECT * FROM [LV].[FMVGT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY TSTAMP_DMOD" },
+            { "LV.FMVDT0",   "SELECT * FROM [LV].[FMVDT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY TSTAMP_DMOD" },
+            { "LV.SFTS",     "SELECT * FROM [LV].[LV5S18TSFTST0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+            { "LV.PINCT0",   "SELECT * FROM [LV].[PINCT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
 
             // ==========================================
             // DONNEES CLAUSES & RESERVES
             // ==========================================
 
             { "LV.SCLST0", "SELECT * FROM [LV].[SCLST0] WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY NO_AVT, NO_ORD_CLS" },
+            { "LV.SCLRT0", "SELECT * FROM [LV].[LV5S16TSCLRT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+            { "LV.SCLDT0", "SELECT * FROM [LV].[LV5S17TSCLDT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+            { "FJ1.TB5UCRB", "SELECT * FROM [FJ1].[TB5UCRB] WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
+            { "FJ1.TB5UDCR", "SELECT * FROM [FJ1].[TB5UDCR] WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
+
             { "FJ1.TB5UBEN", @"
                 SELECT * FROM [FJ1].[TB5UBEN] WITH(NOLOCK)
                 WHERE IT5UBENAIDN IN (SELECT IT5UBENAIDN FROM [FJ1].[TB5UDCR] WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId)"
             },
+
             { "LV.BSPDT0", "SELECT * FROM LV.BSPDT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+            { "LV.BSPGT0", "SELECT * FROM LV.BSPGT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+            { "LV.BPBAT0", "SELECT * FROM LV.BPBAT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+            { "LV.BPPAT0", "SELECT * FROM LV.BPPAT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+
+            // ==========================================
+            // DONNEES MODIFICATION (LISA)
+            // ==========================================
+
             { "LV.MWBGT0", "SELECT * FROM LV.MWBGT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY NO_PRJ, C_PROP" }
         });
     }

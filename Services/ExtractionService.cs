@@ -96,11 +96,22 @@ namespace AutoActivator.Services
                 {
                     if (SqlQueries.Queries.ContainsKey(table))
                     {
-                        var dt = _db.GetData(
-                            SqlQueries.Queries[table],
-                            new Dictionary<string, object> { { "@InternalId", internalId } });
+                        try
+                        {
+                            var dt = _db.GetData(
+                                SqlQueries.Queries[table],
+                                new Dictionary<string, object> { { "@InternalId", internalId } });
 
-                        AddTableToBuffer(sbLisa, table, dt);
+                            AddTableToBuffer(sbLisa, table, dt);
+                        }
+                        catch (Exception ex)
+                        {
+                            sbLisa.AppendLine("--------------------------------------------------------------------------------");
+                            sbLisa.AppendLine($"### TABLE : {table} | ERREUR D'EXTRACTION");
+                            sbLisa.AppendLine("--------------------------------------------------------------------------------");
+                            sbLisa.AppendLine($"Erreur SQL: {ex.Message}");
+                            sbLisa.AppendLine();
+                        }
                     }
                 }
             }
@@ -151,11 +162,22 @@ namespace AutoActivator.Services
                 {
                     if (SqlQueries.Queries.ContainsKey(table))
                     {
-                        var dt = _db.GetData(
-                            SqlQueries.Queries[table],
-                            new Dictionary<string, object> { { "@EliaId", eliaUconId } });
+                        try
+                        {
+                            var dt = _db.GetData(
+                                SqlQueries.Queries[table],
+                                new Dictionary<string, object> { { "@EliaId", eliaUconId } });
 
-                        AddTableToBuffer(sbElia, table, dt);
+                            AddTableToBuffer(sbElia, table, dt);
+                        }
+                        catch (Exception ex)
+                        {
+                            sbElia.AppendLine("--------------------------------------------------------------------------------");
+                            sbElia.AppendLine($"### TABLE : {table} | ERREUR D'EXTRACTION");
+                            sbElia.AppendLine("--------------------------------------------------------------------------------");
+                            sbElia.AppendLine($"Erreur SQL: {ex.Message}");
+                            sbElia.AppendLine();
+                        }
                     }
                 }
 
@@ -169,11 +191,22 @@ namespace AutoActivator.Services
                     {
                         if (SqlQueries.Queries.ContainsKey(table))
                         {
-                            var dt = _db.GetData(
-                                SqlQueries.Queries[table],
-                                new Dictionary<string, object> { { "@DemandIds", demandIdsString } });
+                            try
+                            {
+                                var dt = _db.GetData(
+                                    SqlQueries.Queries[table],
+                                    new Dictionary<string, object> { { "@DemandIds", demandIdsString } });
 
-                            AddTableToBuffer(sbElia, table, dt);
+                                AddTableToBuffer(sbElia, table, dt);
+                            }
+                            catch (Exception ex)
+                            {
+                                sbElia.AppendLine("--------------------------------------------------------------------------------");
+                                sbElia.AppendLine($"### TABLE : {table} | ERREUR D'EXTRACTION");
+                                sbElia.AppendLine("--------------------------------------------------------------------------------");
+                                sbElia.AppendLine($"Erreur SQL: {ex.Message}");
+                                sbElia.AppendLine();
+                            }
                         }
                     }
                 }

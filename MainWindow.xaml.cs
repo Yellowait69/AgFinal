@@ -160,7 +160,10 @@ namespace AutoActivator.Gui
 
             if (lines.Length <= 1)
             {
-                MessageBox.Show("Le fichier CSV est vide ou ne contient que l'en-tête.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    MessageBox.Show("Le fichier CSV est vide ou ne contient que l'en-tête.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
+                });
                 return;
             }
 
@@ -198,7 +201,7 @@ namespace AutoActivator.Gui
                     {
                         try
                         {
-                            // MODIFICATION ICI : On passe 'false' pour ne pas créer de fichier individuel .csv pour chaque contrat
+                            // On passe 'false' pour ne pas créer de fichier individuel .csv pour chaque contrat
                             ExtractionResult result = _extractionService.PerformExtraction(contractNumber, false);
 
                             if (!string.IsNullOrWhiteSpace(result.LisaContent))
@@ -248,7 +251,8 @@ namespace AutoActivator.Gui
                                     Ucon = "Error",
                                     Hdmd = "Error",
                                     Time = DateTime.Now.ToString("HH:mm:ss"),
-                                    Test = ex.Message.Contains("not found") ? "Non trouvé en BDD" : "Erreur SQL",
+                                    // CORRECTION ICI : "introuvable" au lieu de "not found" pour correspondre au nouveau ExtractionService
+                                    Test = ex.Message.ToLower().Contains("introuvable") ? "Non trouvé en BDD" : "Erreur SQL",
                                     FilePath = string.Empty
                                 });
                             });
@@ -270,13 +274,20 @@ namespace AutoActivator.Gui
 
         private void Hyperlink_Click(object sender, RoutedEventArgs e)
         {
-            if (Directory.Exists(_lastGeneratedPath))
+            try
             {
-                Process.Start("explorer.exe", _lastGeneratedPath);
+                if (Directory.Exists(_lastGeneratedPath))
+                {
+                    Process.Start("explorer.exe", _lastGeneratedPath);
+                }
+                else if (File.Exists(_lastGeneratedPath))
+                {
+                    Process.Start("explorer.exe", $"/select,\"{_lastGeneratedPath}\"");
+                }
             }
-            else if (File.Exists(_lastGeneratedPath))
+            catch (Exception ex)
             {
-                Process.Start("explorer.exe", $"/select,\"{_lastGeneratedPath}\"");
+                MessageBox.Show($"Impossible d'ouvrir le dossier ou le fichier : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
