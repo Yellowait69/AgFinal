@@ -15,7 +15,7 @@ namespace AutoActivator.Sql
             { "GET_INTERNAL_ID", @"
                 SELECT TOP 1 NO_CNT
                 FROM LV.SCNTT0 WITH(NOLOCK)
-                WHERE NO_CNT_EXTENDED = @ContractNumber"
+                WHERE LTRIM(RTRIM(NO_CNT_EXTENDED)) = LTRIM(RTRIM(@ContractNumber))"
             },
 
             { "GET_ELIA_ID", @"
