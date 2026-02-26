@@ -116,6 +116,14 @@
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>
 
+                            <GridViewColumn Header="Internal ID" Width="100">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding InternalId}" Foreground="#2980B9" FontWeight="SemiBold"/>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+
                             <GridViewColumn Header="Premium" Width="95">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
@@ -130,6 +138,8 @@
                             <GridViewColumn Header="UCON ID" DisplayMemberBinding="{Binding Ucon}" Width="115"/>
 
                             <GridViewColumn Header="Demand ID" DisplayMemberBinding="{Binding Hdmd}" Width="115"/>
+
+                            <GridViewColumn Header="Test" DisplayMemberBinding="{Binding Test}" Width="90"/>
 
                             <GridViewColumn Header="Status" Width="95">
                                 <GridViewColumn.CellTemplate>

@@ -18,11 +18,13 @@ namespace AutoActivator.Gui
     public class ExtractionItem
     {
         public string ContractId { get; set; }
+        public string InternalId { get; set; } // NOUVEAU : Numéro interne (NO_CNT)
         public string Product { get; set; }
         public string Premium { get; set; }
         public string Ucon { get; set; }
         public string Hdmd { get; set; }
         public string Time { get; set; }
+        public string Test { get; set; } // NOUVEAU : Statut ou valeur de test
         public string FilePath { get; set; }
     }
 
@@ -126,11 +128,13 @@ namespace AutoActivator.Gui
                     ExtractionHistory.Add(new ExtractionItem
                     {
                         ContractId = singleInput,
+                        InternalId = result.InternalId, // Ajout de l'Internal ID
                         Product = "N/A",
                         Premium = "0",
                         Ucon = result.UconId,
                         Hdmd = result.DemandId,
                         Time = DateTime.Now.ToString("HH:mm:ss"),
+                        Test = "À définir", // Ajout de la valeur de Test
                         FilePath = _lastGeneratedPath
                     });
                 }
@@ -163,6 +167,7 @@ namespace AutoActivator.Gui
             int contractIndex = 4;
             int premiumIndex = 5;
             int productIndex = 3;
+            // Si tu as une colonne "Test" dans ton CSV, tu pourrais aussi récupérer son index ici
 
             for (int i = 0; i < headers.Length; i++)
             {
@@ -193,9 +198,9 @@ namespace AutoActivator.Gui
                             // Accumulation LISA uniquement si le contenu n'est pas vide
                             if (!string.IsNullOrWhiteSpace(result.LisaContent))
                             {
-                                globalLisa.AppendLine("############################################################");
+                                globalLisa.AppendLine("------------------------------------------------------------");
                                 globalLisa.AppendLine($"### CONTRACT: {contractNumber} | PRODUCT: {productValue}");
-                                globalLisa.AppendLine("############################################################");
+                                globalLisa.AppendLine("------------------------------------------------------------");
                                 globalLisa.Append(result.LisaContent);
                                 globalLisa.AppendLine();
                             }
@@ -203,9 +208,9 @@ namespace AutoActivator.Gui
                             // Accumulation ELIA uniquement si le contenu n'est pas vide
                             if (!string.IsNullOrWhiteSpace(result.EliaContent))
                             {
-                                globalElia.AppendLine("############################################################");
+                                globalElia.AppendLine("------------------------------------------------------------");
                                 globalElia.AppendLine($"### CONTRACT: {contractNumber} | UCON: {result.UconId}");
-                                globalElia.AppendLine("############################################################");
+                                globalElia.AppendLine("------------------------------------------------------------");
                                 globalElia.Append(result.EliaContent);
                                 globalElia.AppendLine();
                             }
@@ -215,11 +220,13 @@ namespace AutoActivator.Gui
                                 ExtractionHistory.Add(new ExtractionItem
                                 {
                                     ContractId = contractNumber,
+                                    InternalId = result.InternalId, // Ajout de l'Internal ID
                                     Product = productValue,
                                     Premium = premiumAmount,
                                     Ucon = result.UconId,
                                     Hdmd = result.DemandId,
                                     Time = DateTime.Now.ToString("HH:mm:ss"),
+                                    Test = "À définir", // Ajout de la valeur de Test
                                     FilePath = result.FilePath
                                 });
                             });
@@ -231,11 +238,13 @@ namespace AutoActivator.Gui
                                 ExtractionHistory.Add(new ExtractionItem
                                 {
                                     ContractId = $"{contractNumber} (FAILED)",
+                                    InternalId = "Error", // Valeur par défaut en cas d'erreur
                                     Product = productValue,
                                     Premium = premiumAmount,
                                     Ucon = "Error",
                                     Hdmd = "Error",
                                     Time = DateTime.Now.ToString("HH:mm:ss"),
+                                    Test = "Error", // Valeur par défaut en cas d'erreur
                                     FilePath = string.Empty
                                 });
                             });
