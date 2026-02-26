@@ -12,12 +12,12 @@ namespace AutoActivator.Services
 
         public DatabaseManager()
         {
-            // Récupération sécurisée de la chaîne de connexion
+            // Secure retrieval of the connection string
             _connectionString = Settings.DbConfig.ConnectionString;
         }
 
         /// <summary>
-        /// Vérifie la validité de la connexion à SQL Server.
+        /// Checks the validity of the connection to SQL Server.
         /// </summary>
         public bool TestConnection()
         {
@@ -31,7 +31,7 @@ namespace AutoActivator.Services
                         var result = command.ExecuteScalar();
                         if (result != null && result.ToString() == "1")
                         {
-                            Console.WriteLine($"[INFO] Connexion réussie à la base : {Settings.DbConfig.Database}");
+                            Console.WriteLine($"[INFO] Successful connection to the database: {Settings.DbConfig.Database}");
                             return true;
                         }
                     }
@@ -40,13 +40,13 @@ namespace AutoActivator.Services
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[ERROR] Échec de la connexion : {e.Message}");
+                Console.WriteLine($"[ERROR] Connection failed: {e.Message}");
                 return false;
             }
         }
 
         /// <summary>
-        /// Exécute une requête SELECT avec des paramètres pour éviter l'injection SQL.
+        /// Executes a SELECT query with parameters to prevent SQL injection.
         /// </summary>
         public DataTable GetData(string query, Dictionary<string, object> parameters = null)
         {
@@ -62,7 +62,7 @@ namespace AutoActivator.Services
                         {
                             foreach (var param in parameters)
                             {
-                                // Gestion propre des valeurs nulles
+                                // Proper handling of null values
                                 command.Parameters.AddWithValue(param.Key, param.Value ?? DBNull.Value);
                             }
                         }
@@ -76,11 +76,11 @@ namespace AutoActivator.Services
             }
             catch (SqlException e)
             {
-                Console.WriteLine($"[ERROR] Erreur SQL : {e.Message}");
+                Console.WriteLine($"[ERROR] SQL Error: {e.Message}");
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[ERROR] Erreur inattendue : {e.Message}");
+                Console.WriteLine($"[ERROR] Unexpected error: {e.Message}");
                 throw;
             }
 
@@ -88,7 +88,7 @@ namespace AutoActivator.Services
         }
 
         /// <summary>
-        /// Injecte un paiement de test dans la table LV.PRCTT0.
+        /// Injects a test payment into the LV.PRCTT0 table.
         /// </summary>
         public bool InjectPayment(long contractInternalId, decimal amount, DateTime? paymentDate = null)
         {
@@ -98,11 +98,11 @@ namespace AutoActivator.Services
                 ? paymentDate.Value.AddHours(12)
                 : now;
 
-            // Génération d'une communication structurée
+            // Generation of a structured communication
             string idStr = contractInternalId.ToString();
             string fakeCommu = $"820{(idStr.Length > 9 ? idStr.Substring(0, 9) : idStr)}99";
 
-            // Requête d'insertion native
+            // Native insert query
             string query = @"
                 INSERT INTO LV.PRCTT0 (
                     C_STE, NO_CNT, C_MD_PMT, D_REF_PRM, NO_ORD_RCP, TSTAMP_CRT_RCT,
@@ -133,14 +133,14 @@ namespace AutoActivator.Services
                         connection.Open();
                         command.ExecuteNonQuery();
 
-                        Console.WriteLine($"[INFO] Paiement de {amount} EUR injecté (Contrat: {contractInternalId})");
+                        Console.WriteLine($"[INFO] Payment of {amount} EUR injected (Contract: {contractInternalId})");
                         return true;
                     }
                 }
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[ERROR] ECHEC injection paiement : {e.Message}");
+                Console.WriteLine($"[ERROR] FAILED payment injection: {e.Message}");
                 return false;
             }
         }

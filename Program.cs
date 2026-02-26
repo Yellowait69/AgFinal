@@ -18,12 +18,12 @@ namespace AutoActivator
             Console.WriteLine("==================================================");
             Console.WriteLine("       AUTO-ACTIVATOR L.I.S.A (.NET VERSION)      ");
             Console.WriteLine("==================================================");
-            Console.WriteLine("1. Lancer l'Extraction UNIQUE (LISA & ELIA)");
-            Console.WriteLine("2. Lancer l'Activation");
-            Console.WriteLine("3. Lancer la Comparaison");
-            Console.WriteLine("0. Quitter");
+            Console.WriteLine("1. Run Single Extraction (LISA & ELIA)");
+            Console.WriteLine("2. Run Activation");
+            Console.WriteLine("3. Run Comparison");
+            Console.WriteLine("0. Exit");
             Console.WriteLine("==================================================");
-            Console.Write("Votre choix : ");
+            Console.Write("Your choice: ");
 
             var choice = Console.ReadLine();
 
@@ -35,7 +35,7 @@ namespace AutoActivator
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] Impossible de créer les répertoires : {ex.Message}");
+                Console.WriteLine($"[ERROR] Unable to create directories: {ex.Message}");
             }
 
             switch (choice)
@@ -52,21 +52,21 @@ namespace AutoActivator
                 case "0":
                     return;
                 default:
-                    Console.WriteLine("Choix invalide.");
+                    Console.WriteLine("Invalid choice.");
                     break;
             }
 
-            Console.WriteLine("\nAppuyez sur une touche pour quitter...");
+            Console.WriteLine("\nPress any key to exit...");
             Console.ReadKey();
         }
 
         // =========================================================================
-        // 1. EXTRACTION DANS UN FICHIER UNIQUE
+        // 1. EXTRACTION TO A SINGLE FILE
         // =========================================================================
         private static void RunTestExtraction()
         {
-            Console.WriteLine("\n--- Démarrage de l'Extraction Groupée ---");
-            Console.Write("Entrez le numéro de contrat (ex: 182-2728195-31) : ");
+            Console.WriteLine("\n--- Starting Batch Extraction ---");
+            Console.Write("Enter the contract number (e.g., 182-2728195-31): ");
             string input = Console.ReadLine();
 
             if (string.IsNullOrWhiteSpace(input)) return;
@@ -75,26 +75,26 @@ namespace AutoActivator
             var db = new DatabaseManager();
             if (!db.TestConnection()) return;
 
-            // 1. Récupération des IDs
+            // 1. Retrieve IDs
             var parameters = new Dictionary<string, object> { { "@ContractNumber", targetContract } };
             var dtLisa = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
             var dtElia = db.GetData(SqlQueries.Queries["GET_ELIA_ID"], parameters);
 
             if (dtLisa.Rows.Count == 0 && dtElia.Rows.Count == 0)
             {
-                Console.WriteLine($"[ERROR] Contrat {targetContract} introuvable.");
+                Console.WriteLine($"[ERROR] Contract {targetContract} not found.");
                 return;
             }
 
-            // 2. Préparation du contenu du fichier unique
+            // 2. Prepare content for the single file
             StringBuilder sbFullContent = new StringBuilder();
             string finalPath = Path.Combine(Settings.OutputDir, $"FULL_EXTRACT_{targetContract}.csv");
 
-            // Fonction locale pour formater les tables dans le buffer unique
+            // Local function to format tables in the single buffer
             void AddTableToBuffer(string tableName, DataTable dt)
             {
                 sbFullContent.AppendLine("################################################################################");
-                sbFullContent.AppendLine($"### TABLE : {tableName} | Lignes : {dt.Rows.Count}");
+                sbFullContent.AppendLine($"### TABLE : {tableName} | Rows : {dt.Rows.Count}");
                 sbFullContent.AppendLine("################################################################################");
 
                 if (dt.Rows.Count > 0)
@@ -110,16 +110,16 @@ namespace AutoActivator
                 }
                 else
                 {
-                    sbFullContent.AppendLine("AUCUNE DONNEE TROUVEE");
+                    sbFullContent.AppendLine("NO DATA FOUND");
                 }
-                sbFullContent.AppendLine(); // Saut de ligne entre les tables
+                sbFullContent.AppendLine(); // Line break between tables
             }
 
-            // 3. Extraction LISA
+            // 3. LISA Extraction
             if (dtLisa.Rows.Count > 0)
             {
                 long internalId = Convert.ToInt64(dtLisa.Rows[0]["NO_CNT"]);
-                Console.WriteLine("[INFO] Extraction des tables LISA...");
+                Console.WriteLine("[INFO] Extracting LISA tables...");
 
                 var lisaTables = new[] { "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0", "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0", "LV.MWBGT0", "LV.PRIST0", "LV.FMVGT0" };
                 foreach (var table in lisaTables)
@@ -129,11 +129,11 @@ namespace AutoActivator
                 }
             }
 
-            // 4. Extraction ELIA
+            // 4. ELIA Extraction
             if (dtElia.Rows.Count > 0)
             {
                 string eliaId = dtElia.Rows[0]["IT5UCONAIDN"].ToString();
-                Console.WriteLine("[INFO] Extraction des tables ELIA...");
+                Console.WriteLine("[INFO] Extracting ELIA tables...");
 
                 var eliaTables = new[] { "FJ1.TB5UCON", "FJ1.TB5UGAR", "FJ1.TB5UASU", "FJ1.TB5UPRP", "FJ1.TB5UAVE", "FJ1.TB5UDCR", "FJ1.TB5UBEN" };
                 foreach (var table in eliaTables)
@@ -143,9 +143,9 @@ namespace AutoActivator
                 }
             }
 
-            // 5. Écriture du fichier final
+            // 5. Write final file
             File.WriteAllText(finalPath, sbFullContent.ToString(), Encoding.UTF8);
-            Console.WriteLine($"\n🎉 Extraction terminée ! Fichier unique généré :\n--> {finalPath}");
+            Console.WriteLine($"\n🎉 Extraction completed! Single file generated:\n--> {finalPath}");
         }
 
         // =========================================================================
@@ -153,41 +153,41 @@ namespace AutoActivator
         // =========================================================================
         private static void RunActivation()
         {
-            Console.WriteLine("\n--- Démarrage du Script d'Activation ---");
+            Console.WriteLine("\n--- Starting Activation Script ---");
             var db = new DatabaseManager();
             if (!db.TestConnection()) return;
 
-            // Simulation : Remplace par ta liste réelle si besoin
+            // Simulation: Replace with your actual list if needed
             var contratsSources = new List<string> { "182-2728195-31" };
             var resultats = new List<Dictionary<string, object>>();
 
             foreach (var oldContractExt in contratsSources)
             {
-                Console.WriteLine($"\n--- Traitement : {oldContractExt} ---");
+                Console.WriteLine($"\n--- Processing: {oldContractExt} ---");
                 var parameters = new Dictionary<string, object> { { "@ContractNumber", oldContractExt } };
                 var dtId = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
 
                 if (dtId.Rows.Count > 0)
                 {
                     long idIntSource = Convert.ToInt64(dtId.Rows[0]["NO_CNT"]);
-                    // Logic de snapshot...
-                    Console.WriteLine($"   [OK] Contrat identifié pour activation.");
+                    // Snapshot logic...
+                    Console.WriteLine($"   [OK] Contract identified for activation.");
                 }
                 else
                 {
-                    Console.WriteLine($"   [SKIP] Contrat {oldContractExt} non trouvé.");
+                    Console.WriteLine($"   [SKIP] Contract {oldContractExt} not found.");
                 }
             }
         }
 
         // =========================================================================
-        // 3. COMPARAISON
+        // 3. COMPARISON
         // =========================================================================
         private static void RunComparison()
         {
-            Console.WriteLine("\n--- Démarrage du Comparateur ---");
-            // Logique de comparaison telle qu'existante, en utilisant les nouveaux accès Queries
-            // ... (identique à ton code original mais utilisant DatabaseManager)
+            Console.WriteLine("\n--- Starting Comparator ---");
+            // Existing comparison logic, using the new Queries access
+            // ... (identical to your original code but using DatabaseManager)
         }
 
         private static void WriteDataTableToCsv(DataTable dataTable, string filePath)

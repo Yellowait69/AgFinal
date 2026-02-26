@@ -12,18 +12,18 @@ namespace AutoActivator.Sql
             // ==========================================
 
             // Recherche LISA : récupère le numéro technique interne (NO_CNT)
-            // Correction : Utilisation de LIKE pour gérer le padding CHAR(17) de NO_CNT_EXTENDED
+            // Utilisation d'une recherche exacte sur NO_CNT_EXTENDED pour garantir la précision
             { "GET_INTERNAL_ID", @"
                 SELECT TOP 1 NO_CNT
                 FROM LV.SCNTT0 WITH(NOLOCK)
-                WHERE NO_CNT_EXTENDED LIKE @ContractNumber + '%'"
+                WHERE NO_CNT_EXTENDED = @ContractNumber"
             },
 
             // Recherche ELIA : récupère l'ID de contrat (IT5UCONAIDN) via la référence externe LISA
             { "GET_ELIA_ID", @"
                 SELECT TOP 1 IT5UCONAIDN
                 FROM FJ1.TB5UCON WITH(NOLOCK)
-                WHERE IT5UCONLREFEXN LIKE @ContractNumber + '%'"
+                WHERE IT5UCONLREFEXN = @ContractNumber"
             },
 
             // Recherche ELIA : récupère l'ID de demande (DemandId) lié au contrat ELIA
@@ -49,9 +49,9 @@ namespace AutoActivator.Sql
             { "LV.PRIST0", "SELECT * FROM LV.PRIST0 WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY NO_AVT, D_ECH" },
             { "LV.FMVGT0", "SELECT * FROM LV.FMVGT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY TSTAMP_DMOD" },
             { "LV.ELIAT0", "SELECT * FROM LV.ELIAT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
-            { "LV.ELIHT0", "SELECT * FROM LV.ELIHT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
-            { "LV.PCONT0", "SELECT * FROM [LV].[LV5P02TPCONT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
-            { "LV.XRSTT0", "SELECT * FROM LV.XRSTT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+            { "LV.ELIHT0", "SELECT * FROM LV.ELIHT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" }, // Ajout selon script
+            { "LV.PCONT0", "SELECT * FROM [LV].[LV5P02TPCONT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" }, // Ajout selon script
+            { "LV.XRSTT0", "SELECT * FROM LV.XRSTT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" }, // Ajout selon script
 
             // ==========================================
             // DONNEES ELIA (Tables FJ1) - Utilise @EliaId
@@ -73,8 +73,8 @@ namespace AutoActivator.Sql
             { "FJ1.TB5UPRS", "SELECT * FROM FJ1.TB5UPRS WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
             { "FJ1.TB5URPP", "SELECT * FROM FJ1.TB5URPP WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
             { "FJ1.TB5HELT", "SELECT * FROM FJ1.TB5HELT WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
-            { "FJ1.TB5UCCR", "SELECT * FROM FJ1.TB5UCCR WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
-            { "FJ1.TB5UPNR", "SELECT * FROM FJ1.TB5UPNR WITH(NOLOCK) WHERE IT5UPNRAIDN IN (SELECT IT5UPNRAIDN FROM FJ1.TB5UAVE WHERE IT5UCONAIDN = @EliaId)" },
+            { "FJ1.TB5UCCR", "SELECT * FROM FJ1.TB5UCCR WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" }, // Ajout selon script
+            { "FJ1.TB5UPNR", "SELECT * FROM FJ1.TB5UPNR WITH(NOLOCK) WHERE IT5UPNRAIDN IN (SELECT IT5UPNRAIDN FROM FJ1.TB5UAVE WHERE IT5UCONAIDN = @EliaId)" }, // Ajout selon script
 
             // ==========================================
             // DONNEES DEMANDE ELIA - Utilise @DemandId
@@ -84,8 +84,8 @@ namespace AutoActivator.Sql
             { "FJ1.TB5HPRO", "SELECT * FROM FJ1.TB5HPRO WITH(NOLOCK) WHERE IT5HDMDAIDN = @DemandId" },
             { "FJ1.TB5HDIC", "SELECT * FROM FJ1.TB5HDIC WITH(NOLOCK) WHERE IT5HDMDAIDN = @DemandId" },
             { "FJ1.TB5HEPT", "SELECT * FROM FJ1.TB5HEPT WITH(NOLOCK) WHERE IT5HDMDAIDN = @DemandId" },
-            { "FJ1.TB5HDGM", "SELECT * FROM FJ1.TB5HDGM WITH(NOLOCK) WHERE IT5HDMDAIDN = @DemandId" },
-            { "FJ1.TB5HDGD", "SELECT * FROM FJ1.TB5HDGD WITH(NOLOCK) WHERE IT5HDMDAIDN = @DemandId" }
+            { "FJ1.TB5HDGM", "SELECT * FROM FJ1.TB5HDGM WITH(NOLOCK) WHERE IT5HDMDAIDN = @DemandId" }, // Ajout selon script
+            { "FJ1.TB5HDGD", "SELECT * FROM FJ1.TB5HDGD WITH(NOLOCK) WHERE IT5HDMDAIDN = @DemandId" } // Ajout selon script
         });
     }
 }

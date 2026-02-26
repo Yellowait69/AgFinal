@@ -8,7 +8,7 @@ public static class Exclusions
         // Identifiants techniques majeurs
         "NO_CNT", "NO_CNT_EXTENDED", "NO_AVT", "C_STE",
 
-        // Dates techniques de cr�ation et modification
+        // Dates techniques de creation et modification
         "D_CRT", "D_CRT_CNT", "TSTAMP_DMOD", "D_MOD", "D_JOB_DMOD", "D_GEST_DMOD",
 
         // Auteurs et Processus

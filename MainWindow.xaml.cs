@@ -44,7 +44,7 @@ namespace AutoActivator.Gui
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"[ERROR] Répertoires : {ex.Message}");
+                MessageBox.Show($"[ERROR] Directories: {ex.Message}");
             }
         }
 
@@ -54,7 +54,7 @@ namespace AutoActivator.Gui
 
             if (string.IsNullOrEmpty(input))
             {
-                TxtStatus.Text = "Veuillez entrer un numéro de contrat.";
+                TxtStatus.Text = "Please enter a contract number.";
                 TxtStatus.Foreground = Brushes.Orange;
                 return;
             }
@@ -62,14 +62,14 @@ namespace AutoActivator.Gui
             PrgLoading.Visibility = Visibility.Visible;
             LnkFile.Visibility = Visibility.Collapsed;
             BtnRun.IsEnabled = false;
-            TxtStatus.Text = "Extraction en cours depuis LISA et ELIA...";
+            TxtStatus.Text = "Extraction in progress from LISA and ELIA...";
             TxtStatus.Foreground = Brushes.Blue;
 
             try
             {
                 string resultInfo = await Task.Run(() => PerformExtractionLogic(input));
 
-                TxtStatus.Text = $"Terminé ! {resultInfo}";
+                TxtStatus.Text = $"Completed! {resultInfo}";
                 TxtStatus.Foreground = Brushes.Green;
                 LnkFile.Visibility = Visibility.Visible;
 
@@ -82,7 +82,7 @@ namespace AutoActivator.Gui
             }
             catch (Exception ex)
             {
-                TxtStatus.Text = $"Erreur : {ex.Message}";
+                TxtStatus.Text = $"Error: {ex.Message}";
                 TxtStatus.Foreground = Brushes.Red;
             }
             finally
@@ -98,32 +98,32 @@ namespace AutoActivator.Gui
             var db = new DatabaseManager();
 
             if (!db.TestConnection())
-                throw new Exception("Connexion SQL impossible.");
+                throw new Exception("Unable to establish SQL connection.");
 
             var parameters = new Dictionary<string, object> { { "@ContractNumber", targetContract } };
 
-            // Récupération des IDs initiaux via les requêtes optimisées dans SqlQueries.cs
+            // Initial IDs retrieval via optimized queries in SqlQueries.cs
             var dtLisa = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
             var dtElia = db.GetData(SqlQueries.Queries["GET_ELIA_ID"], parameters);
 
             if (dtLisa.Rows.Count == 0 && dtElia.Rows.Count == 0)
-                throw new Exception($"Contrat {targetContract} introuvable.");
+                throw new Exception($"Contract {targetContract} not found.");
 
             StringBuilder sb = new StringBuilder();
             _lastGeneratedPath = Path.Combine(Settings.OutputDir, $"FULL_EXTRACT_{targetContract}.csv");
 
-            string eliaUconId = "Non trouvé";
-            string eliaDemandId = "Non trouvé";
-            string lisaId = "Non trouvé";
+            string eliaUconId = "Not found";
+            string eliaDemandId = "Not found";
+            string lisaId = "Not found";
 
-            // --- SECTION LISA ---
+            // --- LISA SECTION ---
             if (dtLisa.Rows.Count > 0)
             {
-                // Assignation du NO_CNT (LISA ID) pour l'affichage final
+                // Assigning NO_CNT (LISA ID) for final display
                 long internalId = Convert.ToInt64(dtLisa.Rows[0]["NO_CNT"]);
                 lisaId = internalId.ToString();
 
-                // Liste enrichie avec les tables LISA identifiées dans le script SQL (PCONT0, ELIHT0, etc.)
+                // Enriched list with LISA tables identified in the SQL script (PCONT0, ELIHT0, etc.)
                 var lisaTables = new[] {
                     "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0",
                     "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0",
@@ -141,12 +141,12 @@ namespace AutoActivator.Gui
                 }
             }
 
-            // --- SECTION ELIA ---
+            // --- ELIA SECTION ---
             if (dtElia.Rows.Count > 0)
             {
                 eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"].ToString().Trim();
 
-                // Récupération du Demand ID (HDMDAIDN) pour lier les tables FJ1 secondaires
+                // Retrieving Demand ID (HDMDAIDN) to link secondary FJ1 tables
                 var dtDemand = db.GetData(SqlQueries.Queries["GET_ELIA_DEMAND_ID"], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
 
                 if (dtDemand.Rows.Count > 0)
@@ -154,7 +154,7 @@ namespace AutoActivator.Gui
                     eliaDemandId = dtDemand.Rows[0]["IT5HDMDAIDN"].ToString().Trim();
                 }
 
-                // Tables ELIA basées sur l'ID de contrat (UCONAIDN)
+                // ELIA tables based on contract ID (UCONAIDN)
                 var eliaTables = new[] {
                     "FJ1.TB5UCON", "FJ1.TB5UGAR", "FJ1.TB5UASU", "FJ1.TB5UPRP",
                     "FJ1.TB5UAVE", "FJ1.TB5UDCR", "FJ1.TB5UBEN", "FJ1.TB5UPRS",
@@ -170,8 +170,8 @@ namespace AutoActivator.Gui
                     }
                 }
 
-                // Tables ELIA basées sur l'ID de demande (DemandId)
-                if (eliaDemandId != "Non trouvé")
+                // ELIA tables based on demand ID (DemandId)
+                if (eliaDemandId != "Not found")
                 {
                     var demandTables = new[] { "FJ1.TB5HDMD", "FJ1.TB5HPRO", "FJ1.TB5HDIC", "FJ1.TB5HEPT", "FJ1.TB5HDGM", "FJ1.TB5HDGD" };
                     foreach (var table in demandTables)
@@ -187,14 +187,14 @@ namespace AutoActivator.Gui
 
             File.WriteAllText(_lastGeneratedPath, sb.ToString(), Encoding.UTF8);
 
-            // Retourne le statut complet avec les identifiants techniques trouvés
-            return $"LISA ID (NO_CNT): {lisaId} | UCONAIDN: {eliaUconId} | HDMDAIDN: {eliaDemandId}";
+            // Returns the complete status with the technical identifiers found
+            return $"UCONAIDN: {eliaUconId} | HDMDAIDN: {eliaDemandId}";
         }
 
         private void AddTableToBuffer(StringBuilder sb, string tableName, DataTable dt)
         {
             sb.AppendLine("################################################################################");
-            sb.AppendLine($"### TABLE : {tableName} | Lignes : {dt.Rows.Count}");
+            sb.AppendLine($"### TABLE : {tableName} | Rows : {dt.Rows.Count}");
             sb.AppendLine("################################################################################");
 
             if (dt.Rows.Count > 0)
@@ -208,7 +208,7 @@ namespace AutoActivator.Gui
                     sb.AppendLine(string.Join(";", fields));
                 }
             }
-            else { sb.AppendLine("AUCUNE DONNEE TROUVEE"); }
+            else { sb.AppendLine("NO DATA FOUND"); }
             sb.AppendLine();
         }
 
@@ -218,7 +218,7 @@ namespace AutoActivator.Gui
                 Process.Start("explorer.exe", $"/select,\"{_lastGeneratedPath}\"");
         }
 
-        private void BtnActivation_Click(object sender, RoutedEventArgs e) { TxtStatus.Text = "Module Activation sélectionné."; }
-        private void BtnComparison_Click(object sender, RoutedEventArgs e) { TxtStatus.Text = "Module Comparaison sélectionné."; }
+        private void BtnActivation_Click(object sender, RoutedEventArgs e) { TxtStatus.Text = "Activation Module selected."; }
+        private void BtnComparison_Click(object sender, RoutedEventArgs e) { TxtStatus.Text = "Comparison Module selected."; }
     }
 }

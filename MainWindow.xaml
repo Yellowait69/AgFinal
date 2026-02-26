@@ -14,7 +14,7 @@
 
             <Button Content="📥 Extraction" Padding="12" Margin="10,5" Click="BtnRun_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand"/>
             <Button Content="⚡ Activation" Padding="12" Margin="10,5" Click="BtnActivation_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand"/>
-            <Button Content="📊 Comparaison" Padding="12" Margin="10,5" Click="BtnComparison_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand"/>
+            <Button Content="📊 Comparison" Padding="12" Margin="10,5" Click="BtnComparison_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand"/>
         </StackPanel>
 
         <Grid Grid.Column="1" Margin="25">
@@ -22,14 +22,14 @@
                 <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="*"/>    </Grid.RowDefinitions>
 
             <StackPanel Grid.Row="0">
-                <TextBlock Text="Module d'Extraction Groupée" FontSize="22" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
+                <TextBlock Text="Batch Extraction Module" FontSize="22" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
 
                 <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1">
                     <StackPanel>
-                        <TextBlock Text="Numéro de contrat (ex: 182-2728195-31) :" Margin="0,0,0,8" FontWeight="SemiBold"/>
+                        <TextBlock Text="Contract Number (e.g., 182-2728195-31):" Margin="0,0,0,8" FontWeight="SemiBold"/>
                         <TextBox x:Name="TxtContract" Margin="0,0,0,15" Padding="8" FontSize="14" BorderBrush="#DCDDE1"/>
 
-                        <Button x:Name="BtnRun" Content="Lancer l'extraction (LISA &amp; ELIA)" Click="BtnRun_Click"
+                        <Button x:Name="BtnRun" Content="Run Extraction (LISA &amp; ELIA)" Click="BtnRun_Click"
                                 Background="#27AE60" Foreground="White" Padding="12" FontWeight="Bold" BorderThickness="0" Cursor="Hand">
                             <Button.Resources>
                                 <Style TargetType="Border">
@@ -48,7 +48,7 @@
 
                 <TextBlock x:Name="LnkFile" Visibility="Collapsed" Margin="0,10,0,0" FontSize="14">
                     <Hyperlink Click="Hyperlink_Click" Foreground="#2980B9" FontWeight="Bold">
-                        <Run Text="📁 Cliquer ici pour ouvrir le fichier généré (CSV)"/>
+                        <Run Text="📁 Click here to open the generated file (CSV)"/>
                     </Hyperlink>
                 </TextBlock>
             </StackPanel>
@@ -59,7 +59,7 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="Historique de la session" FontWeight="Bold" Foreground="#7F8C8D" Margin="0,0,0,10"/>
+                <TextBlock Grid.Row="0" Text="Session History" FontWeight="Bold" Foreground="#7F8C8D" Margin="0,0,0,10"/>
 
                 <ListBox x:Name="ListHistory" Grid.Row="1" Background="White" BorderBrush="#DCDDE1" BorderThickness="1" AlternationCount="2">
                     <ListBox.ItemTemplate>
@@ -72,7 +72,7 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="{Binding Time}" Foreground="#95A5A6" VerticalAlignment="Center"/>
                                 <TextBlock Grid.Column="1" Text="{Binding ContractId}" FontWeight="Bold" VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="2" Text="Extraction réussie" Foreground="#27AE60" FontStyle="Italic" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Successful extraction" Foreground="#27AE60" FontStyle="Italic" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
