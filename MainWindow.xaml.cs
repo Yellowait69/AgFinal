@@ -118,7 +118,8 @@ namespace AutoActivator.Gui
                 }
                 else
                 {
-                    ExtractionResult result = await Task.Run(() => _extractionService.PerformExtraction(singleInput));
+                    // Pour un contrat unique, on garde la sauvegarde du fichier individuel
+                    ExtractionResult result = await Task.Run(() => _extractionService.PerformExtraction(singleInput, true));
 
                     _lastGeneratedPath = result.FilePath;
                     TxtStatus.Text = $"Completed! {result.StatusMessage}";
@@ -128,13 +129,13 @@ namespace AutoActivator.Gui
                     ExtractionHistory.Add(new ExtractionItem
                     {
                         ContractId = singleInput,
-                        InternalId = result.InternalId, // Ajout de l'Internal ID
+                        InternalId = result.InternalId,
                         Product = "N/A",
                         Premium = "0",
                         Ucon = result.UconId,
                         Hdmd = result.DemandId,
                         Time = DateTime.Now.ToString("HH:mm:ss"),
-                        Test = "OK", // Ajout de la valeur de Test
+                        Test = "OK",
                         FilePath = _lastGeneratedPath
                     });
                 }
@@ -154,7 +155,6 @@ namespace AutoActivator.Gui
 
         private void PerformBatchExtraction(string filePath)
         {
-            // CORRECTION MAJEURE ICI : Nettoyage du BOM (\uFEFF) généré par Excel
             string rawText = File.ReadAllText(filePath).Replace("\uFEFF", "");
             string[] lines = rawText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
 
@@ -164,29 +164,22 @@ namespace AutoActivator.Gui
                 return;
             }
 
-            // Buffers pour les fichiers globaux
             StringBuilder globalLisa = new StringBuilder();
             StringBuilder globalElia = new StringBuilder();
 
             string[] headers = lines[0].Split(new[] { ';', ',' });
-
-            // On met -1 par défaut pour vérifier si on a bien trouvé la colonne
             int contractIndex = -1;
             int premiumIndex = -1;
             int productIndex = -1;
 
             for (int i = 0; i < headers.Length; i++)
             {
-                // Nettoyage des guillemets potentiels autour des en-têtes et passage en minuscules
                 string h = headers[i].Trim().Trim('"').ToLower();
-
-                // Détection plus souple des colonnes
                 if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa")) contractIndex = i;
                 if (h.Contains("premium") || h.Contains("prime")) premiumIndex = i;
                 if (h.Contains("product") || h.Contains("produit")) productIndex = i;
             }
 
-            // Si on n'a pas trouvé de colonne contrat, on prend la première (index 0) par défaut
             if (contractIndex == -1) contractIndex = 0;
 
             for (int i = 1; i < lines.Length; i++)
@@ -195,12 +188,9 @@ namespace AutoActivator.Gui
 
                 if (columns.Length > contractIndex)
                 {
-                    // Nettoyage agressif : supprime les guillemets ET les signes égal (ex: ="182-272...")
                     string contractNumber = columns[contractIndex].Replace("=", "").Replace("\"", "").Trim();
-
                     string premiumAmount = (premiumIndex != -1 && columns.Length > premiumIndex)
                         ? columns[premiumIndex].Replace("=", "").Replace("\"", "").Trim() : "0";
-
                     string productValue = (productIndex != -1 && columns.Length > productIndex)
                         ? columns[productIndex].Replace("=", "").Replace("\"", "").Trim() : "N/A";
 
@@ -208,9 +198,9 @@ namespace AutoActivator.Gui
                     {
                         try
                         {
-                            ExtractionResult result = _extractionService.PerformExtraction(contractNumber);
+                            // MODIFICATION ICI : On passe 'false' pour ne pas créer de fichier individuel .csv pour chaque contrat
+                            ExtractionResult result = _extractionService.PerformExtraction(contractNumber, false);
 
-                            // Accumulation LISA uniquement si le contenu n'est pas vide
                             if (!string.IsNullOrWhiteSpace(result.LisaContent))
                             {
                                 globalLisa.AppendLine("------------------------------------------------------------");
@@ -220,7 +210,6 @@ namespace AutoActivator.Gui
                                 globalLisa.AppendLine();
                             }
 
-                            // Accumulation ELIA uniquement si le contenu n'est pas vide
                             if (!string.IsNullOrWhiteSpace(result.EliaContent))
                             {
                                 globalElia.AppendLine("------------------------------------------------------------");
@@ -241,8 +230,8 @@ namespace AutoActivator.Gui
                                     Ucon = result.UconId,
                                     Hdmd = result.DemandId,
                                     Time = DateTime.Now.ToString("HH:mm:ss"),
-                                    Test = "OK", // Indique que tout s'est bien passé
-                                    FilePath = result.FilePath
+                                    Test = "OK",
+                                    FilePath = string.Empty // Pas de fichier individuel en batch
                                 });
                             });
                         }
@@ -268,13 +257,14 @@ namespace AutoActivator.Gui
                 }
             }
 
-            // Sauvegarde des fichiers globaux (avec sécurité au cas où aucun contrat ne ressortirait)
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
 
-            string finalLisaContent = globalLisa.Length > 0 ? globalLisa.ToString() : "AUCUN CONTRAT LISA TROUVE LORS DE L'EXTRACTION.\n\nVeuillez vérifier que les numéros de contrats dans votre CSV sont au bon format (ex: 182-1234567-89).";
+            // Fichier global LISA
+            string finalLisaContent = globalLisa.Length > 0 ? globalLisa.ToString() : "AUCUN CONTRAT LISA TROUVE.";
             File.WriteAllText(Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_LISA_{timestamp}.csv"), finalLisaContent, Encoding.UTF8);
 
-            string finalEliaContent = globalElia.Length > 0 ? globalElia.ToString() : "AUCUN CONTRAT ELIA TROUVE LORS DE L'EXTRACTION.";
+            // Fichier global ELIA
+            string finalEliaContent = globalElia.Length > 0 ? globalElia.ToString() : "AUCUN CONTRAT ELIA TROUVE.";
             File.WriteAllText(Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_ELIA_{timestamp}.csv"), finalEliaContent, Encoding.UTF8);
         }
 
@@ -282,12 +272,10 @@ namespace AutoActivator.Gui
         {
             if (Directory.Exists(_lastGeneratedPath))
             {
-                // Si c'est un dossier (Batch), on l'ouvre
                 Process.Start("explorer.exe", _lastGeneratedPath);
             }
             else if (File.Exists(_lastGeneratedPath))
             {
-                // Si c'est un fichier unique, on le sélectionne
                 Process.Start("explorer.exe", $"/select,\"{_lastGeneratedPath}\"");
             }
         }

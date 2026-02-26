@@ -30,7 +30,8 @@ namespace AutoActivator.Services
             _db = new DatabaseManager();
         }
 
-        public ExtractionResult PerformExtraction(string targetContract)
+        // Ajout du paramètre "saveIndividualFile" (true par défaut)
+        public ExtractionResult PerformExtraction(string targetContract, bool saveIndividualFile = true)
         {
             // CORRECTION MAJEURE ICI : Nettoyage impératif des espaces insécables ET du BOM (\uFEFF)
             targetContract = targetContract.Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
@@ -153,13 +154,17 @@ namespace AutoActivator.Services
                 }
             }
 
-            // Sauvegarde du fichier individuel combiné (LISA + ELIA)
-            string fullContent = sbLisa.ToString() + Environment.NewLine + sbElia.ToString();
-            File.WriteAllText(generatedPath, fullContent, Encoding.UTF8);
+            // Condition ajoutée ici pour ne sauvegarder que si demandé
+            if (saveIndividualFile)
+            {
+                // Sauvegarde du fichier individuel combiné (LISA + ELIA)
+                string fullContent = sbLisa.ToString() + Environment.NewLine + sbElia.ToString();
+                File.WriteAllText(generatedPath, fullContent, Encoding.UTF8);
+            }
 
             return new ExtractionResult
             {
-                FilePath = generatedPath,
+                FilePath = saveIndividualFile ? generatedPath : string.Empty, // On retourne le chemin uniquement s'il a été créé
                 StatusMessage = $"UCONAIDN: {eliaUconId} | HDMDAIDN: {eliaDemandId}",
                 InternalId = internalIdString, // Transmission de l'ID Interne à l'interface
                 UconId = eliaUconId,
