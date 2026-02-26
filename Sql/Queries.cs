@@ -14,11 +14,8 @@ namespace AutoActivator.Sql
 
             { "GET_INTERNAL_ID", @"
                 SELECT TOP 1 NO_CNT
-                FROM (
-                    SELECT NO_CNT FROM LV.SCNTT0 WITH(NOLOCK) WHERE NO_CNT_EXTENDED LIKE '%' + @ContractNumber + '%'
-                    UNION ALL
-                    SELECT NO_CNT FROM LV.SCNTT1 WITH(NOLOCK) WHERE NO_CNT_EXTENDED LIKE '%' + @ContractNumber + '%'
-                ) AS ResultTbl"
+                FROM LV.SCNTT0 WITH(NOLOCK)
+                WHERE NO_CNT_EXTENDED = @ContractNumber"
             },
 
             { "GET_ELIA_ID", @"
