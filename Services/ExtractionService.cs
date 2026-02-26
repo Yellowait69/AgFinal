@@ -14,6 +14,8 @@ namespace AutoActivator.Services
     {
         public string FilePath { get; set; }
         public string StatusMessage { get; set; }
+        public string UconId { get; set; }
+        public string DemandId { get; set; }
     }
 
     public class ExtractionService
@@ -116,7 +118,9 @@ namespace AutoActivator.Services
             return new ExtractionResult
             {
                 FilePath = generatedPath,
-                StatusMessage = $"UCONAIDN: {eliaUconId} | HDMDAIDN: {eliaDemandId}"
+                StatusMessage = $"UCONAIDN: {eliaUconId} | HDMDAIDN: {eliaDemandId}",
+                UconId = eliaUconId,
+                DemandId = eliaDemandId
             };
         }
 

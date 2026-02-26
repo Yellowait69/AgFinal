@@ -1,10 +1,12 @@
 using System;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Media;
 using Microsoft.Win32;
 using AutoActivator.Services;
@@ -15,7 +17,10 @@ namespace AutoActivator.Gui
     public class ExtractionItem
     {
         public string ContractId { get; set; }
+        public string Product { get; set; }
         public string Premium { get; set; }
+        public string Ucon { get; set; }
+        public string Hdmd { get; set; }
         public string Time { get; set; }
         public string FilePath { get; set; }
     }
@@ -31,6 +36,10 @@ namespace AutoActivator.Gui
             InitializeComponent();
             InitializeDirectories();
             ListHistory.ItemsSource = ExtractionHistory;
+
+            // Tri automatique de l'historique par la colonne "Product"
+            ICollectionView view = CollectionViewSource.GetDefaultView(ExtractionHistory);
+            view.SortDescriptions.Add(new SortDescription("Product", ListSortDirection.Ascending));
 
             // Initialisation du service
             _extractionService = new ExtractionService();
@@ -111,10 +120,14 @@ namespace AutoActivator.Gui
                     TxtStatus.Foreground = Brushes.Green;
                     LnkFile.Visibility = Visibility.Visible;
 
-                    ExtractionHistory.Insert(0, new ExtractionItem
+                    // Ajout avec Add (pour le tri automatique) et intégration de Ucon, Hdmd, Product
+                    ExtractionHistory.Add(new ExtractionItem
                     {
                         ContractId = singleInput,
+                        Product = "N/A",
                         Premium = "0",
+                        Ucon = result.UconId,
+                        Hdmd = result.DemandId,
                         Time = DateTime.Now.ToString("HH:mm:ss"),
                         FilePath = _lastGeneratedPath
                     });
@@ -135,16 +148,17 @@ namespace AutoActivator.Gui
 
         private void PerformBatchExtraction(string filePath)
         {
-            // 1. Lire tout le fichier et séparer les lignes de manière universelle (corrige les problèmes Excel/Mac)
+            // 1. Lire tout le fichier et séparer les lignes de manière universelle
             string rawText = File.ReadAllText(filePath);
             string[] lines = rawText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
 
             if (lines.Length <= 1) return; // Si le fichier est vide ou n'a qu'un en-tête, on arrête
 
-            // 2. Détecter automatiquement à quel index se trouve la colonne "LISA Contract" et "Premium"
+            // 2. Détecter automatiquement à quel index se trouve la colonne
             string[] headers = lines[0].Split(new[] { ';', ',' });
             int contractIndex = 4; // Valeur par défaut
             int premiumIndex = 5;
+            int productIndex = 3;
 
             for (int i = 0; i < headers.Length; i++)
             {
@@ -152,6 +166,8 @@ namespace AutoActivator.Gui
                     contractIndex = i;
                 if (headers[i].Trim().Equals("Premium", StringComparison.OrdinalIgnoreCase))
                     premiumIndex = i;
+                if (headers[i].Trim().Equals("Product", StringComparison.OrdinalIgnoreCase))
+                    productIndex = i;
             }
 
             // 3. Boucle d'extraction
@@ -162,11 +178,12 @@ namespace AutoActivator.Gui
 
                 string[] columns = line.Split(new[] { ';', ',' });
 
-                // On vérifie que la ligne contient suffisamment de colonnes pour atteindre notre index
+                // On vérifie que la ligne contient suffisamment de colonnes pour atteindre notre index principal (contrat)
                 if (columns.Length > contractIndex)
                 {
                     string contractNumber = columns[contractIndex].Trim();
                     string premiumAmount = columns.Length > premiumIndex ? columns[premiumIndex].Trim() : "0";
+                    string productValue = columns.Length > productIndex ? columns[productIndex].Trim() : "N/A";
 
                     if (!string.IsNullOrEmpty(contractNumber))
                     {
@@ -178,10 +195,13 @@ namespace AutoActivator.Gui
 
                             Application.Current.Dispatcher.Invoke(() =>
                             {
-                                ExtractionHistory.Insert(0, new ExtractionItem
+                                ExtractionHistory.Add(new ExtractionItem
                                 {
                                     ContractId = contractNumber,
+                                    Product = productValue,
                                     Premium = premiumAmount,
+                                    Ucon = result.UconId,
+                                    Hdmd = result.DemandId,
                                     Time = DateTime.Now.ToString("HH:mm:ss"),
                                     FilePath = result.FilePath
                                 });
@@ -191,10 +211,13 @@ namespace AutoActivator.Gui
                         {
                             Application.Current.Dispatcher.Invoke(() =>
                             {
-                                ExtractionHistory.Insert(0, new ExtractionItem
+                                ExtractionHistory.Add(new ExtractionItem
                                 {
                                     ContractId = $"{contractNumber} (FAILED)",
+                                    Product = productValue,
                                     Premium = premiumAmount,
+                                    Ucon = "Erreur",
+                                    Hdmd = "Erreur",
                                     Time = DateTime.Now.ToString("HH:mm:ss"),
                                     FilePath = string.Empty
                                 });
