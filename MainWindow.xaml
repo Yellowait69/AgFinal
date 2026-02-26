@@ -92,11 +92,19 @@
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="80"/>
                                     <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="100"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
+
                                 <TextBlock Grid.Column="0" Text="{Binding Time}" Foreground="#95A5A6" VerticalAlignment="Center"/>
                                 <TextBlock Grid.Column="1" Text="{Binding ContractId}" FontWeight="Bold" VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="2" Text="Processed" Foreground="#27AE60" FontStyle="Italic" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Premium}" FontWeight="SemiBold" Foreground="#E67E22"/>
+                                    <TextBlock Text=" €" Foreground="#E67E22"/>
+                                </StackPanel>
+
+                                <TextBlock Grid.Column="3" Text="Processed" Foreground="#27AE60" FontStyle="Italic" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
