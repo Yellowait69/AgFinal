@@ -55,17 +55,18 @@ namespace AutoActivator.Services
 
             string eliaUconId = "Not found";
             string eliaDemandId = "Not found";
-            string internalIdString = "Not found"; // NOUVEAU : Initialisation de l'Internal ID
+            string internalIdString = "Not found"; // Initialisation de l'Internal ID
 
             // --- SECTION LISA ET TABLES ASSIMILEES (@InternalId) ---
             if (dtLisa.Rows.Count > 0)
             {
                 long internalId = Convert.ToInt64(dtLisa.Rows[0]["NO_CNT"]);
-                internalIdString = internalId.ToString(); // NOUVEAU : Sauvegarde de l'Internal ID pour l'historique
+                internalIdString = internalId.ToString(); // Sauvegarde de l'Internal ID pour l'historique
 
-                // Toutes les requêtes qui s'exécutent avec @InternalId
+                // Toutes les requêtes qui s'exécutent avec @InternalId (Synchronisé avec SqlQueries)
                 var lisaTables = new[] {
                     "LV.SCNTT0", "LV.SAVTT0", "LV.SWBGT0", "LV.PCONT0", "LV.ELIAT0", "LV.ELIHT0",
+                    "LV.ADMDT0", "LV.SPERT0", // Nouvelles tables ajoutées
                     "FJ1.TB5LPPL", "FJ1.TB5LPPR", "FJ1.TB5LGDR", "LV.XRSTT0",
                     "LV.PRIST0", "LV.PECHT0", "LV.PFIET0", "LV.PMNTT0", "LV.PRCTT0", "LV.PSUMT0", "LV.SELTT0",
                     "FJ1.TB5LPPF", "LV.FMVGT0", "LV.FMVDT0", "LV.SFTS", "LV.PINCT0",
@@ -90,7 +91,8 @@ namespace AutoActivator.Services
                 eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"].ToString().Trim();
 
                 // Récupération d'une liste de TOUTES les DemandIds associées
-                var dtDemand = _db.GetData(SqlQueries.Queries["GET_ELIA_DEMAND_ID"], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
+                // (Nom de requête mis à jour : GET_ELIA_DEMAND_IDS)
+                var dtDemand = _db.GetData(SqlQueries.Queries["GET_ELIA_DEMAND_IDS"], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
                 List<string> demandIds = new List<string>();
                 foreach (DataRow row in dtDemand.Rows)
                 {
@@ -104,10 +106,11 @@ namespace AutoActivator.Services
                     eliaDemandId = string.Join(", ", demandIds);
                 }
 
-                // Toutes les requêtes qui s'exécutent avec @EliaId
+                // Toutes les requêtes qui s'exécutent avec @EliaId (Synchronisé avec SqlQueries)
                 var eliaTables = new[] {
                     "FJ1.TB5HELT", "FJ1.TB5UCON", "FJ1.TB5UGAR", "FJ1.TB5UASU", "FJ1.TB5UCCR",
                     "FJ1.TB5UAVE", "FJ1.TB5UPNR", "FJ1.TB5UPRP", "FJ1.TB5UPRS", "FJ1.TB5UPMP",
+                    "FJ1.TB5URPP", // Nouvelle table ajoutée
                     "FJ1.TB5UPRF", "FJ1.TB5UFML",
                     "FJ1.TB5UCRB", "FJ1.TB5UDCR", "FJ1.TB5UBEN"
                 };
@@ -138,7 +141,11 @@ namespace AutoActivator.Services
                         {
                             if (SqlQueries.Queries.ContainsKey(table))
                             {
-                                var dt = _db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@DemandId", dId } });
+                                // Passage des paramètres de façon sécurisée (supporte @DemandId ET @DemandIds selon ton fichier SQL)
+                                var dt = _db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> {
+                                    { "@DemandId", dId },
+                                    { "@DemandIds", dId }
+                                });
                                 AddTableToBuffer(sbElia, table, dt); // Ajout au tampon ELIA
                             }
                         }
@@ -154,7 +161,7 @@ namespace AutoActivator.Services
             {
                 FilePath = generatedPath,
                 StatusMessage = $"UCONAIDN: {eliaUconId} | HDMDAIDN: {eliaDemandId}",
-                InternalId = internalIdString, // NOUVEAU : Transmission de l'ID Interne à l'interface
+                InternalId = internalIdString, // Transmission de l'ID Interne à l'interface
                 UconId = eliaUconId,
                 DemandId = eliaDemandId,
                 LisaContent = sbLisa.ToString(),

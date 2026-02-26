@@ -18,13 +18,13 @@ namespace AutoActivator.Gui
     public class ExtractionItem
     {
         public string ContractId { get; set; }
-        public string InternalId { get; set; } // NOUVEAU : Numéro interne (NO_CNT)
+        public string InternalId { get; set; } // Numéro interne (NO_CNT)
         public string Product { get; set; }
         public string Premium { get; set; }
         public string Ucon { get; set; }
         public string Hdmd { get; set; }
         public string Time { get; set; }
-        public string Test { get; set; } // NOUVEAU : Statut ou valeur de test
+        public string Test { get; set; } // Statut ou valeur de test
         public string FilePath { get; set; }
     }
 
@@ -134,7 +134,7 @@ namespace AutoActivator.Gui
                         Ucon = result.UconId,
                         Hdmd = result.DemandId,
                         Time = DateTime.Now.ToString("HH:mm:ss"),
-                        Test = "À définir", // Ajout de la valeur de Test
+                        Test = "OK", // Ajout de la valeur de Test
                         FilePath = _lastGeneratedPath
                     });
                 }
@@ -154,30 +154,40 @@ namespace AutoActivator.Gui
 
         private void PerformBatchExtraction(string filePath)
         {
-            // CORRECTION MAJEURE ICI : Suppression du caractère invisible BOM (\uFEFF) généré par Excel
+            // CORRECTION MAJEURE ICI : Nettoyage du BOM (\uFEFF) généré par Excel
             string rawText = File.ReadAllText(filePath).Replace("\uFEFF", "");
             string[] lines = rawText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
 
-            if (lines.Length <= 1) return;
+            if (lines.Length <= 1)
+            {
+                MessageBox.Show("Le fichier CSV est vide ou ne contient que l'en-tête.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
             // Buffers pour les fichiers globaux
             StringBuilder globalLisa = new StringBuilder();
             StringBuilder globalElia = new StringBuilder();
 
             string[] headers = lines[0].Split(new[] { ';', ',' });
-            int contractIndex = 4;
-            int premiumIndex = 5;
-            int productIndex = 3;
-            // Si tu as une colonne "Test" dans ton CSV, tu pourrais aussi récupérer son index ici
+
+            // On met -1 par défaut pour vérifier si on a bien trouvé la colonne
+            int contractIndex = -1;
+            int premiumIndex = -1;
+            int productIndex = -1;
 
             for (int i = 0; i < headers.Length; i++)
             {
-                // Nettoyage des guillemets potentiels autour des en-têtes
-                string h = headers[i].Trim().Trim('"');
-                if (h.Equals("LISA Contract", StringComparison.OrdinalIgnoreCase)) contractIndex = i;
-                if (h.Equals("Premium", StringComparison.OrdinalIgnoreCase)) premiumIndex = i;
-                if (h.Equals("Product", StringComparison.OrdinalIgnoreCase)) productIndex = i;
+                // Nettoyage des guillemets potentiels autour des en-têtes et passage en minuscules
+                string h = headers[i].Trim().Trim('"').ToLower();
+
+                // Détection plus souple des colonnes
+                if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa")) contractIndex = i;
+                if (h.Contains("premium") || h.Contains("prime")) premiumIndex = i;
+                if (h.Contains("product") || h.Contains("produit")) productIndex = i;
             }
+
+            // Si on n'a pas trouvé de colonne contrat, on prend la première (index 0) par défaut
+            if (contractIndex == -1) contractIndex = 0;
 
             for (int i = 1; i < lines.Length; i++)
             {
@@ -185,10 +195,14 @@ namespace AutoActivator.Gui
 
                 if (columns.Length > contractIndex)
                 {
-                    // Suppression impérative des guillemets autour des valeurs (essentiel pour la BDD)
-                    string contractNumber = columns[contractIndex].Trim().Trim('"');
-                    string premiumAmount = columns.Length > premiumIndex ? columns[premiumIndex].Trim().Trim('"') : "0";
-                    string productValue = columns.Length > productIndex ? columns[productIndex].Trim().Trim('"') : "N/A";
+                    // Nettoyage agressif : supprime les guillemets ET les signes égal (ex: ="182-272...")
+                    string contractNumber = columns[contractIndex].Replace("=", "").Replace("\"", "").Trim();
+
+                    string premiumAmount = (premiumIndex != -1 && columns.Length > premiumIndex)
+                        ? columns[premiumIndex].Replace("=", "").Replace("\"", "").Trim() : "0";
+
+                    string productValue = (productIndex != -1 && columns.Length > productIndex)
+                        ? columns[productIndex].Replace("=", "").Replace("\"", "").Trim() : "N/A";
 
                     if (!string.IsNullOrEmpty(contractNumber))
                     {
@@ -221,31 +235,31 @@ namespace AutoActivator.Gui
                                 ExtractionHistory.Add(new ExtractionItem
                                 {
                                     ContractId = contractNumber,
-                                    InternalId = result.InternalId, // Ajout de l'Internal ID
+                                    InternalId = result.InternalId,
                                     Product = productValue,
                                     Premium = premiumAmount,
                                     Ucon = result.UconId,
                                     Hdmd = result.DemandId,
                                     Time = DateTime.Now.ToString("HH:mm:ss"),
-                                    Test = "À définir", // Ajout de la valeur de Test
+                                    Test = "OK", // Indique que tout s'est bien passé
                                     FilePath = result.FilePath
                                 });
                             });
                         }
-                        catch (Exception)
+                        catch (Exception ex)
                         {
                             Application.Current.Dispatcher.Invoke(() =>
                             {
                                 ExtractionHistory.Add(new ExtractionItem
                                 {
                                     ContractId = $"{contractNumber} (FAILED)",
-                                    InternalId = "Error", // Valeur par défaut en cas d'erreur
+                                    InternalId = "Error",
                                     Product = productValue,
                                     Premium = premiumAmount,
                                     Ucon = "Error",
                                     Hdmd = "Error",
                                     Time = DateTime.Now.ToString("HH:mm:ss"),
-                                    Test = "Error", // Valeur par défaut en cas d'erreur
+                                    Test = ex.Message.Contains("not found") ? "Non trouvé en BDD" : "Erreur SQL",
                                     FilePath = string.Empty
                                 });
                             });
@@ -257,7 +271,7 @@ namespace AutoActivator.Gui
             // Sauvegarde des fichiers globaux (avec sécurité au cas où aucun contrat ne ressortirait)
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
 
-            string finalLisaContent = globalLisa.Length > 0 ? globalLisa.ToString() : "AUCUN CONTRAT LISA TROUVE LORS DE L'EXTRACTION.";
+            string finalLisaContent = globalLisa.Length > 0 ? globalLisa.ToString() : "AUCUN CONTRAT LISA TROUVE LORS DE L'EXTRACTION.\n\nVeuillez vérifier que les numéros de contrats dans votre CSV sont au bon format (ex: 182-1234567-89).";
             File.WriteAllText(Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_LISA_{timestamp}.csv"), finalLisaContent, Encoding.UTF8);
 
             string finalEliaContent = globalElia.Length > 0 ? globalElia.ToString() : "AUCUN CONTRAT ELIA TROUVE LORS DE L'EXTRACTION.";
