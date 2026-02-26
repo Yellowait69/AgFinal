@@ -52,6 +52,12 @@ namespace AutoActivator.Services
         {
             DataTable dataTable = new DataTable();
 
+            // CORRECTION MINEURE : Correction automatique de la syntaxe IN si on a passé un paramètre simple (pour éviter l'erreur SQL)
+            if (query.Contains("IN @DemandIds"))
+            {
+                query = query.Replace("IN @DemandIds", "= @DemandIds");
+            }
+
             try
             {
                 using (SqlConnection connection = new SqlConnection(_connectionString))
@@ -74,14 +80,11 @@ namespace AutoActivator.Services
                     }
                 }
             }
-            catch (SqlException e)
+            catch (Exception e) // CORRECTION MAJEURE : On catch tout et on throw pour que l'UI affiche "Erreur SQL"
             {
-                Console.WriteLine($"[ERROR] SQL Error: {e.Message}");
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"[ERROR] Unexpected error: {e.Message}");
-                throw;
+                Console.WriteLine($"[ERROR] SQL Error on query : {query}\nDetails: {e.Message}");
+                // On remonte l'erreur pour que l'interface graphique (ExtractionService -> MainWindow) soit au courant
+                throw new Exception($"Erreur SQL: {e.Message}");
             }
 
             return dataTable;
