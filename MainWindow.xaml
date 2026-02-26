@@ -19,15 +19,39 @@
 
         <Grid Grid.Column="1" Margin="25">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="*"/>    </Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
             <StackPanel Grid.Row="0">
-                <TextBlock Text="Batch Extraction Module" FontSize="22" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
+                <TextBlock Text="Extraction Module" FontSize="22" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
 
                 <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1">
                     <StackPanel>
-                        <TextBlock Text="Contract Number (e.g., 182-2728195-31):" Margin="0,0,0,8" FontWeight="SemiBold"/>
-                        <TextBox x:Name="TxtContract" Margin="0,0,0,15" Padding="8" FontSize="14" BorderBrush="#DCDDE1"/>
+                        <TextBlock Text="Extraction Mode:" Margin="0,0,0,10" FontWeight="Bold" Foreground="#2C3E50"/>
+
+                        <TextBlock Text="1. Single Contract Number (e.g., 182-2728195-31):" Margin="0,0,0,8" FontWeight="SemiBold"/>
+                        <TextBox x:Name="TxtContract" Margin="0,0,0,10" Padding="8" FontSize="14" BorderBrush="#DCDDE1"
+                                 TextChanged="TxtContract_TextChanged"/>
+
+                        <TextBlock Text="- OR -" HorizontalAlignment="Center" FontWeight="Bold" Foreground="#BDC3C7" Margin="0,5,0,5"/>
+
+                        <TextBlock Text="2. CSV File (Batch extraction):" Margin="0,0,0,8" FontWeight="SemiBold"/>
+                        <Grid Margin="0,0,0,15">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="TxtFilePath" IsReadOnly="True" Padding="8" FontSize="14" BorderBrush="#DCDDE1" Grid.Column="0" Margin="0,0,10,0"/>
+                            <Button x:Name="BtnBrowse" Content="Browse..." Grid.Column="1" Padding="15,8" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnBrowse_Click">
+                                <Button.Resources>
+                                    <Style TargetType="Border">
+                                        <Setter Property="CornerRadius" Value="3"/>
+                                    </Style>
+                                </Button.Resources>
+                            </Button>
+                        </Grid>
 
                         <Button x:Name="BtnRun" Content="Run Extraction (LISA &amp; ELIA)" Click="BtnRun_Click"
                                 Background="#27AE60" Foreground="White" Padding="12" FontWeight="Bold" BorderThickness="0" Cursor="Hand">
@@ -72,7 +96,7 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="{Binding Time}" Foreground="#95A5A6" VerticalAlignment="Center"/>
                                 <TextBlock Grid.Column="1" Text="{Binding ContractId}" FontWeight="Bold" VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="2" Text="Successful extraction" Foreground="#27AE60" FontStyle="Italic" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Processed" Foreground="#27AE60" FontStyle="Italic" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>

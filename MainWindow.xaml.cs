@@ -8,7 +8,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
+using Microsoft.Win32; // Ajouté pour OpenFileDialog
 using AutoActivator.Services;
 using AutoActivator.Config;
 using AutoActivator.Sql;
@@ -48,13 +50,39 @@ namespace AutoActivator.Gui
             }
         }
 
+        // Événement pour vider le champ fichier si on tape un contrat manuellement
+        private void TxtContract_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (TxtFilePath != null && !string.IsNullOrEmpty(TxtContract.Text))
+            {
+                TxtFilePath.Text = string.Empty;
+            }
+        }
+
+        // Événement du bouton Parcourir pour sélectionner le fichier CSV
+        private void BtnBrowse_Click(object sender, RoutedEventArgs e)
+        {
+            OpenFileDialog openFileDialog = new OpenFileDialog
+            {
+                Filter = "Fichiers CSV|*.csv",
+                Title = "Sélectionnez un fichier CSV contenant les contrats"
+            };
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                TxtFilePath.Text = openFileDialog.FileName;
+                TxtContract.Text = string.Empty; // On vide le champ unique si un fichier est choisi
+            }
+        }
+
         private async void BtnRun_Click(object sender, RoutedEventArgs e)
         {
-            string input = TxtContract.Text.Trim();
+            string singleInput = TxtContract.Text.Trim();
+            string fileInput = TxtFilePath?.Text.Trim();
 
-            if (string.IsNullOrEmpty(input))
+            if (string.IsNullOrEmpty(singleInput) && string.IsNullOrEmpty(fileInput))
             {
-                TxtStatus.Text = "Please enter a contract number.";
+                TxtStatus.Text = "Please enter a contract number or select a CSV file.";
                 TxtStatus.Foreground = Brushes.Orange;
                 return;
             }
@@ -62,23 +90,36 @@ namespace AutoActivator.Gui
             PrgLoading.Visibility = Visibility.Visible;
             LnkFile.Visibility = Visibility.Collapsed;
             BtnRun.IsEnabled = false;
-            TxtStatus.Text = "Extraction in progress from LISA and ELIA...";
+            if (BtnBrowse != null) BtnBrowse.IsEnabled = false;
+
+            TxtStatus.Text = string.IsNullOrEmpty(fileInput) ? "Extraction in progress from LISA and ELIA..." : "Batch extraction in progress...";
             TxtStatus.Foreground = Brushes.Blue;
 
             try
             {
-                string resultInfo = await Task.Run(() => PerformExtractionLogic(input));
-
-                TxtStatus.Text = $"Completed! {resultInfo}";
-                TxtStatus.Foreground = Brushes.Green;
-                LnkFile.Visibility = Visibility.Visible;
-
-                ExtractionHistory.Insert(0, new ExtractionItem
+                if (!string.IsNullOrEmpty(fileInput))
                 {
-                    ContractId = input,
-                    Time = DateTime.Now.ToString("HH:mm:ss"),
-                    FilePath = _lastGeneratedPath
-                });
+                    // Lancement du mode Batch (fichier CSV)
+                    await Task.Run(() => PerformBatchExtraction(fileInput));
+                    TxtStatus.Text = "Batch extraction completed!";
+                    TxtStatus.Foreground = Brushes.Green;
+                }
+                else
+                {
+                    // Lancement du mode Contrat Unique (logique d'origine)
+                    string resultInfo = await Task.Run(() => PerformExtractionLogic(singleInput));
+
+                    TxtStatus.Text = $"Completed! {resultInfo}";
+                    TxtStatus.Foreground = Brushes.Green;
+                    LnkFile.Visibility = Visibility.Visible;
+
+                    ExtractionHistory.Insert(0, new ExtractionItem
+                    {
+                        ContractId = singleInput,
+                        Time = DateTime.Now.ToString("HH:mm:ss"),
+                        FilePath = _lastGeneratedPath
+                    });
+                }
             }
             catch (Exception ex)
             {
@@ -89,6 +130,61 @@ namespace AutoActivator.Gui
             {
                 PrgLoading.Visibility = Visibility.Collapsed;
                 BtnRun.IsEnabled = true;
+                if (BtnBrowse != null) BtnBrowse.IsEnabled = true;
+            }
+        }
+
+        // Nouvelle méthode d'extraction par lots via fichier CSV
+        private void PerformBatchExtraction(string filePath)
+        {
+            string[] lines = File.ReadAllLines(filePath);
+
+            // On commence à i = 1 pour ignorer la ligne d'en-tête (s'il y en a une)
+            // Si votre fichier CSV n'a pas d'en-tête, changez "int i = 1" en "int i = 0"
+            for (int i = 1; i < lines.Length; i++)
+            {
+                string line = lines[i];
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                // On sépare par point-virgule ou virgule
+                string[] columns = line.Split(new[] { ';', ',' });
+
+                if (columns.Length >= 1)
+                {
+                    string contractNumber = columns[0].Trim();
+                    // string premiumAmount = columns.Length > 1 ? columns[1].Trim() : "0"; // Utile plus tard pour les primes
+
+                    if (!string.IsNullOrEmpty(contractNumber))
+                    {
+                        try
+                        {
+                            PerformExtractionLogic(contractNumber);
+
+                            // Mise à jour de l'historique sur le thread UI principal
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                ExtractionHistory.Insert(0, new ExtractionItem
+                                {
+                                    ContractId = contractNumber,
+                                    Time = DateTime.Now.ToString("HH:mm:ss"),
+                                    FilePath = _lastGeneratedPath
+                                });
+                            });
+                        }
+                        catch (Exception)
+                        {
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                ExtractionHistory.Insert(0, new ExtractionItem
+                                {
+                                    ContractId = $"{contractNumber} (FAILED)",
+                                    Time = DateTime.Now.ToString("HH:mm:ss"),
+                                    FilePath = string.Empty
+                                });
+                            });
+                        }
+                    }
+                }
             }
         }
 
