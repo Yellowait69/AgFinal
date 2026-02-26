@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -28,7 +29,7 @@ namespace AutoActivator.Gui
     public partial class MainWindow : Window
     {
         private string _lastGeneratedPath = "";
-        private readonly ExtractionService _extractionService; // Instance de notre nouveau service
+        private readonly ExtractionService _extractionService;
         public ObservableCollection<ExtractionItem> ExtractionHistory { get; set; } = new ObservableCollection<ExtractionItem>();
 
         public MainWindow()
@@ -41,7 +42,6 @@ namespace AutoActivator.Gui
             ICollectionView view = CollectionViewSource.GetDefaultView(ExtractionHistory);
             view.SortDescriptions.Add(new SortDescription("Product", ListSortDirection.Ascending));
 
-            // Initialisation du service
             _extractionService = new ExtractionService();
         }
 
@@ -99,7 +99,7 @@ namespace AutoActivator.Gui
             BtnRun.IsEnabled = false;
             if (BtnBrowse != null) BtnBrowse.IsEnabled = false;
 
-            TxtStatus.Text = string.IsNullOrEmpty(fileInput) ? "Extraction in progress from LISA and ELIA..." : "Batch extraction in progress...";
+            TxtStatus.Text = string.IsNullOrEmpty(fileInput) ? "Extraction in progress..." : "Batch extraction in progress...";
             TxtStatus.Foreground = Brushes.Blue;
 
             try
@@ -107,12 +107,15 @@ namespace AutoActivator.Gui
                 if (!string.IsNullOrEmpty(fileInput))
                 {
                     await Task.Run(() => PerformBatchExtraction(fileInput));
-                    TxtStatus.Text = "Batch extraction completed!";
+                    TxtStatus.Text = "Batch extraction completed! Global files saved in Output folder.";
                     TxtStatus.Foreground = Brushes.Green;
+
+                    // Pour le batch, le lien ouvrira le dossier de sortie
+                    _lastGeneratedPath = Settings.OutputDir;
+                    LnkFile.Visibility = Visibility.Visible;
                 }
                 else
                 {
-                    // Appel simplifié au service d'extraction
                     ExtractionResult result = await Task.Run(() => _extractionService.PerformExtraction(singleInput));
 
                     _lastGeneratedPath = result.FilePath;
@@ -120,7 +123,6 @@ namespace AutoActivator.Gui
                     TxtStatus.Foreground = Brushes.Green;
                     LnkFile.Visibility = Visibility.Visible;
 
-                    // Ajout avec Add (pour le tri automatique) et intégration de Ucon, Hdmd, Product
                     ExtractionHistory.Add(new ExtractionItem
                     {
                         ContractId = singleInput,
@@ -148,37 +150,32 @@ namespace AutoActivator.Gui
 
         private void PerformBatchExtraction(string filePath)
         {
-            // 1. Lire tout le fichier et séparer les lignes de manière universelle
             string rawText = File.ReadAllText(filePath);
             string[] lines = rawText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
 
-            if (lines.Length <= 1) return; // Si le fichier est vide ou n'a qu'un en-tête, on arrête
+            if (lines.Length <= 1) return;
 
-            // 2. Détecter automatiquement à quel index se trouve la colonne
+            // Buffers pour les fichiers globaux
+            StringBuilder globalLisa = new StringBuilder();
+            StringBuilder globalElia = new StringBuilder();
+
             string[] headers = lines[0].Split(new[] { ';', ',' });
-            int contractIndex = 4; // Valeur par défaut
+            int contractIndex = 4;
             int premiumIndex = 5;
             int productIndex = 3;
 
             for (int i = 0; i < headers.Length; i++)
             {
-                if (headers[i].Trim().Equals("LISA Contract", StringComparison.OrdinalIgnoreCase))
-                    contractIndex = i;
-                if (headers[i].Trim().Equals("Premium", StringComparison.OrdinalIgnoreCase))
-                    premiumIndex = i;
-                if (headers[i].Trim().Equals("Product", StringComparison.OrdinalIgnoreCase))
-                    productIndex = i;
+                string h = headers[i].Trim();
+                if (h.Equals("LISA Contract", StringComparison.OrdinalIgnoreCase)) contractIndex = i;
+                if (h.Equals("Premium", StringComparison.OrdinalIgnoreCase)) premiumIndex = i;
+                if (h.Equals("Product", StringComparison.OrdinalIgnoreCase)) productIndex = i;
             }
 
-            // 3. Boucle d'extraction
             for (int i = 1; i < lines.Length; i++)
             {
-                string line = lines[i];
-                if (string.IsNullOrWhiteSpace(line)) continue;
+                string[] columns = lines[i].Split(new[] { ';', ',' });
 
-                string[] columns = line.Split(new[] { ';', ',' });
-
-                // On vérifie que la ligne contient suffisamment de colonnes pour atteindre notre index principal (contrat)
                 if (columns.Length > contractIndex)
                 {
                     string contractNumber = columns[contractIndex].Trim();
@@ -189,9 +186,21 @@ namespace AutoActivator.Gui
                     {
                         try
                         {
-                            // Appel au service d'extraction
                             ExtractionResult result = _extractionService.PerformExtraction(contractNumber);
-                            _lastGeneratedPath = result.FilePath;
+
+                            // Accumulation LISA
+                            globalLisa.AppendLine("############################################################");
+                            globalLisa.AppendLine($"### CONTRACT: {contractNumber} | PRODUCT: {productValue}");
+                            globalLisa.AppendLine("############################################################");
+                            globalLisa.Append(result.LisaContent);
+                            globalLisa.AppendLine();
+
+                            // Accumulation ELIA
+                            globalElia.AppendLine("############################################################");
+                            globalElia.AppendLine($"### CONTRACT: {contractNumber} | UCON: {result.UconId}");
+                            globalElia.AppendLine("############################################################");
+                            globalElia.Append(result.EliaContent);
+                            globalElia.AppendLine();
 
                             Application.Current.Dispatcher.Invoke(() =>
                             {
@@ -216,8 +225,8 @@ namespace AutoActivator.Gui
                                     ContractId = $"{contractNumber} (FAILED)",
                                     Product = productValue,
                                     Premium = premiumAmount,
-                                    Ucon = "Erreur",
-                                    Hdmd = "Erreur",
+                                    Ucon = "Error",
+                                    Hdmd = "Error",
                                     Time = DateTime.Now.ToString("HH:mm:ss"),
                                     FilePath = string.Empty
                                 });
@@ -226,12 +235,25 @@ namespace AutoActivator.Gui
                     }
                 }
             }
+
+            // Sauvegarde des fichiers globaux
+            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
+            File.WriteAllText(Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_LISA_{timestamp}.csv"), globalLisa.ToString(), Encoding.UTF8);
+            File.WriteAllText(Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_ELIA_{timestamp}.csv"), globalElia.ToString(), Encoding.UTF8);
         }
 
         private void Hyperlink_Click(object sender, RoutedEventArgs e)
         {
-            if (File.Exists(_lastGeneratedPath))
+            if (Directory.Exists(_lastGeneratedPath))
+            {
+                // Si c'est un dossier (Batch), on l'ouvre
+                Process.Start("explorer.exe", _lastGeneratedPath);
+            }
+            else if (File.Exists(_lastGeneratedPath))
+            {
+                // Si c'est un fichier unique, on le sélectionne
                 Process.Start("explorer.exe", $"/select,\"{_lastGeneratedPath}\"");
+            }
         }
 
         private void BtnActivation_Click(object sender, RoutedEventArgs e) { TxtStatus.Text = "Activation Module selected."; }

@@ -9,13 +9,15 @@ using AutoActivator.Sql;
 
 namespace AutoActivator.Services
 {
-    // Petite classe pour renvoyer le résultat à l'interface utilisateur
+    // Classe de résultat enrichie pour séparer les contenus LISA et ELIA
     public class ExtractionResult
     {
         public string FilePath { get; set; }
         public string StatusMessage { get; set; }
         public string UconId { get; set; }
         public string DemandId { get; set; }
+        public string LisaContent { get; set; } // Nouveau : Contenu texte des tables LISA
+        public string EliaContent { get; set; } // Nouveau : Contenu texte des tables ELIA
     }
 
     public class ExtractionService
@@ -36,25 +38,26 @@ namespace AutoActivator.Services
 
             var parameters = new Dictionary<string, object> { { "@ContractNumber", targetContract } };
 
-            // Initial IDs retrieval via optimized queries in SqlQueries.cs
+            // Récupération des IDs initiaux
             var dtLisa = _db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
             var dtElia = _db.GetData(SqlQueries.Queries["GET_ELIA_ID"], parameters);
 
             if (dtLisa.Rows.Count == 0 && dtElia.Rows.Count == 0)
                 throw new Exception($"Contract {targetContract} not found.");
 
-            StringBuilder sb = new StringBuilder();
+            // Initialisation des tampons séparés
+            StringBuilder sbLisa = new StringBuilder();
+            StringBuilder sbElia = new StringBuilder();
+
             string generatedPath = Path.Combine(Settings.OutputDir, $"FULL_EXTRACT_{targetContract}.csv");
 
             string eliaUconId = "Not found";
             string eliaDemandId = "Not found";
-            string lisaId = "Not found";
 
-            // --- LISA SECTION ---
+            // --- SECTION LISA ---
             if (dtLisa.Rows.Count > 0)
             {
                 long internalId = Convert.ToInt64(dtLisa.Rows[0]["NO_CNT"]);
-                lisaId = internalId.ToString();
 
                 var lisaTables = new[] {
                     "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0",
@@ -68,12 +71,12 @@ namespace AutoActivator.Services
                     if (SqlQueries.Queries.ContainsKey(table))
                     {
                         var dt = _db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@InternalId", internalId } });
-                        AddTableToBuffer(sb, table, dt);
+                        AddTableToBuffer(sbLisa, table, dt); // Ajout au tampon LISA
                     }
                 }
             }
 
-            // --- ELIA SECTION ---
+            // --- SECTION ELIA ---
             if (dtElia.Rows.Count > 0)
             {
                 eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"].ToString().Trim();
@@ -95,7 +98,7 @@ namespace AutoActivator.Services
                     if (SqlQueries.Queries.ContainsKey(table))
                     {
                         var dt = _db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
-                        AddTableToBuffer(sb, table, dt);
+                        AddTableToBuffer(sbElia, table, dt); // Ajout au tampon ELIA
                     }
                 }
 
@@ -107,20 +110,24 @@ namespace AutoActivator.Services
                         if (SqlQueries.Queries.ContainsKey(table))
                         {
                             var dt = _db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@DemandId", eliaDemandId } });
-                            AddTableToBuffer(sb, table, dt);
+                            AddTableToBuffer(sbElia, table, dt); // Ajout au tampon ELIA
                         }
                     }
                 }
             }
 
-            File.WriteAllText(generatedPath, sb.ToString(), Encoding.UTF8);
+            // Sauvegarde du fichier individuel combiné (LISA + ELIA)
+            string fullContent = sbLisa.ToString() + Environment.NewLine + sbElia.ToString();
+            File.WriteAllText(generatedPath, fullContent, Encoding.UTF8);
 
             return new ExtractionResult
             {
                 FilePath = generatedPath,
                 StatusMessage = $"UCONAIDN: {eliaUconId} | HDMDAIDN: {eliaDemandId}",
                 UconId = eliaUconId,
-                DemandId = eliaDemandId
+                DemandId = eliaDemandId,
+                LisaContent = sbLisa.ToString(),
+                EliaContent = sbElia.ToString()
             };
         }
 
@@ -141,7 +148,10 @@ namespace AutoActivator.Services
                     sb.AppendLine(string.Join(";", fields));
                 }
             }
-            else { sb.AppendLine("NO DATA FOUND"); }
+            else
+            {
+                sb.AppendLine("NO DATA FOUND");
+            }
             sb.AppendLine();
         }
     }

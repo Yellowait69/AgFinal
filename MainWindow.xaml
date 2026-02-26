@@ -1,7 +1,7 @@
 <Window x:Class="AutoActivator.Gui.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="L.I.S.A Auto-Activator (.NET Version)" Height="600" Width="950" Background="#F3F3F3">
+        Title="L.I.S.A Auto-Activator (.NET Version)" Height="650" Width="1000" Background="#F3F3F3">
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="220"/>
@@ -25,7 +25,7 @@
             </Grid.RowDefinitions>
 
             <StackPanel Grid.Row="0">
-                <TextBlock Text="Extraction Module" FontSize="22" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
+                <TextBlock Text="Extraction Module" FontSize="22" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0="20"/>
 
                 <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1">
                     <StackPanel>
@@ -72,7 +72,7 @@
 
                 <TextBlock x:Name="LnkFile" Visibility="Collapsed" Margin="0,10,0,0" FontSize="14">
                     <Hyperlink Click="Hyperlink_Click" Foreground="#2980B9" FontWeight="Bold">
-                        <Run Text="📁 Click here to open the generated file (CSV)"/>
+                        <Run Text="📁 Click here to open extraction results (File or Folder)"/>
                     </Hyperlink>
                 </TextBlock>
             </StackPanel>
@@ -83,7 +83,7 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="Session History (Auto-sorted by Product)" FontWeight="Bold" Foreground="#7F8C8D" Margin="0,0,0,10"/>
+                <TextBlock Grid.Row="0" Text="Session History (Sorted by Product)" FontWeight="Bold" Foreground="#7F8C8D" Margin="0,0,0,10"/>
 
                 <ListView x:Name="ListHistory" Grid.Row="1" Background="White" BorderBrush="#DCDDE1" BorderThickness="1" AlternationCount="2">
                     <ListView.ItemContainerStyle>
@@ -98,9 +98,9 @@
                     </ListView.ItemContainerStyle>
                     <ListView.View>
                         <GridView>
-                            <GridViewColumn Header="Time" DisplayMemberBinding="{Binding Time}" Width="70"/>
+                            <GridViewColumn Header="Time" DisplayMemberBinding="{Binding Time}" Width="75"/>
 
-                            <GridViewColumn Header="Product" Width="70">
+                            <GridViewColumn Header="Product" Width="80">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding Product}" FontWeight="Bold" Foreground="#8E44AD"/>
@@ -108,7 +108,7 @@
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>
 
-                            <GridViewColumn Header="Contract ID" Width="130">
+                            <GridViewColumn Header="Contract ID" Width="140">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding ContractId}" FontWeight="Bold"/>
@@ -116,7 +116,7 @@
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>
 
-                            <GridViewColumn Header="Premium" Width="90">
+                            <GridViewColumn Header="Premium" Width="95">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal">
@@ -127,11 +127,11 @@
                                 </GridViewColumn.CellTemplate>
                             </GridViewColumn>
 
-                            <GridViewColumn Header="UCON ID" DisplayMemberBinding="{Binding Ucon}" Width="110"/>
+                            <GridViewColumn Header="UCON ID" DisplayMemberBinding="{Binding Ucon}" Width="115"/>
 
-                            <GridViewColumn Header="Demand ID" DisplayMemberBinding="{Binding Hdmd}" Width="110"/>
+                            <GridViewColumn Header="Demand ID" DisplayMemberBinding="{Binding Hdmd}" Width="115"/>
 
-                            <GridViewColumn Header="Status" Width="90">
+                            <GridViewColumn Header="Status" Width="95">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="Processed" Foreground="#27AE60" FontStyle="Italic"/>
