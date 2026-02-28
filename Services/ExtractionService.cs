@@ -42,9 +42,6 @@ namespace AutoActivator.Services
             var sbLisa = new StringBuilder();
             var sbElia = new StringBuilder();
 
-            // Output file name now includes the environment suffix to avoid overwrites
-            string generatedPath = Path.Combine(Settings.OutputDir, $"FULL_EXTRACT_{envSuffix}_{cleanedContract}.csv");
-
             string eliaUconId = "Not found", eliaDemandId = "Not found", internalIdString = "Not found";
 
             #region SECTION LISA
@@ -86,17 +83,31 @@ namespace AutoActivator.Services
             else sbElia.AppendLine("### ELIA SECTION : NO DATA FOUND ###");
             #endregion
 
+            // --- NOUVELLE LOGIQUE DE NOMMAGE (SINGLE -> Uniq) ---
             if (saveIndividualFile)
             {
                 Directory.CreateDirectory(Settings.OutputDir);
-                string fullContent = $"================================================================================\n=== SECTION LISA (INTERNAL ID: {internalIdString} | ENV: {envSuffix}) ===\n================================================================================\n{sbLisa}\n\n================================================================================\n=== SECTION ELIA (UCON ID: {eliaUconId} | ENV: {envSuffix}) ===\n================================================================================\n{sbElia}";
-                File.WriteAllText(generatedPath, fullContent, Encoding.UTF8);
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+
+                // Get uppercase letter of the environment (e.g., "D" for "D000")
+                char envLetter = !string.IsNullOrEmpty(envSuffix) ? char.ToUpper(envSuffix[0]) : 'U';
+
+                // Nouveaux noms : ExtractionLISA_D_Uniq_182-2728195-31_20260228_153000.csv
+                string lisaPath = Path.Combine(Settings.OutputDir, $"ExtractionLISA_{envLetter}_Uniq_{cleanedContract}_{timestamp}.csv");
+                string eliaPath = Path.Combine(Settings.OutputDir, $"ExtractionELIA_{envLetter}_Uniq_{cleanedContract}_{timestamp}.csv");
+
+                string lisaHeader = $"================================================================================\n=== SECTION LISA (INTERNAL ID: {internalIdString} | ENV: {envSuffix}) ===\n================================================================================\n";
+                File.WriteAllText(lisaPath, lisaHeader + sbLisa.ToString(), Encoding.UTF8);
+
+                string eliaHeader = $"================================================================================\n=== SECTION ELIA (UCON ID: {eliaUconId} | ENV: {envSuffix}) ===\n================================================================================\n";
+                File.WriteAllText(eliaPath, eliaHeader + sbElia.ToString(), Encoding.UTF8);
             }
 
             return new ExtractionResult
             {
-                FilePath = saveIndividualFile ? generatedPath : string.Empty,
-                StatusMessage = $"LISA: {internalIdString} | ELIA: {eliaUconId}",
+                // We return the output directory so the UI can open the folder containing both files
+                FilePath = Settings.OutputDir,
+                StatusMessage = $"LISA & ELIA saved | ID: {internalIdString}",
                 InternalId = internalIdString, UconId = eliaUconId, DemandId = eliaDemandId,
                 LisaContent = sbLisa.ToString(), EliaContent = sbElia.ToString()
             };
