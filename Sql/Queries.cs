@@ -58,6 +58,10 @@ namespace AutoActivator.Sql
 
             { "LV.XRSTT0", "SELECT * FROM LV.XRSTT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
 
+            // Nouvelles tables LISA ajoutées depuis le script 2
+            { "LV.SPERT0", "SELECT * FROM LV.SPERT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+            { "LV.ADMDT0", "SELECT * FROM LV.ADMDT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
+
             // ==========================================
             // DONNEES LISA (PLANS ET GARANTIES)
             // ==========================================
@@ -89,6 +93,10 @@ namespace AutoActivator.Sql
             { "FJ1.TB5HDGD", "SELECT * FROM FJ1.TB5HDGD WITH(NOLOCK) WHERE IT5HDMDAIDN IN (SELECT value FROM STRING_SPLIT(@DemandIds, ','))" },
             { "FJ1.TB5HPRO", "SELECT * FROM FJ1.TB5HPRO WITH(NOLOCK) WHERE IT5HDMDAIDN IN (SELECT value FROM STRING_SPLIT(@DemandIds, ','))" },
 
+            // Nouvelles tables de demande ELIA ajoutées depuis le script 2
+            { "FJ1.TB5HEPT", "SELECT * FROM FJ1.TB5HEPT WITH(NOLOCK) WHERE IT5HDMDAIDN IN (SELECT value FROM STRING_SPLIT(@DemandIds, ','))" },
+            { "FJ1.TB5HDIC", "SELECT * FROM FJ1.TB5HDIC WITH(NOLOCK) WHERE IT5HDMDAIDN IN (SELECT value FROM STRING_SPLIT(@DemandIds, ','))" },
+
             // ==========================================
             // DONNEES ELIA (CONTRAT)
             // ==========================================
@@ -114,6 +122,9 @@ namespace AutoActivator.Sql
             { "FJ1.TB5UPRP", "SELECT * FROM FJ1.TB5UPRP WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
             { "FJ1.TB5UPRS", "SELECT * FROM FJ1.TB5UPRS WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
             { "FJ1.TB5UPMP", "SELECT * FROM FJ1.TB5UPMP WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
+
+            // Nouvelle table ELIA ajoutée depuis le script 2
+            { "FJ1.TB5URPP", "SELECT * FROM FJ1.TB5URPP WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
 
             // ==========================================
             // DONNEES FINANCIERES & FONDS

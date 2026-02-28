@@ -3,35 +3,39 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using Microsoft.Win32;
-using AutoActivator.Services;
 using AutoActivator.Config;
+using AutoActivator.Models; // Ajout du namespace pour les modèles (DTO)
+using AutoActivator.Services;
 
 namespace AutoActivator.Gui
 {
     public class ExtractionItem
     {
         public string ContractId { get; set; }
-        public string InternalId { get; set; } // Numéro interne (NO_CNT)
+        public string InternalId { get; set; }
         public string Product { get; set; }
         public string Premium { get; set; }
         public string Ucon { get; set; }
         public string Hdmd { get; set; }
         public string Time { get; set; }
-        public string Test { get; set; } // Statut ou valeur de test
+        public string Test { get; set; }
         public string FilePath { get; set; }
     }
 
     public partial class MainWindow : Window
     {
         private string _lastGeneratedPath = "";
+
+        // Séparation des responsabilités : on déclare nos deux services distincts
         private readonly ExtractionService _extractionService;
+        private readonly BatchExtractionService _batchExtractionService;
+
         public ObservableCollection<ExtractionItem> ExtractionHistory { get; set; } = new ObservableCollection<ExtractionItem>();
 
         public MainWindow()
@@ -40,11 +44,12 @@ namespace AutoActivator.Gui
             InitializeDirectories();
             ListHistory.ItemsSource = ExtractionHistory;
 
-            // Tri automatique de l'historique par la colonne "Product"
             ICollectionView view = CollectionViewSource.GetDefaultView(ExtractionHistory);
             view.SortDescriptions.Add(new SortDescription("Product", ListSortDirection.Ascending));
 
+            // Initialisation des services
             _extractionService = new ExtractionService();
+            _batchExtractionService = new BatchExtractionService(_extractionService);
         }
 
         private void InitializeDirectories()
@@ -108,17 +113,17 @@ namespace AutoActivator.Gui
             {
                 if (!string.IsNullOrEmpty(fileInput))
                 {
-                    await Task.Run(() => PerformBatchExtraction(fileInput));
+                    // Lancement du Batch via le service dédié, avec une fonction de Callback pour mettre à jour l'UI
+                    await Task.Run(() => _batchExtractionService.PerformBatchExtraction(fileInput, UpdateHistoryGrid));
+
                     TxtStatus.Text = "Batch extraction completed! Global files saved in Output folder.";
                     TxtStatus.Foreground = Brushes.Green;
-
-                    // Pour le batch, le lien ouvrira le dossier de sortie
                     _lastGeneratedPath = Settings.OutputDir;
                     LnkFile.Visibility = Visibility.Visible;
                 }
                 else
                 {
-                    // Pour un contrat unique, on garde la sauvegarde du fichier individuel
+                    // Contrat unique via le service d'extraction simple
                     ExtractionResult result = await Task.Run(() => _extractionService.PerformExtraction(singleInput, true));
 
                     _lastGeneratedPath = result.FilePath;
@@ -126,17 +131,15 @@ namespace AutoActivator.Gui
                     TxtStatus.Foreground = Brushes.Green;
                     LnkFile.Visibility = Visibility.Visible;
 
-                    ExtractionHistory.Add(new ExtractionItem
+                    UpdateHistoryGrid(new BatchProgressInfo
                     {
                         ContractId = singleInput,
                         InternalId = result.InternalId,
                         Product = "N/A",
                         Premium = "0",
-                        Ucon = result.UconId,
-                        Hdmd = result.DemandId,
-                        Time = DateTime.Now.ToString("HH:mm:ss"),
-                        Test = "OK",
-                        FilePath = _lastGeneratedPath
+                        UconId = result.UconId,
+                        DemandId = result.DemandId,
+                        Status = "OK"
                     });
                 }
             }
@@ -144,6 +147,7 @@ namespace AutoActivator.Gui
             {
                 TxtStatus.Text = $"Error: {ex.Message}";
                 TxtStatus.Foreground = Brushes.Red;
+                MessageBox.Show(ex.Message, "Erreur d'extraction", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
@@ -153,142 +157,36 @@ namespace AutoActivator.Gui
             }
         }
 
-        private void PerformBatchExtraction(string filePath)
+        /// <summary>
+        /// Méthode appelée par les services (Callback) pour mettre à jour la grille de l'historique de manière asynchrone (Thread-Safe).
+        /// </summary>
+        private void UpdateHistoryGrid(BatchProgressInfo info)
         {
-            string rawText = File.ReadAllText(filePath).Replace("\uFEFF", "");
-            string[] lines = rawText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-
-            if (lines.Length <= 1)
+            Application.Current.Dispatcher.Invoke(() =>
             {
-                Application.Current.Dispatcher.Invoke(() =>
+                ExtractionHistory.Add(new ExtractionItem
                 {
-                    MessageBox.Show("Le fichier CSV est vide ou ne contient que l'en-tête.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    ContractId = info.ContractId,
+                    InternalId = info.InternalId,
+                    Product = info.Product,
+                    Premium = info.Premium,
+                    Ucon = info.UconId,
+                    Hdmd = info.DemandId,
+                    Time = DateTime.Now.ToString("HH:mm:ss"),
+                    Test = info.Status,
+                    FilePath = string.Empty
                 });
-                return;
-            }
-
-            StringBuilder globalLisa = new StringBuilder();
-            StringBuilder globalElia = new StringBuilder();
-
-            string[] headers = lines[0].Split(new[] { ';', ',' });
-            int contractIndex = -1;
-            int premiumIndex = -1;
-            int productIndex = -1;
-
-            for (int i = 0; i < headers.Length; i++)
-            {
-                string h = headers[i].Trim().Trim('"').ToLower();
-                if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa")) contractIndex = i;
-                if (h.Contains("premium") || h.Contains("prime")) premiumIndex = i;
-                if (h.Contains("product") || h.Contains("produit")) productIndex = i;
-            }
-
-            if (contractIndex == -1) contractIndex = 0;
-
-            for (int i = 1; i < lines.Length; i++)
-            {
-                string[] columns = lines[i].Split(new[] { ';', ',' });
-
-                if (columns.Length > contractIndex)
-                {
-                    string contractNumber = columns[contractIndex].Replace("=", "").Replace("\"", "").Trim();
-                    string premiumAmount = (premiumIndex != -1 && columns.Length > premiumIndex)
-                        ? columns[premiumIndex].Replace("=", "").Replace("\"", "").Trim() : "0";
-                    string productValue = (productIndex != -1 && columns.Length > productIndex)
-                        ? columns[productIndex].Replace("=", "").Replace("\"", "").Trim() : "N/A";
-
-                    if (!string.IsNullOrEmpty(contractNumber))
-                    {
-                        try
-                        {
-                            // On passe 'false' pour ne pas créer de fichier individuel .csv pour chaque contrat
-                            ExtractionResult result = _extractionService.PerformExtraction(contractNumber, false);
-
-                            if (!string.IsNullOrWhiteSpace(result.LisaContent))
-                            {
-                                globalLisa.AppendLine("------------------------------------------------------------");
-                                globalLisa.AppendLine($"### CONTRACT: {contractNumber} | PRODUCT: {productValue}");
-                                globalLisa.AppendLine("------------------------------------------------------------");
-                                globalLisa.Append(result.LisaContent);
-                                globalLisa.AppendLine();
-                            }
-
-                            if (!string.IsNullOrWhiteSpace(result.EliaContent))
-                            {
-                                globalElia.AppendLine("------------------------------------------------------------");
-                                globalElia.AppendLine($"### CONTRACT: {contractNumber} | UCON: {result.UconId}");
-                                globalElia.AppendLine("------------------------------------------------------------");
-                                globalElia.Append(result.EliaContent);
-                                globalElia.AppendLine();
-                            }
-
-                            Application.Current.Dispatcher.Invoke(() =>
-                            {
-                                ExtractionHistory.Add(new ExtractionItem
-                                {
-                                    ContractId = contractNumber,
-                                    InternalId = result.InternalId,
-                                    Product = productValue,
-                                    Premium = premiumAmount,
-                                    Ucon = result.UconId,
-                                    Hdmd = result.DemandId,
-                                    Time = DateTime.Now.ToString("HH:mm:ss"),
-                                    Test = "OK",
-                                    FilePath = string.Empty // Pas de fichier individuel en batch
-                                });
-                            });
-                        }
-                        catch (Exception ex)
-                        {
-                            Application.Current.Dispatcher.Invoke(() =>
-                            {
-                                ExtractionHistory.Add(new ExtractionItem
-                                {
-                                    ContractId = $"{contractNumber} (FAILED)",
-                                    InternalId = "Error",
-                                    Product = productValue,
-                                    Premium = premiumAmount,
-                                    Ucon = "Error",
-                                    Hdmd = "Error",
-                                    Time = DateTime.Now.ToString("HH:mm:ss"),
-                                    // CORRECTION ICI : "introuvable" au lieu de "not found" pour correspondre au nouveau ExtractionService
-                                    Test = ex.Message.ToLower().Contains("introuvable") ? "Non trouvé en BDD" : "Erreur SQL",
-                                    FilePath = string.Empty
-                                });
-                            });
-                        }
-                    }
-                }
-            }
-
-            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
-
-            // Fichier global LISA
-            string finalLisaContent = globalLisa.Length > 0 ? globalLisa.ToString() : "AUCUN CONTRAT LISA TROUVE.";
-            File.WriteAllText(Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_LISA_{timestamp}.csv"), finalLisaContent, Encoding.UTF8);
-
-            // Fichier global ELIA
-            string finalEliaContent = globalElia.Length > 0 ? globalElia.ToString() : "AUCUN CONTRAT ELIA TROUVE.";
-            File.WriteAllText(Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_ELIA_{timestamp}.csv"), finalEliaContent, Encoding.UTF8);
+            });
         }
 
         private void Hyperlink_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                if (Directory.Exists(_lastGeneratedPath))
-                {
-                    Process.Start("explorer.exe", _lastGeneratedPath);
-                }
-                else if (File.Exists(_lastGeneratedPath))
-                {
-                    Process.Start("explorer.exe", $"/select,\"{_lastGeneratedPath}\"");
-                }
+                if (Directory.Exists(_lastGeneratedPath)) Process.Start("explorer.exe", _lastGeneratedPath);
+                else if (File.Exists(_lastGeneratedPath)) Process.Start("explorer.exe", $"/select,\"{_lastGeneratedPath}\"");
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Impossible d'ouvrir le dossier ou le fichier : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            catch (Exception ex) { MessageBox.Show($"Erreur: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error); }
         }
 
         private void BtnActivation_Click(object sender, RoutedEventArgs e) { TxtStatus.Text = "Activation Module selected."; }
