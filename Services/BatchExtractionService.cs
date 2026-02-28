@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq; // Indispensable pour utiliser .Take() et .Select()
+using System.Linq;
 using System.Text;
 using AutoActivator.Config;
 using AutoActivator.Models;
@@ -23,100 +23,116 @@ namespace AutoActivator.Services
             if (!File.Exists(filePath))
                 throw new FileNotFoundException("The specified CSV file could not be found.", filePath);
 
-            string rawText = File.ReadAllText(filePath).Replace("\uFEFF", "");
-            string[] lines = rawText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-
-            if (lines.Length <= 1)
-                throw new Exception("The CSV file is empty or contains only the header.");
-
             StringBuilder globalLisa = new StringBuilder();
             StringBuilder globalElia = new StringBuilder();
 
-            string[] headers = lines[0].Split(new[] { ';', ',' });
-            int contractIndex = 0, premiumIndex = -1, productIndex = -1, testIdIndex = -1;
-
-            for (int i = 0; i < headers.Length; i++)
-            {
-                string h = headers[i].Trim().Trim('"').ToLower();
-                if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa")) contractIndex = i;
-                if (h.Contains("premium") || h.Contains("prime")) premiumIndex = i;
-                if (h.Contains("product") || h.Contains("produit")) productIndex = i;
-
-                // Detection of "id test" or "test" column
-                if (h.Contains("test") || h.Contains("id test") || h.Contains("idtest")) testIdIndex = i;
-            }
-
-            // List to store the TEST IDs of successfully processed contracts
             List<string> processedTestIds = new List<string>();
 
-            for (int i = 1; i < lines.Length; i++)
+            // LECTURE LIGNE PAR LIGNE AVEC STREAMREADER (Résout le problème de RAM)
+            using (var reader = new StreamReader(filePath, Encoding.UTF8))
             {
-                string[] columns = lines[i].Split(new[] { ';', ',' });
+                string headerLine = reader.ReadLine();
 
-                if (columns.Length > contractIndex)
+                // Nettoyage du BOM (Byte Order Mark) éventuel en début de fichier
+                if (headerLine != null && headerLine.StartsWith("\uFEFF"))
+                    headerLine = headerLine.Substring(1);
+
+                if (string.IsNullOrWhiteSpace(headerLine))
+                    throw new Exception("The CSV file is empty or contains only the header.");
+
+                // Détection automatique du séparateur le plus fréquent dans l'en-tête
+                char delimiter = headerLine.Count(c => c == ';') > headerLine.Count(c => c == ',') ? ';' : ',';
+
+                // Parsing de l'en-tête avec la nouvelle fonction robuste
+                var headers = ParseCsvLine(headerLine, delimiter);
+                int contractIndex = 0, premiumIndex = -1, productIndex = -1, testIdIndex = -1;
+
+                for (int i = 0; i < headers.Count; i++)
                 {
-                    string contractNumber = columns[contractIndex].Replace("=", "").Replace("\"", "").Trim();
-                    string premiumAmount = (premiumIndex != -1 && columns.Length > premiumIndex) ? columns[premiumIndex].Replace("=", "").Replace("\"", "").Trim() : "0";
-                    string productValue = (productIndex != -1 && columns.Length > productIndex) ? columns[productIndex].Replace("=", "").Replace("\"", "").Trim() : "N/A";
+                    string h = headers[i].Trim().ToLower();
+                    if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa")) contractIndex = i;
+                    if (h.Contains("premium") || h.Contains("prime")) premiumIndex = i;
+                    if (h.Contains("product") || h.Contains("produit")) productIndex = i;
 
-                    // Get Test ID (fallback to contract number if no test column is found)
-                    string testId = (testIdIndex != -1 && columns.Length > testIdIndex)
-                        ? columns[testIdIndex].Replace("=", "").Replace("\"", "").Trim()
-                        : contractNumber;
+                    // Detection of "id test" or "test" column
+                    if (h.Contains("test") || h.Contains("id test") || h.Contains("idtest")) testIdIndex = i;
+                }
 
-                    if (!string.IsNullOrEmpty(contractNumber))
+                string line;
+                // Lecture du reste du fichier, ligne par ligne
+                while ((line = reader.ReadLine()) != null)
+                {
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+
+                    // Utilisation du parseur intelligent au lieu d'un simple .Split()
+                    var columns = ParseCsvLine(line, delimiter);
+
+                    if (columns.Count > contractIndex)
                     {
-                        try
+                        // Le parseur retire déjà les guillemets, on garde Replace("=", "") au cas où Excel injecte ="valeur"
+                        string contractNumber = columns[contractIndex].Replace("=", "").Trim();
+                        string premiumAmount = (premiumIndex != -1 && columns.Count > premiumIndex) ? columns[premiumIndex].Replace("=", "").Trim() : "0";
+                        string productValue = (productIndex != -1 && columns.Count > productIndex) ? columns[productIndex].Replace("=", "").Trim() : "N/A";
+
+                        // Get Test ID (fallback to contract number if no test column is found)
+                        string testId = (testIdIndex != -1 && columns.Count > testIdIndex)
+                            ? columns[testIdIndex].Replace("=", "").Trim()
+                            : contractNumber;
+
+                        if (!string.IsNullOrEmpty(contractNumber))
                         {
-                            // Passing the environment parameter down to the ExtractionService
-                            ExtractionResult result = _extractionService.PerformExtraction(contractNumber, env, false);
-
-                            if (!string.IsNullOrWhiteSpace(result.LisaContent))
+                            try
                             {
-                                globalLisa.AppendLine(new string('-', 60));
-                                globalLisa.AppendLine($"### CONTRACT: {contractNumber} | TEST ID: {testId} | ENV: {env}");
-                                globalLisa.AppendLine(new string('-', 60));
-                                globalLisa.Append(result.LisaContent).AppendLine();
+                                // Passing the environment parameter down to the ExtractionService
+                                ExtractionResult result = _extractionService.PerformExtraction(contractNumber, env, false);
+
+                                if (!string.IsNullOrWhiteSpace(result.LisaContent))
+                                {
+                                    globalLisa.AppendLine(new string('-', 60));
+                                    globalLisa.AppendLine($"### CONTRACT: {contractNumber} | TEST ID: {testId} | ENV: {env}");
+                                    globalLisa.AppendLine(new string('-', 60));
+                                    globalLisa.Append(result.LisaContent).AppendLine();
+                                }
+
+                                if (!string.IsNullOrWhiteSpace(result.EliaContent))
+                                {
+                                    globalElia.AppendLine(new string('-', 60));
+                                    globalElia.AppendLine($"### CONTRACT: {contractNumber} | TEST ID: {testId} | UCON: {result.UconId} | ENV: {env}");
+                                    globalElia.AppendLine(new string('-', 60));
+                                    globalElia.Append(result.EliaContent).AppendLine();
+                                }
+
+                                // Keep track of the successfully processed Test IDs
+                                processedTestIds.Add(testId);
+
+                                onProgressUpdate?.Invoke(new BatchProgressInfo
+                                {
+                                    ContractId = contractNumber,
+                                    InternalId = result.InternalId,
+                                    Product = productValue,
+                                    Premium = premiumAmount,
+                                    UconId = result.UconId,
+                                    DemandId = result.DemandId,
+                                    Status = "OK"
+                                });
                             }
-
-                            if (!string.IsNullOrWhiteSpace(result.EliaContent))
+                            catch (Exception ex)
                             {
-                                globalElia.AppendLine(new string('-', 60));
-                                globalElia.AppendLine($"### CONTRACT: {contractNumber} | TEST ID: {testId} | UCON: {result.UconId} | ENV: {env}");
-                                globalElia.AppendLine(new string('-', 60));
-                                globalElia.Append(result.EliaContent).AppendLine();
+                                onProgressUpdate?.Invoke(new BatchProgressInfo
+                                {
+                                    ContractId = $"{contractNumber} (FAILED)",
+                                    InternalId = "Error",
+                                    Product = productValue,
+                                    Premium = premiumAmount,
+                                    UconId = "Error",
+                                    DemandId = "Error",
+                                    Status = ex.Message.ToLower().Contains("not found") ? "Not found in DB" : "SQL Error"
+                                });
                             }
-
-                            // Keep track of the successfully processed Test IDs
-                            processedTestIds.Add(testId);
-
-                            onProgressUpdate?.Invoke(new BatchProgressInfo
-                            {
-                                ContractId = contractNumber,
-                                InternalId = result.InternalId,
-                                Product = productValue,
-                                Premium = premiumAmount,
-                                UconId = result.UconId,
-                                DemandId = result.DemandId,
-                                Status = "OK"
-                            });
-                        }
-                        catch (Exception ex)
-                        {
-                            onProgressUpdate?.Invoke(new BatchProgressInfo
-                            {
-                                ContractId = $"{contractNumber} (FAILED)",
-                                InternalId = "Error",
-                                Product = productValue,
-                                Premium = premiumAmount,
-                                UconId = "Error",
-                                DemandId = "Error",
-                                Status = ex.Message.ToLower().Contains("not found") ? "Not found in DB" : "SQL Error"
-                            });
                         }
                     }
                 }
-            }
+            } // Fin du using : le fichier est fermé proprement ici
 
             // --- SMART NAMING LOGIC ---
             string fileSignature = "NoContract";
@@ -155,6 +171,51 @@ namespace AutoActivator.Services
                 Path.Combine(Settings.OutputDir, $"ExtractionELIA_{envLetter}_{sizeTag}_{fileSignature}_{timestamp}.csv"),
                 globalElia.Length > 0 ? globalElia.ToString() : "NO ELIA CONTRACT FOUND.",
                 Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Parseur CSV natif et robuste gérant les séparateurs présents à l'intérieur des guillemets.
+        /// </summary>
+        private List<string> ParseCsvLine(string line, char delimiter)
+        {
+            var result = new List<string>();
+            bool inQuotes = false;
+            var currentField = new StringBuilder();
+
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+
+                if (c == '"')
+                {
+                    // Si on tombe sur un double guillemet à l'intérieur de guillemets, c'est un guillemet échappé ("")
+                    if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                    {
+                        currentField.Append('"');
+                        i++; // On saute le 2ème guillemet
+                    }
+                    else
+                    {
+                        // On entre ou on sort des guillemets
+                        inQuotes = !inQuotes;
+                    }
+                }
+                else if (c == delimiter && !inQuotes)
+                {
+                    // Séparateur valide (hors guillemets) -> on sauvegarde la colonne
+                    result.Add(currentField.ToString());
+                    currentField.Clear();
+                }
+                else
+                {
+                    // Caractère classique (ou séparateur ignoré car entre guillemets)
+                    currentField.Append(c);
+                }
+            }
+            // Ajout de la toute dernière colonne
+            result.Add(currentField.ToString());
+
+            return result;
         }
     }
 }

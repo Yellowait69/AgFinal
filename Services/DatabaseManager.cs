@@ -86,12 +86,14 @@ namespace AutoActivator.Services
             catch (SqlException ex)
             {
                 Console.WriteLine($"[ERROR] SQL Error (Code {ex.Number}) on query: {query}\nDetails: {ex.Message}");
-                throw new Exception($"DB Error ({ex.Number}) : {ex.Message}");
+                // AJOUT DE 'ex' POUR PRESERVER LA STACK TRACE
+                throw new Exception($"DB Error ({ex.Number}) : {ex.Message}", ex);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[ERROR] System Error on query: {query}\nDetails: {ex.Message}");
-                throw new Exception($"System Error : {ex.Message}");
+                // AJOUT DE 'ex' POUR PRESERVER LA STACK TRACE
+                throw new Exception($"System Error : {ex.Message}", ex);
             }
 
             return dataTable;

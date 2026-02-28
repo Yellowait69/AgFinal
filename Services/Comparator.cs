@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using AutoActivator.Config;
@@ -9,16 +10,20 @@ namespace AutoActivator.Services
 {
     public static class Comparator
     {
+        // Limite pour éviter une saturation de la RAM (Out Of Memory) si les tables sont 100% différentes
+        private const int MAX_DIFFS_TO_REPORT = 100;
+
         /// <summary>
         /// Central function for comparing two datasets (DataTables).
         /// </summary>
-        /// <param name="dfRef">Data extracted from the source contract.</param>
-        /// <param name="dfNew">Data extracted from the new contract.</param>
-        /// <param name="tableName">The name of the analyzed table (e.g., 'LV.SCNTT0').</param>
-        /// <returns>A tuple containing the status (OK/KO) and the details of the differences.</returns>
         public static (string Status, string Details) CompareDataTables(DataTable dfRef, DataTable dfNew, string tableName)
         {
             // STEP 1: Initial validity checks
+            if (dfRef == null || dfNew == null)
+            {
+                return ("KO_NULL_DATA", $"One or both DataFrames are null for table {tableName}.");
+            }
+
             if (dfRef.Rows.Count == 0 && dfNew.Rows.Count == 0)
             {
                 return ("OK_EMPTY", null);
@@ -26,53 +31,41 @@ namespace AutoActivator.Services
 
             if (dfRef.Rows.Count == 0 || dfNew.Rows.Count == 0)
             {
-                return ("KO_MISSING_DATA", $"One of the two DataFrames is empty for table {tableName}.");
+                return ("KO_MISSING_DATA", $"Discrepancy: Source has {dfRef.Rows.Count} rows, Target has {dfNew.Rows.Count} rows for table {tableName}.");
             }
-
-            // STEP 2: Data isolation (Working on copies)
-            var df1 = dfRef.Copy();
-            var df2 = dfNew.Copy();
 
             try
             {
-                // STEP 3: Application of exclusion rules
-                var colsToDrop = Exclusions.GetExclusionsForTable(tableName);
+                // STEP 2 & 3: Application of exclusion rules AND schema alignment efficiently
+                var exclusions = Exclusions.GetExclusionsForTable(tableName) ?? new HashSet<string>();
 
-                foreach (var col in colsToDrop)
-                {
-                    if (df1.Columns.Contains(col)) df1.Columns.Remove(col);
-                    if (df2.Columns.Contains(col)) df2.Columns.Remove(col);
-                }
+                var allColsRef = dfRef.Columns.Cast<DataColumn>().Select(c => c.ColumnName);
+                var allColsNew = dfNew.Columns.Cast<DataColumn>().Select(c => c.ColumnName);
 
-                // STEP 4: Alignment of data schemas
-                var commonCols = df1.Columns.Cast<DataColumn>()
-                    .Select(c => c.ColumnName)
-                    .Intersect(df2.Columns.Cast<DataColumn>().Select(c => c.ColumnName))
+                var commonCols = allColsRef
+                    .Intersect(allColsNew)
+                    .Except(exclusions)
                     .OrderBy(c => c)
                     .ToList();
 
                 if (!commonCols.Any())
                 {
-                    return ("KO_NO_COMMON_COLS", "No common column found after applying exclusion filters.");
+                    return ("KO_NO_COMMON_COLS", "No common columns found after applying exclusion filters.");
                 }
 
-                // Removal of non-common columns to perfectly align DataTables
-                for (int i = df1.Columns.Count - 1; i >= 0; i--)
-                {
-                    if (!commonCols.Contains(df1.Columns[i].ColumnName)) df1.Columns.RemoveAt(i);
-                }
-                for (int i = df2.Columns.Count - 1; i >= 0; i--)
-                {
-                    if (!commonCols.Contains(df2.Columns[i].ColumnName)) df2.Columns.RemoveAt(i);
-                }
+                // OPTIMIZATION: Instead of copying the whole table and manually removing columns,
+                // we project only the columns we need directly into new tables.
+                string[] colsArray = commonCols.ToArray();
+                var df1 = new DataView(dfRef).ToTable(false, colsArray);
+                var df2 = new DataView(dfNew).ToTable(false, colsArray);
 
-                // STEP 5: Data normalization and formatting
+                // STEP 4: Data normalization and formatting
                 NormalizeDataTable(df1, commonCols);
                 NormalizeDataTable(df2, commonCols);
 
-                // STEP 6: Record alignment (Sorting)
-                // Creating a sort string "Col1, Col2, Col3..." to stabilize row order
-                string sortExpression = string.Join(", ", commonCols);
+                // STEP 5: Record alignment (Sorting)
+                // Using brackets [ColName] to prevent crashes if column names contain spaces or special chars
+                string sortExpression = string.Join(", ", commonCols.Select(c => $"[{c}]"));
 
                 try
                 {
@@ -84,10 +77,10 @@ namespace AutoActivator.Services
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"[WARNING] Technical sort failed on table {tableName}. Reason: {e.Message}");
+                    Console.WriteLine($"[WARNING] Technical sort failed on table {tableName}. Proceeding without sort. Reason: {e.Message}");
                 }
 
-                // STEP 7: Final comparison
+                // STEP 6: Final comparison
                 if (df1.Rows.Count != df2.Rows.Count)
                 {
                     return ("KO_ROW_COUNT", $"Discrepancy in data volume: Source = {df1.Rows.Count} rows vs Target = {df2.Rows.Count} rows.");
@@ -97,7 +90,7 @@ namespace AutoActivator.Services
             }
             catch (Exception e)
             {
-                return ("KO_ERROR", $"Technical error while generating the differential: {e.Message}");
+                return ("KO_ERROR", $"Technical error while generating the differential for {tableName}: {e.Message}");
             }
         }
 
@@ -106,35 +99,48 @@ namespace AutoActivator.Services
         /// </summary>
         private static void NormalizeDataTable(DataTable dt, List<string> columns)
         {
+            // Suspend data events (massive performance boost for loops modifying DataTable)
+            dt.BeginLoadData();
+
             foreach (DataRow row in dt.Rows)
             {
                 foreach (var col in columns)
                 {
-                    if (row[col] == DBNull.Value || row[col] == null)
+                    object cellValue = row[col];
+
+                    if (cellValue == DBNull.Value || cellValue == null)
                     {
                         row[col] = string.Empty;
                         continue;
                     }
 
-                    string value = row[col].ToString().Trim();
+                    string value = cellValue.ToString().Trim();
 
-                    // Processing textual NaN or None
-                    if (value.Equals("nan", StringComparison.OrdinalIgnoreCase) ||
-                        value.Equals("None", StringComparison.OrdinalIgnoreCase))
+                    // Processing textual NaN or None (Case Insensitive)
+                    if (string.Equals(value, "nan", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(value, "none", StringComparison.OrdinalIgnoreCase))
                     {
                         row[col] = string.Empty;
                     }
-                    // If it is a number (Float), round it to 4 decimals
-                    else if (double.TryParse(value, out double floatValue))
+                    // ROBUST PARSING: NumberStyles.Any and CultureInfo.InvariantCulture
+                    else if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out double floatValue))
                     {
-                        row[col] = Math.Round(floatValue, 4).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        row[col] = Math.Round(floatValue, 4).ToString(CultureInfo.InvariantCulture);
                     }
                     else
                     {
-                        row[col] = value;
+                        // Only assign if value actually changed (saves memory allocations)
+                        if (!string.Equals(cellValue.ToString(), value, StringComparison.Ordinal))
+                        {
+                            row[col] = value;
+                        }
                     }
                 }
             }
+
+            // Resume data events
+            dt.EndLoadData();
+            dt.AcceptChanges();
         }
 
         /// <summary>
@@ -155,19 +161,27 @@ namespace AutoActivator.Services
                     string val1 = df1.Rows[i][j]?.ToString() ?? string.Empty;
                     string val2 = df2.Rows[i][j]?.ToString() ?? string.Empty;
 
-                    if (val1 != val2)
+                    // Exact ordinal string comparison (fastest and most accurate after normalization)
+                    if (!string.Equals(val1, val2, StringComparison.Ordinal))
                     {
                         rowHasDiff = true;
-                        diffCount++;
                         rowDiffs.AppendLine($"    -> {commonCols[j]} : Source = '{val1}' | Target = '{val2}'");
                     }
                 }
 
                 if (rowHasDiff)
                 {
+                    diffCount++;
                     diffReport.AppendLine($"Row #{i + 1} is different:");
                     diffReport.Append(rowDiffs.ToString());
                     diffReport.AppendLine();
+
+                    // Failsafe limit to avoid consuming gigabytes of RAM
+                    if (diffCount >= MAX_DIFFS_TO_REPORT)
+                    {
+                        diffReport.AppendLine($"\n[WARNING] Maximum number of reportable differences ({MAX_DIFFS_TO_REPORT}) reached. Truncating report...");
+                        break;
+                    }
                 }
             }
 

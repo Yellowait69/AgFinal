@@ -47,6 +47,10 @@ namespace AutoActivator.Services
             #region SECTION LISA
             if (dtLisa.Rows.Count > 0)
             {
+                // VÉRIFICATION ANTI-CRASH POUR DBNULL
+                if (dtLisa.Rows[0]["NO_CNT"] == DBNull.Value)
+                    throw new Exception($"Le contrat {cleanedContract} a été trouvé mais son ID interne (NO_CNT) est NULL en base de données.");
+
                 long internalId = Convert.ToInt64(dtLisa.Rows[0]["NO_CNT"]);
                 internalIdString = internalId.ToString();
 

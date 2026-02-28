@@ -80,43 +80,44 @@ namespace AutoActivator.Gui
                 return;
             }
 
+            // Utilisation de IProgress pour gérer la mise à jour de l'UI de manière asynchrone et fluide
+            var progress = new Progress<ExtractionItem>(item => ExtractionHistory.Add(item));
+
             await RunProcessAsync(async () =>
             {
                 if (!string.IsNullOrEmpty(contractD))
                 {
-                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Extracting Environment D000...");
-                    await Task.Run(() => PerformSingleExtraction(contractD, "D000"));
+                    Application.Current.Dispatcher.BeginInvoke(new Action(() => TxtStatus.Text = "Extracting Environment D000..."));
+                    await Task.Run(() => PerformSingleExtraction(contractD, "D000", progress));
                 }
 
                 if (!string.IsNullOrEmpty(contractQ))
                 {
-                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Extracting Environment Q000...");
-                    await Task.Run(() => PerformSingleExtraction(contractQ, "Q000"));
+                    Application.Current.Dispatcher.BeginInvoke(new Action(() => TxtStatus.Text = "Extracting Environment Q000..."));
+                    await Task.Run(() => PerformSingleExtraction(contractQ, "Q000", progress));
                 }
 
-                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Single extraction completed successfully.");
+                Application.Current.Dispatcher.BeginInvoke(new Action(() => TxtStatus.Text = "Single extraction completed successfully."));
             });
         }
 
-        private void PerformSingleExtraction(string contract, string env)
+        private void PerformSingleExtraction(string contract, string env, IProgress<ExtractionItem> progress)
         {
             ExtractionResult result = _extractionService.PerformExtraction(contract, env, true);
             _lastGeneratedPath = Settings.OutputDir;
 
-            Application.Current.Dispatcher.Invoke(() =>
+            // Report transmet l'objet au thread UI sans bloquer l'exécution
+            progress.Report(new ExtractionItem
             {
-                ExtractionHistory.Add(new ExtractionItem
-                {
-                    ContractId = contract,
-                    InternalId = result.InternalId,
-                    Product = env, // Using Product column to show Environment
-                    Premium = "0",
-                    Ucon = result.UconId,
-                    Hdmd = result.DemandId,
-                    Time = DateTime.Now.ToString("HH:mm:ss"),
-                    Test = "OK",
-                    FilePath = result.FilePath
-                });
+                ContractId = contract,
+                InternalId = result.InternalId,
+                Product = env, // Using Product column to show Environment
+                Premium = "0",
+                Ucon = result.UconId,
+                Hdmd = result.DemandId,
+                Time = DateTime.Now.ToString("HH:mm:ss"),
+                Test = "OK",
+                FilePath = result.FilePath
             });
         }
 
@@ -152,44 +153,46 @@ namespace AutoActivator.Gui
 
             var batchService = new BatchExtractionService(_extractionService);
 
+            // Utilisation de IProgress pour reporter l'avancée sans bloquer (freeze) l'UI
+            var progress = new Progress<BatchProgressInfo>(UpdateHistoryGrid);
+
             await RunProcessAsync(async () =>
             {
                 if (!string.IsNullOrEmpty(fileD))
                 {
-                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch Extracting Environment D000...");
-                    await Task.Run(() => batchService.PerformBatchExtraction(fileD, "D000", UpdateHistoryGrid));
+                    Application.Current.Dispatcher.BeginInvoke(new Action(() => TxtStatus.Text = "Batch Extracting Environment D000..."));
+                    await Task.Run(() => batchService.PerformBatchExtraction(fileD, "D000", info => progress.Report(info)));
                 }
 
                 if (!string.IsNullOrEmpty(fileQ))
                 {
-                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch Extracting Environment Q000...");
-                    await Task.Run(() => batchService.PerformBatchExtraction(fileQ, "Q000", UpdateHistoryGrid));
+                    Application.Current.Dispatcher.BeginInvoke(new Action(() => TxtStatus.Text = "Batch Extracting Environment Q000..."));
+                    await Task.Run(() => batchService.PerformBatchExtraction(fileQ, "Q000", info => progress.Report(info)));
                 }
 
                 _lastGeneratedPath = Settings.OutputDir;
-                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch extraction completed! Global files saved in Output folder.");
+                Application.Current.Dispatcher.BeginInvoke(new Action(() => TxtStatus.Text = "Batch extraction completed! Global files saved in Output folder."));
             });
         }
 
         /// <summary>
-        /// Callback method used by BatchExtractionService to update UI thread-safely
+        /// Callback method used by IProgress to update UI thread-safely
         /// </summary>
         private void UpdateHistoryGrid(BatchProgressInfo info)
         {
-            Application.Current.Dispatcher.Invoke(() =>
+            // Grâce à Progress<T>, ce code est DÉJÀ exécuté sur le thread UI (Dispatcher)
+            // Plus besoin de Invoke ou BeginInvoke ici, ce qui empêche le gel !
+            ExtractionHistory.Add(new ExtractionItem
             {
-                ExtractionHistory.Add(new ExtractionItem
-                {
-                    ContractId = info.ContractId,
-                    InternalId = info.InternalId,
-                    Product = info.Product,
-                    Premium = info.Premium,
-                    Ucon = info.UconId,
-                    Hdmd = info.DemandId,
-                    Time = DateTime.Now.ToString("HH:mm:ss"),
-                    Test = info.Status,
-                    FilePath = string.Empty
-                });
+                ContractId = info.ContractId,
+                InternalId = info.InternalId,
+                Product = info.Product,
+                Premium = info.Premium,
+                Ucon = info.UconId,
+                Hdmd = info.DemandId,
+                Time = DateTime.Now.ToString("HH:mm:ss"),
+                Test = info.Status,
+                FilePath = string.Empty
             });
         }
 
