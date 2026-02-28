@@ -20,6 +20,12 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Background" Value="#BDC3C7"/>
+                    <Setter Property="Foreground" Value="#7F8C8D"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
     </Window.Resources>
 
@@ -33,147 +39,207 @@
             <TextBlock Text="L.I.S.A" Foreground="White" FontSize="26" Margin="20,30,20,10" FontWeight="Bold" HorizontalAlignment="Center"/>
             <TextBlock Text="Auto-Activator v2.0" Foreground="#BDC3C7" FontSize="12" Margin="0,0,0,30" HorizontalAlignment="Center"/>
 
-            <Button Content="📥 Extraction" Padding="12" Margin="10,5" Background="#1ABC9C" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
-            <Button Content="⚡ Activation" Padding="12" Margin="10,5" Click="BtnActivation_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand"/>
-            <Button Content="📊 Comparison" Padding="12" Margin="10,5" Click="BtnComparison_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand"/>
+            <Button Content="📥 Extraction" Padding="12" Margin="10,5" Click="BtnExtraction_Click" Background="#1ABC9C" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
+            <Button Content="⚡ Activation" Padding="12" Margin="10,5" Click="BtnActivation_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
+            <Button Content="📊 Comparison" Padding="12" Margin="10,5" Click="BtnComparison_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
         </StackPanel>
 
         <Grid Grid.Column="1" Margin="25">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
 
-            <StackPanel Grid.Row="0">
-                <TextBlock Text="Extraction Module" FontSize="24" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
-            </StackPanel>
-
-            <TabControl Grid.Row="1" Background="Transparent" BorderThickness="0" Margin="0,0,0,15">
-
-                <TabItem Header="📄 Single Contract" FontSize="14" FontWeight="SemiBold">
-                    <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,10,0,0">
-                        <StackPanel>
-                            <TextBlock Text="Extract a specific contract from one or both environments." Margin="0,0,0,15" Foreground="#7F8C8D"/>
-
-                            <TextBlock Text="Environment D000 (Contract Number):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
-                            <TextBox x:Name="TxtSingleD" Margin="0,0,0,15" Padding="8" FontSize="14" BorderBrush="#DCDDE1" ToolTip="Leave empty to skip D000"/>
-
-                            <TextBlock Text="Environment Q000 (Contract Number):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
-                            <TextBox x:Name="TxtSingleQ" Margin="0,0,0,20" Padding="8" FontSize="14" BorderBrush="#DCDDE1" ToolTip="Leave empty to skip Q000"/>
-
-                            <Button x:Name="BtnRunSingle" Content="Run Single Extraction" Click="BtnRunSingle_Click" Style="{StaticResource ActionButtonStyle}" HorizontalAlignment="Right" Width="220"/>
-                        </StackPanel>
-                    </Border>
-                </TabItem>
-
-                <TabItem Header="📁 Batch Extraction (CSV)" FontSize="14" FontWeight="SemiBold">
-                    <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,10,0,0">
-                        <StackPanel>
-                            <TextBlock Text="Select CSV files to extract multiple contracts for each environment." Margin="0,0,0,15" Foreground="#7F8C8D"/>
-
-                            <TextBlock Text="Environment D000 (CSV File):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
-                            <Grid Margin="0,0,0,15">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBox x:Name="TxtBatchD" IsReadOnly="True" Padding="8" FontSize="14" BorderBrush="#DCDDE1" Margin="0,0,10,0"/>
-                                <Button Content="Browse..." Grid.Column="1" Padding="15,8" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnBrowseD_Click"/>
-                            </Grid>
-
-                            <TextBlock Text="Environment Q000 (CSV File):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
-                            <Grid Margin="0,0,0,20">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBox x:Name="TxtBatchQ" IsReadOnly="True" Padding="8" FontSize="14" BorderBrush="#DCDDE1" Margin="0,0,10,0"/>
-                                <Button Content="Browse..." Grid.Column="1" Padding="15,8" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnBrowseQ_Click"/>
-                            </Grid>
-
-                            <Button x:Name="BtnRunBatch" Content="Run Batch Extraction" Click="BtnRunBatch_Click" Style="{StaticResource ActionButtonStyle}" HorizontalAlignment="Right" Width="220"/>
-                        </StackPanel>
-                    </Border>
-                </TabItem>
-            </TabControl>
-
-            <StackPanel Grid.Row="2" Margin="0,5,0,15">
-                <ProgressBar x:Name="PrgLoading" IsIndeterminate="True" Height="4" Margin="0,0,0,10" Visibility="Collapsed" Foreground="#3498DB"/>
-                <TextBlock x:Name="TxtStatus" FontSize="14" TextWrapping="Wrap" Foreground="#2F3640" FontWeight="SemiBold" Text="Ready."/>
-                <TextBlock x:Name="LnkFile" Visibility="Collapsed" Margin="0,5,0,0" FontSize="14">
-                    <Hyperlink Click="Hyperlink_Click" Foreground="#2980B9" FontWeight="Bold">
-                        <Run Text="📁 Click here to open extraction results directory"/>
-                    </Hyperlink>
-                </TextBlock>
-            </StackPanel>
-
-            <Grid Grid.Row="3">
+            <Grid x:Name="GridExtraction" Visibility="Visible">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="Session History" FontWeight="Bold" Foreground="#7F8C8D" Margin="0,0,0,10"/>
+                <StackPanel Grid.Row="0">
+                    <TextBlock Text="Extraction Module" FontSize="24" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
+                </StackPanel>
 
-                <ListView x:Name="ListHistory" Grid.Row="1" Background="White" BorderBrush="#DCDDE1" BorderThickness="1" AlternationCount="2">
-                    <ListView.ItemContainerStyle>
-                        <Style TargetType="ListViewItem">
-                            <Setter Property="Padding" Value="5"/>
-                            <Style.Triggers>
-                                <Trigger Property="ItemsControl.AlternationIndex" Value="1">
-                                    <Setter Property="Background" Value="#F9F9F9"/>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </ListView.ItemContainerStyle>
-                    <ListView.View>
-                        <GridView>
-                            <GridViewColumn Header="Time" DisplayMemberBinding="{Binding Time}" Width="75"/>
+                <TabControl Grid.Row="1" Background="Transparent" BorderThickness="0" Margin="0,0,0,15">
 
-                            <GridViewColumn Header="Environment" Width="100">
-                                <GridViewColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding Product}" FontWeight="Bold" Foreground="#8E44AD"/>
-                                    </DataTemplate>
-                                </GridViewColumn.CellTemplate>
-                            </GridViewColumn>
+                    <TabItem Header="📄 Single Contract" FontSize="14" FontWeight="SemiBold">
+                        <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,10,0,0">
+                            <StackPanel>
+                                <TextBlock Text="Extract a specific contract from one or both environments." Margin="0,0,0,15" Foreground="#7F8C8D"/>
 
-                            <GridViewColumn Header="Contract ID" Width="140">
-                                <GridViewColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding ContractId}" FontWeight="Bold"/>
-                                    </DataTemplate>
-                                </GridViewColumn.CellTemplate>
-                            </GridViewColumn>
+                                <TextBlock Text="Environment D000 (Contract Number):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <TextBox x:Name="TxtSingleD" Margin="0,0,0,15" Padding="8" FontSize="14" BorderBrush="#DCDDE1" ToolTip="Leave empty to skip D000"/>
 
-                            <GridViewColumn Header="Internal ID" Width="100">
-                                <GridViewColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding InternalId}" Foreground="#2980B9" FontWeight="SemiBold"/>
-                                    </DataTemplate>
-                                </GridViewColumn.CellTemplate>
-                            </GridViewColumn>
+                                <TextBlock Text="Environment Q000 (Contract Number):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <TextBox x:Name="TxtSingleQ" Margin="0,0,0,20" Padding="8" FontSize="14" BorderBrush="#DCDDE1" ToolTip="Leave empty to skip Q000"/>
 
-                            <GridViewColumn Header="Premium" Width="95">
-                                <GridViewColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding Premium}" FontWeight="SemiBold" Foreground="#E67E22"/>
-                                            <TextBlock Text=" €" Foreground="#E67E22"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </GridViewColumn.CellTemplate>
-                            </GridViewColumn>
+                                <Button x:Name="BtnRunSingle" Content="Run Single Extraction" Click="BtnRunSingle_Click" Style="{StaticResource ActionButtonStyle}" HorizontalAlignment="Right" Width="220"/>
+                            </StackPanel>
+                        </Border>
+                    </TabItem>
 
-                            <GridViewColumn Header="UCON ID" DisplayMemberBinding="{Binding Ucon}" Width="115"/>
-                            <GridViewColumn Header="Demand ID" DisplayMemberBinding="{Binding Hdmd}" Width="115"/>
-                            <GridViewColumn Header="Result" DisplayMemberBinding="{Binding Test}" Width="120"/>
-                        </GridView>
-                    </ListView.View>
-                </ListView>
+                    <TabItem Header="📁 Batch Extraction (CSV)" FontSize="14" FontWeight="SemiBold">
+                        <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,10,0,0">
+                            <StackPanel>
+                                <TextBlock Text="Select CSV files to extract multiple contracts for each environment." Margin="0,0,0,15" Foreground="#7F8C8D"/>
+
+                                <TextBlock Text="Environment D000 (CSV File):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <Grid Margin="0,0,0,15">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="TxtBatchD" IsReadOnly="True" Padding="8" FontSize="14" BorderBrush="#DCDDE1" Margin="0,0,10,0"/>
+                                    <Button Content="Browse..." Grid.Column="1" Padding="15,8" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnBrowseD_Click"/>
+                                </Grid>
+
+                                <TextBlock Text="Environment Q000 (CSV File):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <Grid Margin="0,0,0,20">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="TxtBatchQ" IsReadOnly="True" Padding="8" FontSize="14" BorderBrush="#DCDDE1" Margin="0,0,10,0"/>
+                                    <Button Content="Browse..." Grid.Column="1" Padding="15,8" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnBrowseQ_Click"/>
+                                </Grid>
+
+                                <Button x:Name="BtnRunBatch" Content="Run Batch Extraction" Click="BtnRunBatch_Click" Style="{StaticResource ActionButtonStyle}" HorizontalAlignment="Right" Width="220"/>
+                            </StackPanel>
+                        </Border>
+                    </TabItem>
+                </TabControl>
+
+                <StackPanel Grid.Row="2" Margin="0,5,0,15">
+                    <ProgressBar x:Name="PrgLoading" IsIndeterminate="True" Height="4" Margin="0,0,0,10" Visibility="Collapsed" Foreground="#3498DB"/>
+                    <TextBlock x:Name="TxtStatus" FontSize="14" TextWrapping="Wrap" Foreground="#2F3640" FontWeight="SemiBold" Text="Ready."/>
+                    <TextBlock x:Name="LnkFile" Visibility="Collapsed" Margin="0,5,0,0" FontSize="14">
+                        <Hyperlink Click="Hyperlink_Click" Foreground="#2980B9" FontWeight="Bold">
+                            <Run Text="📁 Click here to open extraction results directory"/>
+                        </Hyperlink>
+                    </TextBlock>
+                </StackPanel>
+
+                <Grid Grid.Row="3">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Session History" FontWeight="Bold" Foreground="#7F8C8D" Margin="0,0,0,10"/>
+
+                    <ListView x:Name="ListHistory" Grid.Row="1" Background="White" BorderBrush="#DCDDE1" BorderThickness="1" AlternationCount="2">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="Padding" Value="5"/>
+                                <Style.Triggers>
+                                    <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                                        <Setter Property="Background" Value="#F9F9F9"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="Time" DisplayMemberBinding="{Binding Time}" Width="75"/>
+                                <GridViewColumn Header="Environment" Width="100">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Product}" FontWeight="Bold" Foreground="#8E44AD"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Contract ID" Width="140">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding ContractId}" FontWeight="Bold"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Internal ID" Width="100">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding InternalId}" Foreground="#2980B9" FontWeight="SemiBold"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Premium" Width="95">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Premium}" FontWeight="SemiBold" Foreground="#E67E22"/>
+                                                <TextBlock Text=" €" Foreground="#E67E22"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="UCON ID" DisplayMemberBinding="{Binding Ucon}" Width="115"/>
+                                <GridViewColumn Header="Demand ID" DisplayMemberBinding="{Binding Hdmd}" Width="115"/>
+                                <GridViewColumn Header="Result" DisplayMemberBinding="{Binding Test}" Width="120"/>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </Grid>
             </Grid>
+
+            <Grid x:Name="GridComparison" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0">
+                    <TextBlock Text="Comparison Module" FontSize="24" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
+                </StackPanel>
+
+                <Border Grid.Row="1" Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,20">
+                    <StackPanel>
+                        <TextBlock Text="Select the base CSV file. The tool will automatically find the target file and the Elia/Lisa twin files." Margin="0,0,0,15" Foreground="#7F8C8D" TextWrapping="Wrap"/>
+
+                        <TextBlock Text="Base File (Elia or Lisa):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                        <Grid Margin="0,0,0,15">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="TxtBaseFile" IsReadOnly="True" Padding="8" FontSize="14" BorderBrush="#DCDDE1" Margin="0,0,10,0" Background="#F9F9F9"/>
+                            <Button Content="Browse..." Grid.Column="1" Padding="15,8" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnBrowseBase_Click"/>
+                        </Grid>
+
+                        <TextBlock Text="Target File (to compare against):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                        <Grid Margin="0,0,0,15">
+                            <ComboBox x:Name="ComboTargetFile" Padding="8" FontSize="14" BorderBrush="#DCDDE1" IsEnabled="False"/>
+                        </Grid>
+
+                        <TextBlock Text="Table to compare:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                        <TextBox x:Name="TxtTableName" Text="CONTRACT" Margin="0,0,0,20" Padding="8" FontSize="14" BorderBrush="#DCDDE1"/>
+
+                        <Button x:Name="BtnRunComparison" Content="🚀 Run Deep Comparison" Click="BtnRunComparisonAction_Click" Style="{StaticResource ActionButtonStyle}" HorizontalAlignment="Right" Width="240" IsEnabled="False"/>
+                    </StackPanel>
+                </Border>
+
+                <Grid Grid.Row="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Analysis Report" FontWeight="Bold" Foreground="#7F8C8D" Margin="0,0,0,10"/>
+
+                    <Border Grid.Row="1" BorderBrush="#2C3E50" BorderThickness="2" CornerRadius="4" Background="#1E272E">
+                        <TextBox x:Name="TxtComparisonResults"
+                                 Background="Transparent"
+                                 Foreground="#ECF0F1"
+                                 FontFamily="Consolas"
+                                 FontSize="13"
+                                 Padding="15"
+                                 BorderThickness="0"
+                                 IsReadOnly="True"
+                                 VerticalScrollBarVisibility="Auto"
+                                 TextWrapping="Wrap"
+                                 Text="System is ready. Awaiting configuration..."/>
+                    </Border>
+                </Grid>
+            </Grid>
+
         </Grid>
     </Grid>
 </Window>
