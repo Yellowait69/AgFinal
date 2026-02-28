@@ -5,12 +5,11 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using Microsoft.Win32;
 using AutoActivator.Config;
-using AutoActivator.Models; // Ajout du namespace pour les modèles (DTO)
+using AutoActivator.Models;
 using AutoActivator.Services;
 
 namespace AutoActivator.Gui
@@ -32,9 +31,8 @@ namespace AutoActivator.Gui
     {
         private string _lastGeneratedPath = "";
 
-        // Séparation des responsabilités : on déclare nos deux services distincts
+        // Services
         private readonly ExtractionService _extractionService;
-        private readonly BatchExtractionService _batchExtractionService;
 
         public ObservableCollection<ExtractionItem> ExtractionHistory { get; set; } = new ObservableCollection<ExtractionItem>();
 
@@ -44,12 +42,12 @@ namespace AutoActivator.Gui
             InitializeDirectories();
             ListHistory.ItemsSource = ExtractionHistory;
 
+            // Sort history by Product (Environment in our updated logic) by default
             ICollectionView view = CollectionViewSource.GetDefaultView(ExtractionHistory);
             view.SortDescriptions.Add(new SortDescription("Product", ListSortDirection.Ascending));
 
-            // Initialisation des services
+            // Initialize extraction service
             _extractionService = new ExtractionService();
-            _batchExtractionService = new BatchExtractionService(_extractionService);
         }
 
         private void InitializeDirectories()
@@ -62,103 +60,119 @@ namespace AutoActivator.Gui
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"[ERROR] Directories: {ex.Message}");
+                MessageBox.Show($"[ERROR] Failed to create directories: {ex.Message}", "Initialization Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
-        private void TxtContract_TextChanged(object sender, TextChangedEventArgs e)
+        // =========================================================================
+        // SINGLE EXTRACTION TAB LOGIC
+        // =========================================================================
+
+        private async void BtnRunSingle_Click(object sender, RoutedEventArgs e)
         {
-            if (TxtFilePath != null && !string.IsNullOrEmpty(TxtContract.Text))
-            {
-                TxtFilePath.Text = string.Empty;
-            }
-        }
+            string contractD = TxtSingleD?.Text.Trim();
+            string contractQ = TxtSingleQ?.Text.Trim();
 
-        private void BtnBrowse_Click(object sender, RoutedEventArgs e)
-        {
-            OpenFileDialog openFileDialog = new OpenFileDialog
+            if (string.IsNullOrEmpty(contractD) && string.IsNullOrEmpty(contractQ))
             {
-                Filter = "Fichiers CSV|*.csv",
-                Title = "Sélectionnez un fichier CSV contenant les contrats"
-            };
-
-            if (openFileDialog.ShowDialog() == true)
-            {
-                TxtFilePath.Text = openFileDialog.FileName;
-                TxtContract.Text = string.Empty;
-            }
-        }
-
-        private async void BtnRun_Click(object sender, RoutedEventArgs e)
-        {
-            string singleInput = TxtContract.Text.Trim();
-            string fileInput = TxtFilePath?.Text.Trim();
-
-            if (string.IsNullOrEmpty(singleInput) && string.IsNullOrEmpty(fileInput))
-            {
-                TxtStatus.Text = "Please enter a contract number or select a CSV file.";
+                TxtStatus.Text = "Please enter at least one contract number (D000 or Q000).";
                 TxtStatus.Foreground = Brushes.Orange;
                 return;
             }
 
-            PrgLoading.Visibility = Visibility.Visible;
-            LnkFile.Visibility = Visibility.Collapsed;
-            BtnRun.IsEnabled = false;
-            if (BtnBrowse != null) BtnBrowse.IsEnabled = false;
-
-            TxtStatus.Text = string.IsNullOrEmpty(fileInput) ? "Extraction in progress..." : "Batch extraction in progress...";
-            TxtStatus.Foreground = Brushes.Blue;
-
-            try
+            await RunProcessAsync(async () =>
             {
-                if (!string.IsNullOrEmpty(fileInput))
+                if (!string.IsNullOrEmpty(contractD))
                 {
-                    // Lancement du Batch via le service dédié, avec une fonction de Callback pour mettre à jour l'UI
-                    await Task.Run(() => _batchExtractionService.PerformBatchExtraction(fileInput, UpdateHistoryGrid));
-
-                    TxtStatus.Text = "Batch extraction completed! Global files saved in Output folder.";
-                    TxtStatus.Foreground = Brushes.Green;
-                    _lastGeneratedPath = Settings.OutputDir;
-                    LnkFile.Visibility = Visibility.Visible;
+                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Extracting Environment D000...");
+                    await Task.Run(() => PerformSingleExtraction(contractD, "D000"));
                 }
-                else
+
+                if (!string.IsNullOrEmpty(contractQ))
                 {
-                    // Contrat unique via le service d'extraction simple
-                    ExtractionResult result = await Task.Run(() => _extractionService.PerformExtraction(singleInput, true));
-
-                    _lastGeneratedPath = result.FilePath;
-                    TxtStatus.Text = $"Completed! {result.StatusMessage}";
-                    TxtStatus.Foreground = Brushes.Green;
-                    LnkFile.Visibility = Visibility.Visible;
-
-                    UpdateHistoryGrid(new BatchProgressInfo
-                    {
-                        ContractId = singleInput,
-                        InternalId = result.InternalId,
-                        Product = "N/A",
-                        Premium = "0",
-                        UconId = result.UconId,
-                        DemandId = result.DemandId,
-                        Status = "OK"
-                    });
+                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Extracting Environment Q000...");
+                    await Task.Run(() => PerformSingleExtraction(contractQ, "Q000"));
                 }
-            }
-            catch (Exception ex)
+
+                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Single extraction completed successfully.");
+            });
+        }
+
+        private void PerformSingleExtraction(string contract, string env)
+        {
+            ExtractionResult result = _extractionService.PerformExtraction(contract, env, true);
+            _lastGeneratedPath = Settings.OutputDir;
+
+            Application.Current.Dispatcher.Invoke(() =>
             {
-                TxtStatus.Text = $"Error: {ex.Message}";
-                TxtStatus.Foreground = Brushes.Red;
-                MessageBox.Show(ex.Message, "Erreur d'extraction", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
+                ExtractionHistory.Add(new ExtractionItem
+                {
+                    ContractId = contract,
+                    InternalId = result.InternalId,
+                    Product = env, // Using Product column to show Environment
+                    Premium = "0",
+                    Ucon = result.UconId,
+                    Hdmd = result.DemandId,
+                    Time = DateTime.Now.ToString("HH:mm:ss"),
+                    Test = "OK",
+                    FilePath = result.FilePath
+                });
+            });
+        }
+
+        // =========================================================================
+        // BATCH EXTRACTION TAB LOGIC
+        // =========================================================================
+
+        private void BtnBrowseD_Click(object sender, RoutedEventArgs e) => TxtBatchD.Text = OpenCsvDialog();
+        private void BtnBrowseQ_Click(object sender, RoutedEventArgs e) => TxtBatchQ.Text = OpenCsvDialog();
+
+        private string OpenCsvDialog()
+        {
+            var openFileDialog = new OpenFileDialog
             {
-                PrgLoading.Visibility = Visibility.Collapsed;
-                BtnRun.IsEnabled = true;
-                if (BtnBrowse != null) BtnBrowse.IsEnabled = true;
+                Filter = "CSV Files|*.csv",
+                Title = "Select a CSV file containing contracts"
+            };
+
+            return openFileDialog.ShowDialog() == true ? openFileDialog.FileName : string.Empty;
+        }
+
+        private async void BtnRunBatch_Click(object sender, RoutedEventArgs e)
+        {
+            string fileD = TxtBatchD?.Text.Trim();
+            string fileQ = TxtBatchQ?.Text.Trim();
+
+            if (string.IsNullOrEmpty(fileD) && string.IsNullOrEmpty(fileQ))
+            {
+                TxtStatus.Text = "Please select at least one CSV file.";
+                TxtStatus.Foreground = Brushes.Orange;
+                return;
             }
+
+            var batchService = new BatchExtractionService(_extractionService);
+
+            await RunProcessAsync(async () =>
+            {
+                if (!string.IsNullOrEmpty(fileD))
+                {
+                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch Extracting Environment D000...");
+                    await Task.Run(() => batchService.PerformBatchExtraction(fileD, "D000", UpdateHistoryGrid));
+                }
+
+                if (!string.IsNullOrEmpty(fileQ))
+                {
+                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch Extracting Environment Q000...");
+                    await Task.Run(() => batchService.PerformBatchExtraction(fileQ, "Q000", UpdateHistoryGrid));
+                }
+
+                _lastGeneratedPath = Settings.OutputDir;
+                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch extraction completed! Global files saved in Output folder.");
+            });
         }
 
         /// <summary>
-        /// Méthode appelée par les services (Callback) pour mettre à jour la grille de l'historique de manière asynchrone (Thread-Safe).
+        /// Callback method used by BatchExtractionService to update UI thread-safely
         /// </summary>
         private void UpdateHistoryGrid(BatchProgressInfo info)
         {
@@ -179,17 +193,59 @@ namespace AutoActivator.Gui
             });
         }
 
+        // =========================================================================
+        // UTILITY METHODS
+        // =========================================================================
+
+        /// <summary>
+        /// Wraps UI state management (Progress bar, buttons disabling) and exception handling
+        /// </summary>
+        private async Task RunProcessAsync(Func<Task> action)
+        {
+            PrgLoading.Visibility = Visibility.Visible;
+            LnkFile.Visibility = Visibility.Collapsed;
+            if (BtnRunSingle != null) BtnRunSingle.IsEnabled = false;
+            if (BtnRunBatch != null) BtnRunBatch.IsEnabled = false;
+
+            TxtStatus.Foreground = Brushes.Blue;
+
+            try
+            {
+                await action();
+                LnkFile.Visibility = Visibility.Visible;
+                TxtStatus.Foreground = Brushes.Green;
+            }
+            catch (Exception ex)
+            {
+                TxtStatus.Text = $"Error: {ex.Message}";
+                TxtStatus.Foreground = Brushes.Red;
+                MessageBox.Show(ex.Message, "Extraction Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                PrgLoading.Visibility = Visibility.Collapsed;
+                if (BtnRunSingle != null) BtnRunSingle.IsEnabled = true;
+                if (BtnRunBatch != null) BtnRunBatch.IsEnabled = true;
+            }
+        }
+
         private void Hyperlink_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                if (Directory.Exists(_lastGeneratedPath)) Process.Start("explorer.exe", _lastGeneratedPath);
-                else if (File.Exists(_lastGeneratedPath)) Process.Start("explorer.exe", $"/select,\"{_lastGeneratedPath}\"");
+                if (Directory.Exists(_lastGeneratedPath))
+                {
+                    Process.Start("explorer.exe", _lastGeneratedPath);
+                }
+                else if (File.Exists(_lastGeneratedPath))
+                {
+                    Process.Start("explorer.exe", $"/select,\"{_lastGeneratedPath}\"");
+                }
             }
-            catch (Exception ex) { MessageBox.Show($"Erreur: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error); }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error opening path: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
-
-        private void BtnActivation_Click(object sender, RoutedEventArgs e) { TxtStatus.Text = "Activation Module selected."; }
-        private void BtnComparison_Click(object sender, RoutedEventArgs e) { TxtStatus.Text = "Comparison Module selected."; }
     }
 }

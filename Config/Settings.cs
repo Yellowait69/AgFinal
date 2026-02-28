@@ -6,7 +6,7 @@ namespace AutoActivator.Config
     public static class Settings
     {
         // -----------------------------------------------------------------------------
-        // 1. CHEMINS DES RÉPERTOIRES ET FICHIERS
+        // 1. DIRECTORY AND FILE PATHS
         // -----------------------------------------------------------------------------
         public static readonly string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
 
@@ -20,39 +20,37 @@ namespace AutoActivator.Config
         public static readonly string InputFile = ActivationOutputFile;
 
         // -----------------------------------------------------------------------------
-        // 2. CONFIGURATION BASES DE DONNEES
+        // 2. DATABASE CONFIGURATION
         // -----------------------------------------------------------------------------
 
-        // Configuration LISA (SQL Server)
+        // LISA Configuration (SQL Server)
         public static class DbConfig
         {
             public const string Driver = "SQL Server";
             public const string Server = "SQLMFDBD01";
-            public const string Database = "FJ0AGDB_D000";
 
-            // METTRE SUR "no" POUR FORCER L'UTILISATION DE UID ET PWD CI-DESSOUS
+            // SET TO "no" TO FORCE THE USE OF UID AND PWD BELOW
             public const string TrustedConnection = "yes";
 
-            // Identifiants en dur pour faciliter les tests
+            // Hardcoded credentials for testing purposes
+            // (Note: Consider moving to environment variables or appsettings.json for production security)
             public const string Uid = "XA3894";
             public static string Pwd => "Maxpanpan02!Amandine";
 
-            public static string ConnectionString =>
-                TrustedConnection.Equals("yes", StringComparison.OrdinalIgnoreCase)
-                    ? $"Server={Server};Database={Database};Integrated Security=True;TrustServerCertificate=True;"
-                    : $"Server={Server};Database={Database};User Id={Uid};Password={Pwd};TrustServerCertificate=True;";
-        }
+            /// <summary>
+            /// Generates the connection string dynamically based on the target environment.
+            /// </summary>
+            /// <param name="envSuffix">Environment suffix (e.g., "D000" or "Q000")</param>
+            /// <returns>The formatted SQL connection string</returns>
+            public static string GetConnectionString(string envSuffix)
+            {
+                // Concatène le préfixe de la base avec l'environnement demandé (D000 ou Q000)
+                string database = $"FJ0AGDB_{envSuffix}";
 
-        // Configuration additionnelle (ex: Oracle ou autre source)
-        public static class OtherDbConfig
-        {
-            public const string Server = "NOM_SERVEUR";
-            public const string Uid = "UTILISATEUR";
-
-            // Identifiants en dur pour les tests
-            public static string Pwd => "PASSWORD";
-
-            public static string ConnectionString => $"Data Source={Server};User Id={Uid};Password={Pwd};";
+                return TrustedConnection.Equals("yes", StringComparison.OrdinalIgnoreCase)
+                    ? $"Server={Server};Database={database};Integrated Security=True;TrustServerCertificate=True;"
+                    : $"Server={Server};Database={database};User Id={Uid};Password={Pwd};TrustServerCertificate=True;";
+            }
         }
     }
 }

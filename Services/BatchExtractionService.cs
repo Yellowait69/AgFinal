@@ -15,16 +15,17 @@ namespace AutoActivator.Services
             _extractionService = extractionService;
         }
 
-        public void PerformBatchExtraction(string filePath, Action<BatchProgressInfo> onProgressUpdate)
+        // The method now takes 'env' (e.g., "D000" or "Q000") to target the correct database
+        public void PerformBatchExtraction(string filePath, string env, Action<BatchProgressInfo> onProgressUpdate)
         {
             if (!File.Exists(filePath))
-                throw new FileNotFoundException("Le fichier CSV spécifié est introuvable.", filePath);
+                throw new FileNotFoundException("The specified CSV file could not be found.", filePath);
 
             string rawText = File.ReadAllText(filePath).Replace("\uFEFF", "");
             string[] lines = rawText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
 
             if (lines.Length <= 1)
-                throw new Exception("Le fichier CSV est vide ou ne contient que l'en-tête.");
+                throw new Exception("The CSV file is empty or contains only the header.");
 
             StringBuilder globalLisa = new StringBuilder();
             StringBuilder globalElia = new StringBuilder();
@@ -54,12 +55,13 @@ namespace AutoActivator.Services
                     {
                         try
                         {
-                            ExtractionResult result = _extractionService.PerformExtraction(contractNumber, false);
+                            // Passing the environment parameter down to the ExtractionService
+                            ExtractionResult result = _extractionService.PerformExtraction(contractNumber, env, false);
 
                             if (!string.IsNullOrWhiteSpace(result.LisaContent))
                             {
                                 globalLisa.AppendLine(new string('-', 60));
-                                globalLisa.AppendLine($"### CONTRACT: {contractNumber} | PRODUCT: {productValue}");
+                                globalLisa.AppendLine($"### CONTRACT: {contractNumber} | PRODUCT: {productValue} | ENV: {env}");
                                 globalLisa.AppendLine(new string('-', 60));
                                 globalLisa.Append(result.LisaContent).AppendLine();
                             }
@@ -67,24 +69,34 @@ namespace AutoActivator.Services
                             if (!string.IsNullOrWhiteSpace(result.EliaContent))
                             {
                                 globalElia.AppendLine(new string('-', 60));
-                                globalElia.AppendLine($"### CONTRACT: {contractNumber} | UCON: {result.UconId}");
+                                globalElia.AppendLine($"### CONTRACT: {contractNumber} | UCON: {result.UconId} | ENV: {env}");
                                 globalElia.AppendLine(new string('-', 60));
                                 globalElia.Append(result.EliaContent).AppendLine();
                             }
 
                             onProgressUpdate?.Invoke(new BatchProgressInfo
                             {
-                                ContractId = contractNumber, InternalId = result.InternalId, Product = productValue,
-                                Premium = premiumAmount, UconId = result.UconId, DemandId = result.DemandId, Status = "OK"
+                                ContractId = contractNumber,
+                                InternalId = result.InternalId,
+                                Product = productValue,
+                                Premium = premiumAmount,
+                                UconId = result.UconId,
+                                DemandId = result.DemandId,
+                                Status = "OK"
                             });
                         }
                         catch (Exception ex)
                         {
                             onProgressUpdate?.Invoke(new BatchProgressInfo
                             {
-                                ContractId = $"{contractNumber} (FAILED)", InternalId = "Error", Product = productValue,
-                                Premium = premiumAmount, UconId = "Error", DemandId = "Error",
-                                Status = ex.Message.ToLower().Contains("introuvable") ? "Non trouvé en BDD" : "Erreur SQL"
+                                ContractId = $"{contractNumber} (FAILED)",
+                                InternalId = "Error",
+                                Product = productValue,
+                                Premium = premiumAmount,
+                                UconId = "Error",
+                                DemandId = "Error",
+                                // Checked against the English exception message defined in ExtractionService
+                                Status = ex.Message.ToLower().Contains("not found") ? "Not found in DB" : "SQL Error"
                             });
                         }
                     }
@@ -93,8 +105,17 @@ namespace AutoActivator.Services
 
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmm");
             Directory.CreateDirectory(Settings.OutputDir);
-            File.WriteAllText(Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_LISA_{timestamp}.csv"), globalLisa.Length > 0 ? globalLisa.ToString() : "AUCUN CONTRAT LISA TROUVE.", Encoding.UTF8);
-            File.WriteAllText(Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_ELIA_{timestamp}.csv"), globalElia.Length > 0 ? globalElia.ToString() : "AUCUN CONTRAT ELIA TROUVE.", Encoding.UTF8);
+
+            // Output filenames now include the environment variable to differentiate D000 and Q000 extractions
+            File.WriteAllText(
+                Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_LISA_{env}_{timestamp}.csv"),
+                globalLisa.Length > 0 ? globalLisa.ToString() : "NO LISA CONTRACT FOUND.",
+                Encoding.UTF8);
+
+            File.WriteAllText(
+                Path.Combine(Settings.OutputDir, $"BATCH_GLOBAL_ELIA_{env}_{timestamp}.csv"),
+                globalElia.Length > 0 ? globalElia.ToString() : "NO ELIA CONTRACT FOUND.",
+                Encoding.UTF8);
         }
     }
 }

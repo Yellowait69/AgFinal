@@ -9,15 +9,17 @@ namespace AutoActivator.Services
     public class DatabaseManager
     {
         private readonly string _connectionString;
+        public string EnvironmentName { get; }
 
-        public DatabaseManager()
+        public DatabaseManager(string envSuffix)
         {
-            // Récupération sécurisée de la chaîne de connexion depuis les réglages
-            _connectionString = Settings.DbConfig.ConnectionString;
+            EnvironmentName = envSuffix;
+            // Secure retrieval of the connection string dynamically based on the environment
+            _connectionString = Settings.DbConfig.GetConnectionString(envSuffix);
         }
 
         /// <summary>
-        /// Vérifie la validité de la connexion au serveur SQL.
+        /// Checks the validity of the connection to the SQL server.
         /// </summary>
         public bool TestConnection()
         {
@@ -31,7 +33,7 @@ namespace AutoActivator.Services
                         var result = command.ExecuteScalar();
                         if (result != null && result.ToString() == "1")
                         {
-                            Console.WriteLine($"[INFO] Connexion réussie à la base de données : {Settings.DbConfig.Database}");
+                            Console.WriteLine($"[INFO] Successful connection to the database (Environment: {EnvironmentName})");
                             return true;
                         }
                     }
@@ -40,18 +42,18 @@ namespace AutoActivator.Services
             }
             catch (SqlException ex)
             {
-                Console.WriteLine($"[ERROR] Échec de la connexion SQL (Code: {ex.Number}) : {ex.Message}");
+                Console.WriteLine($"[ERROR] SQL connection failure (Code: {ex.Number}) : {ex.Message}");
                 return false;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] Échec de la connexion (Erreur générale) : {ex.Message}");
+                Console.WriteLine($"[ERROR] Connection failure (General error) : {ex.Message}");
                 return false;
             }
         }
 
         /// <summary>
-        /// Exécute une requête SELECT avec des paramètres pour prévenir les injections SQL.
+        /// Executes a SELECT query with parameters to prevent SQL injections.
         /// </summary>
         public DataTable GetData(string query, Dictionary<string, object> parameters = null)
         {
@@ -67,12 +69,12 @@ namespace AutoActivator.Services
                         {
                             foreach (var param in parameters)
                             {
-                                // Gestion propre des valeurs nulles
+                                // Clean handling of null values
                                 command.Parameters.AddWithValue(param.Key, param.Value ?? DBNull.Value);
                             }
                         }
 
-                        // Optimisation : SqlDataReader est plus performant que SqlDataAdapter pour un simple SELECT
+                        // Optimization: SqlDataReader is faster than SqlDataAdapter for a simple SELECT
                         connection.Open();
                         using (SqlDataReader reader = command.ExecuteReader())
                         {
@@ -83,29 +85,29 @@ namespace AutoActivator.Services
             }
             catch (SqlException ex)
             {
-                Console.WriteLine($"[ERROR] Erreur SQL (Code {ex.Number}) sur la requête : {query}\nDétails : {ex.Message}");
-                throw new Exception($"Erreur BDD ({ex.Number}) : {ex.Message}");
+                Console.WriteLine($"[ERROR] SQL Error (Code {ex.Number}) on query: {query}\nDetails: {ex.Message}");
+                throw new Exception($"DB Error ({ex.Number}) : {ex.Message}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] Erreur système sur la requête : {query}\nDétails : {ex.Message}");
-                throw new Exception($"Erreur système : {ex.Message}");
+                Console.WriteLine($"[ERROR] System Error on query: {query}\nDetails: {ex.Message}");
+                throw new Exception($"System Error : {ex.Message}");
             }
 
             return dataTable;
         }
 
         /// <summary>
-        /// Injecte un paiement de test dans la table LV.PRCTT0 de manière sécurisée et dynamique.
-        /// Les paramètres optionnels remplacent les valeurs anciennement "en dur" pour plus de flexibilité.
+        /// Injects a test payment into the LV.PRCTT0 table safely and dynamically.
+        /// Optional parameters replace hardcoded values for more flexibility.
         /// </summary>
         public bool InjectPayment(
             string contractInternalId,
             decimal amount,
             DateTime? paymentDate = null,
             string simulatedName = "TEST AUTOMATION",
-            string simulatedAddress1 = "RUE DU TEST 1",
-            string simulatedAddress2 = "1000 BRUXELLES",
+            string simulatedAddress1 = "TEST STREET 1",
+            string simulatedAddress2 = "1000 BRUSSELS",
             string simulatedIban = "BE47001304609580",
             string simulatedBic = "GEBABEBB",
             string bureauNumber = "12831",
@@ -117,11 +119,11 @@ namespace AutoActivator.Services
                 ? paymentDate.Value.AddHours(12)
                 : now;
 
-            // Génération d'une communication structurée fictive
+            // Generation of a fictional structured communication
             string idStr = contractInternalId?.Trim() ?? "";
             string fakeCommu = $"820{(idStr.Length > 9 ? idStr.Substring(0, 9) : idStr)}99";
 
-            // La requête SQL utilise maintenant les paramètres dynamiques au lieu des chaînes en dur
+            // The SQL query now uses dynamic parameters instead of hardcoded strings
             string query = @"
                 INSERT INTO LV.PRCTT0 (
                     C_STE, NO_CNT, C_MD_PMT, D_REF_PRM, NO_ORD_RCP, TSTAMP_CRT_RCT,
@@ -143,14 +145,14 @@ namespace AutoActivator.Services
                 {
                     using (SqlCommand command = new SqlCommand(query, connection))
                     {
-                        // Assignation des paramètres métiers
+                        // Assignment of business parameters
                         command.Parameters.AddWithValue("@no_cnt", contractInternalId);
                         command.Parameters.AddWithValue("@d_ref", referenceDate.Date);
                         command.Parameters.AddWithValue("@tstamp", timestamp);
                         command.Parameters.AddWithValue("@amount", amount);
                         command.Parameters.AddWithValue("@commu", fakeCommu);
 
-                        // Assignation des paramètres de simulation (anciennement en dur)
+                        // Assignment of simulation parameters (formerly hardcoded)
                         command.Parameters.AddWithValue("@nom_cp", simulatedName);
                         command.Parameters.AddWithValue("@adr_1", simulatedAddress1);
                         command.Parameters.AddWithValue("@adr_2", simulatedAddress2);
@@ -162,19 +164,19 @@ namespace AutoActivator.Services
                         connection.Open();
                         command.ExecuteNonQuery();
 
-                        Console.WriteLine($"[INFO] Paiement de {amount} EUR injecté avec succès (Contrat : {contractInternalId})");
+                        Console.WriteLine($"[INFO] Payment of {amount} EUR successfully injected (Contract: {contractInternalId} | Env: {EnvironmentName})");
                         return true;
                     }
                 }
             }
             catch (SqlException ex)
             {
-                Console.WriteLine($"[ERROR] ÉCHEC SQL lors de l'injection du paiement (Code: {ex.Number}) : {ex.Message}");
+                Console.WriteLine($"[ERROR] SQL FAILURE during payment injection (Code: {ex.Number}) : {ex.Message}");
                 return false;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] ÉCHEC système lors de l'injection du paiement : {ex.Message}");
+                Console.WriteLine($"[ERROR] System FAILURE during payment injection : {ex.Message}");
                 return false;
             }
         }
