@@ -26,7 +26,8 @@ namespace AutoActivator.Gui
                 return;
             }
 
-            var progress = new Progress<ExtractionItem>(item => ExtractionHistory.Add(item));
+            // CORRECTION ICI : Utilisation de IProgress au lieu de var
+            IProgress<ExtractionItem> progress = new Progress<ExtractionItem>(item => ExtractionHistory.Add(item));
 
             await RunProcessAsync(async () =>
             {
@@ -90,7 +91,9 @@ namespace AutoActivator.Gui
             }
 
             var batchService = new BatchExtractionService(_extractionService);
-            var progress = new Progress<BatchProgressInfo>(info =>
+
+            // CORRECTION ICI : Utilisation de IProgress au lieu de var
+            IProgress<BatchProgressInfo> progress = new Progress<BatchProgressInfo>(info =>
             {
                 ExtractionHistory.Add(new ExtractionItem
                 {

@@ -35,10 +35,13 @@ namespace AutoActivator.Models
     public class ExtractionItem
     {
         public string ContractId { get; set; }
-        public string Environment { get; set; }
+        public string InternalId { get; set; }
         public string Product { get; set; }
-        public string Status { get; set; }
-        public string Timestamp { get; set; }
+        public string Premium { get; set; }
+        public string Ucon { get; set; }
+        public string Hdmd { get; set; }
+        public string Time { get; set; }
+        public string Test { get; set; }
         public string FilePath { get; set; }
     }
 
