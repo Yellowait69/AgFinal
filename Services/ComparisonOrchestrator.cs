@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions; // Ajouté pour Regex.Replace
 using AutoActivator.Models;
 using AutoActivator.Utils; // Ajouté pour accéder à CsvFormatter
 
@@ -61,8 +62,10 @@ namespace AutoActivator.Services
 
             // 2. Automatic deduction of the twin file (If Elia -> look for Lisa, and vice versa)
             string mirrorType = baseType == "ELIA" ? "Lisa" : "Elia";
-            string baseMirrorFile = baseFile.Replace(baseType, mirrorType, StringComparison.OrdinalIgnoreCase);
-            string targetMirrorFile = targetFile.Replace(baseType, mirrorType, StringComparison.OrdinalIgnoreCase);
+
+            // CORRECTION: Utilisation de Regex pour ignorer la casse car string.Replace avec StringComparison n'est pas supporté en .NET Framework
+            string baseMirrorFile = Regex.Replace(baseFile, baseType, mirrorType, RegexOptions.IgnoreCase);
+            string targetMirrorFile = Regex.Replace(targetFile, baseType, mirrorType, RegexOptions.IgnoreCase);
 
             // If mirror files exist, compare them automatically as well
             if (File.Exists(baseMirrorFile) && File.Exists(targetMirrorFile))
