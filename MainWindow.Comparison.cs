@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
 using Microsoft.Win32;
+using AutoActivator.Config; // Ajouté pour accéder à Settings.OutputDir
 using AutoActivator.Models;
 using AutoActivator.Services;
 
@@ -13,68 +14,72 @@ namespace AutoActivator.Gui
         // =========================================================================
         // COMPARISON MODULE LOGIC
         // =========================================================================
+
         private void BtnBrowseBase_Click(object sender, RoutedEventArgs e)
         {
             var openFileDialog = new OpenFileDialog
             {
                 Filter = "CSV Files|*.csv",
-                Title = "Select the base CSV file"
+                Title = "Select the base CSV file",
+                // Ouvre directement le dossier des extractions
+                InitialDirectory = Path.GetFullPath(Settings.OutputDir)
             };
 
             if (openFileDialog.ShowDialog() == true)
             {
                 TxtBaseFile.Text = openFileDialog.FileName;
-                PopulateTargetFiles(openFileDialog.FileName);
+                CheckEnableRunButton();
             }
         }
 
-        private void PopulateTargetFiles(string baseFilePath)
+        private void BtnBrowseTarget_Click(object sender, RoutedEventArgs e)
         {
-            ComboTargetFile.Items.Clear();
-            var orchestrator = new ComparisonOrchestrator();
-
-            string directory = Path.GetDirectoryName(baseFilePath);
-            var allFiles = Directory.GetFiles(directory, "*.csv");
-            var compatibleFiles = orchestrator.GetCompatibleTargetFiles(baseFilePath, allFiles);
-
-            foreach (var file in compatibleFiles)
+            var openFileDialog = new OpenFileDialog
             {
-                ComboTargetFile.Items.Add(Path.GetFileName(file));
+                Filter = "CSV Files|*.csv",
+                Title = "Select the target CSV file",
+                // Ouvre directement le dossier des extractions
+                InitialDirectory = Path.GetFullPath(Settings.OutputDir)
+            };
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                TxtTargetFile.Text = openFileDialog.FileName;
+                CheckEnableRunButton();
             }
+        }
 
-            if (ComboTargetFile.Items.Count > 0)
+        private void CheckEnableRunButton()
+        {
+            // N'active le bouton "Run" que si les deux fichiers sont renseignés
+            if (!string.IsNullOrWhiteSpace(TxtBaseFile.Text) && !string.IsNullOrWhiteSpace(TxtTargetFile.Text))
             {
-                ComboTargetFile.SelectedIndex = 0;
-                ComboTargetFile.IsEnabled = true;
                 BtnRunComparison.IsEnabled = true;
             }
             else
             {
-                ComboTargetFile.IsEnabled = false;
                 BtnRunComparison.IsEnabled = false;
-                MessageBox.Show("No compatible target files (sharing the same 3 IDs) found in this directory.", "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
         private async void BtnRunComparisonAction_Click(object sender, RoutedEventArgs e)
         {
             string baseFile = TxtBaseFile.Text;
-            string targetFileName = ComboTargetFile.SelectedItem?.ToString();
-            string tableName = TxtTableName.Text.Trim();
+            string targetFile = TxtTargetFile.Text;
 
-            if (string.IsNullOrEmpty(targetFileName)) return;
-
-            string targetFile = Path.Combine(Path.GetDirectoryName(baseFile), targetFileName);
+            // Sécurité supplémentaire au cas où
+            if (string.IsNullOrEmpty(baseFile) || string.IsNullOrEmpty(targetFile)) return;
 
             BtnRunComparison.IsEnabled = false;
-            TxtComparisonResults.Text = "Running deep comparison... Please wait.";
+            TxtComparisonResults.Text = "Running deep comparison on all tables... Please wait.";
 
             await Task.Run(() =>
             {
                 var orchestrator = new ComparisonOrchestrator();
                 try
                 {
-                    var report = orchestrator.RunFullComparison(baseFile, targetFile, tableName);
+                    // Lancement de la comparaison globale (sans spécifier de table unique)
+                    var report = orchestrator.RunFullComparison(baseFile, targetFile);
                     Application.Current.Dispatcher.Invoke(() => DisplayComparisonReport(report));
                 }
                 catch (Exception ex)
@@ -101,7 +106,7 @@ namespace AutoActivator.Gui
             if (report.GlobalSuccessPercentage == 100)
             {
                 sb.AppendLine("✅ PERFECT MATCH!");
-                sb.AppendLine("All files, including Elia/Lisa mirror files, are perfectly identical.");
+                sb.AppendLine("All files, including Elia/Lisa mirror files and all their tables, are perfectly identical.");
             }
             else
             {

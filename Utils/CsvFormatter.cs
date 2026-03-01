@@ -47,6 +47,32 @@ namespace AutoActivator.Utils
         }
 
         /// <summary>
+        /// Scanne le fichier CSV pour récupérer les noms de toutes les tables qu'il contient.
+        /// </summary>
+        public static List<string> GetAllTableNames(string filePath)
+        {
+            var tableNames = new List<string>();
+            if (!File.Exists(filePath)) return tableNames;
+
+            // Lit toutes les lignes et cherche les balises d'en-tête de table
+            string[] lines = File.ReadAllLines(filePath);
+            foreach (var line in lines)
+            {
+                if (line.StartsWith("### TABLE : "))
+                {
+                    // Extrait le nom entre "### TABLE : " et " |"
+                    int startIndex = 12;
+                    int endIndex = line.IndexOf(" |", startIndex);
+                    if (endIndex > startIndex)
+                    {
+                        tableNames.Add(line.Substring(startIndex, endIndex - startIndex).Trim());
+                    }
+                }
+            }
+            return tableNames;
+        }
+
+        /// <summary>
         /// Extrait une table spécifique d'un fichier multi-tables généré par l'ExtractionService.
         /// Gère correctement les points-virgules et retours à la ligne inclus dans les champs entre guillemets.
         /// </summary>

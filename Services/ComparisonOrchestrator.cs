@@ -50,27 +50,39 @@ namespace AutoActivator.Services
         }
 
         /// <summary>
-        /// Launches the full comparison. Automatically handles the Elia/Lisa mirror comparison.
+        /// Launches the full comparison. Automatically handles the Elia/Lisa mirror comparison for ALL tables.
         /// </summary>
-        public ComparisonReport RunFullComparison(string baseFile, string targetFile, string tableName)
+        public ComparisonReport RunFullComparison(string baseFile, string targetFile)
         {
             var report = new ComparisonReport();
 
-            // 1. Comparison of the main selected file
             string baseType = Path.GetFileName(baseFile).StartsWith("Elia", StringComparison.OrdinalIgnoreCase) ? "ELIA" : "LISA";
-            CompareAndAppendToReport(baseFile, targetFile, tableName, baseType, report);
-
-            // 2. Automatic deduction of the twin file (If Elia -> look for Lisa, and vice versa)
             string mirrorType = baseType == "ELIA" ? "Lisa" : "Elia";
 
             // CORRECTION: Utilisation de Regex pour ignorer la casse car string.Replace avec StringComparison n'est pas supporté en .NET Framework
             string baseMirrorFile = Regex.Replace(baseFile, baseType, mirrorType, RegexOptions.IgnoreCase);
             string targetMirrorFile = Regex.Replace(targetFile, baseType, mirrorType, RegexOptions.IgnoreCase);
 
-            // If mirror files exist, compare them automatically as well
-            if (File.Exists(baseMirrorFile) && File.Exists(targetMirrorFile))
+            // NOUVEAU : Récupère automatiquement TOUTES les tables du fichier
+            List<string> tablesToCompare = CsvFormatter.GetAllTableNames(baseFile);
+
+            if (tablesToCompare.Count == 0)
             {
-                CompareAndAppendToReport(baseMirrorFile, targetMirrorFile, tableName, mirrorType.ToUpper(), report);
+                throw new Exception("Aucune table trouvée dans le fichier de base. Le format est-il correct ?");
+            }
+
+            // NOUVEAU : Boucle de comparaison sur chaque table trouvée
+            foreach (var tableName in tablesToCompare)
+            {
+                // 1. Comparison of the main selected file
+                CompareAndAppendToReport(baseFile, targetFile, tableName, baseType, report);
+
+                // 2. Automatic deduction of the twin file (If Elia -> look for Lisa, and vice versa)
+                // If mirror files exist, compare them automatically as well
+                if (File.Exists(baseMirrorFile) && File.Exists(targetMirrorFile))
+                {
+                    CompareAndAppendToReport(baseMirrorFile, targetMirrorFile, tableName, mirrorType.ToUpper(), report);
+                }
             }
 
             // 3. Calculation of the global success percentage

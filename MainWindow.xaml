@@ -192,7 +192,7 @@
 
                 <Border Grid.Row="1" Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,20">
                     <StackPanel>
-                        <TextBlock Text="Select the base CSV file. The tool will automatically find the target file and the Elia/Lisa twin files." Margin="0,0,0,15" Foreground="#7F8C8D" TextWrapping="Wrap"/>
+                        <TextBlock Text="Select the base and target CSV files to compare. All tables within the files will be analyzed automatically." Margin="0,0,0,15" Foreground="#7F8C8D" TextWrapping="Wrap"/>
 
                         <TextBlock Text="Base File (Elia or Lisa):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
                         <Grid Margin="0,0,0,15">
@@ -205,12 +205,14 @@
                         </Grid>
 
                         <TextBlock Text="Target File (to compare against):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
-                        <Grid Margin="0,0,0,15">
-                            <ComboBox x:Name="ComboTargetFile" Padding="8" FontSize="14" BorderBrush="#DCDDE1" IsEnabled="False"/>
+                        <Grid Margin="0,0,0,20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="TxtTargetFile" IsReadOnly="True" Padding="8" FontSize="14" BorderBrush="#DCDDE1" Margin="0,0,10,0" Background="#F9F9F9"/>
+                            <Button Content="Browse..." Grid.Column="1" Padding="15,8" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnBrowseTarget_Click"/>
                         </Grid>
-
-                        <TextBlock Text="Table to compare:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
-                        <TextBox x:Name="TxtTableName" Text="CONTRACT" Margin="0,0,0,20" Padding="8" FontSize="14" BorderBrush="#DCDDE1"/>
 
                         <Button x:Name="BtnRunComparison" Content="🚀 Run Deep Comparison" Click="BtnRunComparisonAction_Click" Style="{StaticResource ActionButtonStyle}" HorizontalAlignment="Right" Width="240" IsEnabled="False"/>
                     </StackPanel>
