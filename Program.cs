@@ -136,8 +136,7 @@ namespace AutoActivator
             Console.Write("Path to Target File (e.g., snapshot/ExtractionLISA_...): ");
             string targetFile = Console.ReadLine()?.Trim('\"');
 
-            Console.Write("Table to compare (e.g., LV.PRCTT0): ");
-            string tableName = Console.ReadLine();
+            // Suppression de la demande du nom de la table, on compare tout le fichier maintenant.
 
             if (!File.Exists(baseFile) || !File.Exists(targetFile))
             {
@@ -148,7 +147,8 @@ namespace AutoActivator
             var orchestrator = new ComparisonOrchestrator();
             try
             {
-                var report = orchestrator.RunFullComparison(baseFile, targetFile, tableName);
+                // Appel mis à jour avec 2 arguments uniquement
+                var report = orchestrator.RunFullComparison(baseFile, targetFile);
 
                 Console.WriteLine($"\n=== COMPARISON REPORT ===");
                 Console.WriteLine($"Global Success: {report.GlobalSuccessPercentage}%");
