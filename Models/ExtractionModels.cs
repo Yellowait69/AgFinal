@@ -29,7 +29,21 @@ namespace AutoActivator.Models
     }
 
     // ==========================================
-    // MODÈLES POUR LA COMPARAISON (Nouveaux)
+    // MODÈLES POUR L'INTERFACE GRAPHIQUE (GUI)
+    // ==========================================
+
+    public class ExtractionItem
+    {
+        public string ContractId { get; set; }
+        public string Environment { get; set; }
+        public string Product { get; set; }
+        public string Status { get; set; }
+        public string Timestamp { get; set; }
+        public string FilePath { get; set; }
+    }
+
+    // ==========================================
+    // MODÈLES POUR LA COMPARAISON
     // ==========================================
 
     public class ComparisonReport
