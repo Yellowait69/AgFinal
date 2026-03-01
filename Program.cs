@@ -4,7 +4,6 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Threading;
 using AutoActivator.Config;
 using AutoActivator.Services;
 using AutoActivator.Sql;
@@ -61,91 +60,32 @@ namespace AutoActivator
         }
 
         // =========================================================================
-        // 1. EXTRACTION TO A SINGLE FILE
+        // 1. EXTRACTION
         // =========================================================================
         private static void RunTestExtraction()
         {
-            Console.WriteLine("\n--- Starting Batch Extraction ---");
+            Console.WriteLine("\n--- Starting Extraction ---");
             Console.Write("Enter the contract number (e.g., 182-2728195-31): ");
             string input = Console.ReadLine();
 
             if (string.IsNullOrWhiteSpace(input)) return;
 
-            string targetContract = input.Trim().Replace("\u00A0", "");
-            var db = new DatabaseManager();
-            if (!db.TestConnection()) return;
+            // Demander l'environnement pour utiliser la nouvelle logique de DatabaseManager
+            Console.Write("Environment suffix (e.g., D000 or Q000): ");
+            string envSuffix = Console.ReadLine() ?? "D000";
+            if (string.IsNullOrWhiteSpace(envSuffix)) envSuffix = "D000";
 
-            // 1. Retrieve IDs
-            var parameters = new Dictionary<string, object> { { "@ContractNumber", targetContract } };
-            var dtLisa = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
-            var dtElia = db.GetData(SqlQueries.Queries["GET_ELIA_ID"], parameters);
+            var extractionService = new ExtractionService();
 
-            if (dtLisa.Rows.Count == 0 && dtElia.Rows.Count == 0)
+            try
             {
-                Console.WriteLine($"[ERROR] Contract {targetContract} not found.");
-                return;
+                var result = extractionService.PerformExtraction(input, envSuffix, true);
+                Console.WriteLine($"\n🎉 Extraction completed! Files generated in:\n--> {result.FilePath}");
             }
-
-            // 2. Prepare content for the single file
-            StringBuilder sbFullContent = new StringBuilder();
-            string finalPath = Path.Combine(Settings.OutputDir, $"FULL_EXTRACT_{targetContract}.csv");
-
-            // Local function to format tables in the single buffer
-            void AddTableToBuffer(string tableName, DataTable dt)
+            catch (Exception ex)
             {
-                sbFullContent.AppendLine("################################################################################");
-                sbFullContent.AppendLine($"### TABLE : {tableName} | Rows : {dt.Rows.Count}");
-                sbFullContent.AppendLine("################################################################################");
-
-                if (dt.Rows.Count > 0)
-                {
-                    var columns = dt.Columns.Cast<DataColumn>().Select(c => c.ColumnName);
-                    sbFullContent.AppendLine(string.Join(";", columns));
-
-                    foreach (DataRow row in dt.Rows)
-                    {
-                        var fields = row.ItemArray.Select(f => f?.ToString().Replace(";", " ").Replace("\n", " ").Trim());
-                        sbFullContent.AppendLine(string.Join(";", fields));
-                    }
-                }
-                else
-                {
-                    sbFullContent.AppendLine("NO DATA FOUND");
-                }
-                sbFullContent.AppendLine(); // Line break between tables
+                 Console.WriteLine($"[ERROR] {ex.Message}");
             }
-
-            // 3. LISA Extraction
-            if (dtLisa.Rows.Count > 0)
-            {
-                long internalId = Convert.ToInt64(dtLisa.Rows[0]["NO_CNT"]);
-                Console.WriteLine("[INFO] Extracting LISA tables...");
-
-                var lisaTables = new[] { "LV.SCNTT0", "LV.SAVTT0", "LV.PRCTT0", "LV.SWBGT0", "LV.SCLST0", "LV.SCLRT0", "LV.BSPDT0", "LV.BSPGT0", "LV.MWBGT0", "LV.PRIST0", "LV.FMVGT0" };
-                foreach (var table in lisaTables)
-                {
-                    var dt = db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@InternalId", internalId } });
-                    AddTableToBuffer(table, dt);
-                }
-            }
-
-            // 4. ELIA Extraction
-            if (dtElia.Rows.Count > 0)
-            {
-                string eliaId = dtElia.Rows[0]["IT5UCONAIDN"].ToString();
-                Console.WriteLine("[INFO] Extracting ELIA tables...");
-
-                var eliaTables = new[] { "FJ1.TB5UCON", "FJ1.TB5UGAR", "FJ1.TB5UASU", "FJ1.TB5UPRP", "FJ1.TB5UAVE", "FJ1.TB5UDCR", "FJ1.TB5UBEN" };
-                foreach (var table in eliaTables)
-                {
-                    var dt = db.GetData(SqlQueries.Queries[table], new Dictionary<string, object> { { "@EliaId", eliaId } });
-                    AddTableToBuffer(table, dt);
-                }
-            }
-
-            // 5. Write final file
-            File.WriteAllText(finalPath, sbFullContent.ToString(), Encoding.UTF8);
-            Console.WriteLine($"\n🎉 Extraction completed! Single file generated:\n--> {finalPath}");
         }
 
         // =========================================================================
@@ -154,12 +94,16 @@ namespace AutoActivator
         private static void RunActivation()
         {
             Console.WriteLine("\n--- Starting Activation Script ---");
-            var db = new DatabaseManager();
+            Console.Write("Environment suffix (e.g., D000 or Q000): ");
+            string envSuffix = Console.ReadLine() ?? "D000";
+            if (string.IsNullOrWhiteSpace(envSuffix)) envSuffix = "D000";
+
+            // CORRECTION DE L'ERREUR ICI : On passe bien l'environnement au DatabaseManager
+            var db = new DatabaseManager(envSuffix);
             if (!db.TestConnection()) return;
 
             // Simulation: Replace with your actual list if needed
             var contratsSources = new List<string> { "182-2728195-31" };
-            var resultats = new List<Dictionary<string, object>>();
 
             foreach (var oldContractExt in contratsSources)
             {
@@ -186,29 +130,44 @@ namespace AutoActivator
         private static void RunComparison()
         {
             Console.WriteLine("\n--- Starting Comparator ---");
-            // Existing comparison logic, using the new Queries access
-            // ... (identical to your original code but using DatabaseManager)
-        }
+            Console.Write("Path to Base File (e.g., ExtractionLISA_...): ");
+            string baseFile = Console.ReadLine()?.Trim('\"'); // Trim des guillemets si glissé-déposé
 
-        private static void WriteDataTableToCsv(DataTable dataTable, string filePath)
-        {
-            if (dataTable == null) return;
-            var sb = new StringBuilder();
+            Console.Write("Path to Target File (e.g., snapshot/ExtractionLISA_...): ");
+            string targetFile = Console.ReadLine()?.Trim('\"');
 
-            // Header
-            var columns = dataTable.Columns.Cast<DataColumn>().Select(c => c.ColumnName);
-            sb.AppendLine(string.Join(";", columns));
+            Console.Write("Table to compare (e.g., LV.PRCTT0): ");
+            string tableName = Console.ReadLine();
 
-            // Data
-            foreach (DataRow row in dataTable.Rows)
+            if (!File.Exists(baseFile) || !File.Exists(targetFile))
             {
-                var fields = row.ItemArray.Select(f => {
-                    string val = f?.ToString() ?? "";
-                    return val.Replace(";", " ").Replace("\n", " ").Trim();
-                });
-                sb.AppendLine(string.Join(";", fields));
+                Console.WriteLine("[ERROR] One or both files do not exist.");
+                return;
             }
-            File.WriteAllText(filePath, sb.ToString(), Encoding.UTF8);
+
+            var orchestrator = new ComparisonOrchestrator();
+            try
+            {
+                var report = orchestrator.RunFullComparison(baseFile, targetFile, tableName);
+
+                Console.WriteLine($"\n=== COMPARISON REPORT ===");
+                Console.WriteLine($"Global Success: {report.GlobalSuccessPercentage}%");
+                Console.WriteLine($"Total Rows Compared: {report.TotalRowsCompared}");
+                Console.WriteLine($"Total Differences: {report.TotalDifferencesFound}\n");
+
+                foreach (var fileResult in report.FileResults)
+                {
+                    Console.WriteLine($"[{fileResult.Status}] {fileResult.FileType} - {fileResult.TableName}");
+                    if (!fileResult.IsMatch && !string.IsNullOrEmpty(fileResult.ErrorDetails))
+                    {
+                        Console.WriteLine(fileResult.ErrorDetails);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Comparison failed: {ex.Message}");
+            }
         }
     }
 }
