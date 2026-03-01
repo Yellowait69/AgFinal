@@ -4,6 +4,7 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using AutoActivator.Models;
+using AutoActivator.Utils; // Ajouté pour accéder à CsvFormatter
 
 namespace AutoActivator.Services
 {
@@ -77,9 +78,9 @@ namespace AutoActivator.Services
 
         private void CompareAndAppendToReport(string file1, string file2, string tableName, string type, ComparisonReport report)
         {
-            // NOTE: Replace with your actual CSV -> DataTable conversion method
-            DataTable df1 = LoadCsvToDataTable(file1);
-            DataTable df2 = LoadCsvToDataTable(file2);
+            // REMPLACEMENT : Utilisation du vrai parseur CSV robuste
+            DataTable df1 = CsvFormatter.LoadTableFromCsv(file1, tableName);
+            DataTable df2 = CsvFormatter.LoadTableFromCsv(file2, tableName);
 
             var (Status, Details) = Comparator.CompareDataTables(df1, df2, tableName);
 
@@ -129,32 +130,6 @@ namespace AutoActivator.Services
             if (successfulRows < 0) successfulRows = 0;
 
             report.GlobalSuccessPercentage = Math.Round(((double)successfulRows / report.TotalRowsCompared) * 100, 2);
-        }
-
-        // --- Utility method (Mock) to load a CSV into a DataTable ---
-        // (To be adapted if you already have CsvFormatter.cs configured for this)
-        private DataTable LoadCsvToDataTable(string filePath)
-        {
-            var dt = new DataTable();
-            if (!File.Exists(filePath)) return dt;
-
-            var lines = File.ReadAllLines(filePath);
-            if (lines.Length == 0) return dt;
-
-            var headers = lines[0].Split(';'); // or ',' depending on your format
-            foreach (var header in headers) dt.Columns.Add(header.Trim());
-
-            for (int i = 1; i < lines.Length; i++)
-            {
-                var row = dt.NewRow();
-                var cols = lines[i].Split(';');
-                for (int j = 0; j < headers.Length && j < cols.Length; j++)
-                {
-                    row[j] = cols[j].Trim();
-                }
-                dt.Rows.Add(row);
-            }
-            return dt;
         }
     }
 }
