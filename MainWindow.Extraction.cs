@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
 using Microsoft.Win32;
@@ -74,7 +75,13 @@ namespace AutoActivator.Gui
 
         private string OpenCsvDialog()
         {
-            var openFileDialog = new OpenFileDialog { Filter = "CSV Files|*.csv", Title = "Select a CSV file containing contracts" };
+            var openFileDialog = new OpenFileDialog
+            {
+                Filter = "CSV Files|*.csv",
+                Title = "Select a CSV file containing contracts",
+                // NOUVEAU : Force l'ouverture dans le dossier des fichiers d'entrée
+                InitialDirectory = Path.GetFullPath(Settings.InputDir)
+            };
             return openFileDialog.ShowDialog() == true ? openFileDialog.FileName : string.Empty;
         }
 
