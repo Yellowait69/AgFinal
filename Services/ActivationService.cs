@@ -98,8 +98,6 @@ namespace AutoActivator.Services
                 _httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
 
                 var payload = new { mfUser = username, mfNewPassword = "", mfPassword = password };
-
-                // Utilisation de Newtonsoft.Json
                 var content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json");
                 AddCommonHeaders(content.Headers);
 
@@ -134,7 +132,14 @@ namespace AutoActivator.Services
             if (!File.Exists(filePath)) throw new FileNotFoundException($"Fichier JCL introuvable: {fileName}");
 
             onProgress($"\nPréparation du job {jobName}...");
-            string rawContent = await File.ReadAllTextAsync(filePath);
+
+            // CORRECTION C# 7.3 : Utilisation de StreamReader au lieu de File.ReadAllTextAsync
+            string rawContent;
+            using (StreamReader reader = new StreamReader(filePath))
+            {
+                rawContent = await reader.ReadToEndAsync();
+            }
+
             string correctedContent = DoCorrections(rawContent);
             string readyContent = ApplyVariables(correctedContent, variables, count);
 
@@ -169,8 +174,6 @@ namespace AutoActivator.Services
         {
             var payload = new { subJes = "2", ctlSubmit = "Submit", JCLIn = jclContent };
             var request = new HttpRequestMessage(HttpMethod.Post, $"{_nodeUrl}jescontrol/");
-
-            // Utilisation de Newtonsoft.Json
             request.Content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json");
             AddCommonHeaders(request.Content.Headers);
             _httpClient.DefaultRequestHeaders.Referrer = new Uri($"{_nodeUrl}jescontrol/");
@@ -181,8 +184,6 @@ namespace AutoActivator.Services
                 if (!response.IsSuccessStatusCode) return (false, null, $"HTTP Error {response.StatusCode}");
 
                 string responseBody = await response.Content.ReadAsStringAsync();
-
-                // Utilisation de JObject (Newtonsoft)
                 JObject doc = JObject.Parse(responseBody);
 
                 if (doc.TryGetValue("JobMsg", out JToken jobMsgToken))
@@ -225,8 +226,6 @@ namespace AutoActivator.Services
                 if (!response.IsSuccessStatusCode) return "Unknown";
 
                 string responseBody = await response.Content.ReadAsStringAsync();
-
-                // Utilisation de JObject (Newtonsoft)
                 JObject doc = JObject.Parse(responseBody);
                 return doc["JobStatus"]?.ToString().Trim() ?? "Unknown";
             }
@@ -298,15 +297,16 @@ namespace AutoActivator.Services
             string jobClass = vars.ContainsKey("CLASS") ? vars["CLASS"] : "A";
             string username = vars.ContainsKey("USERNAME") ? vars["USERNAME"] : Environment.UserName;
 
-            // Environnement cible
-            string schenv = env switch
+            // CORRECTION C# 7.3 : Remplacement du switch expression par un switch classique
+            string schenv;
+            switch (env)
             {
-                "D" => "IM7T",
-                "Q" => "IM7C",
-                "A" => "IM7Q",
-                "P" => "IM7P",
-                _ => "IM7T"
-            };
+                case "Q": schenv = "IM7C"; break;
+                case "A": schenv = "IM7Q"; break;
+                case "P": schenv = "IM7P"; break;
+                case "D":
+                default: schenv = "IM7T"; break;
+            }
 
             // Insertion de la nouvelle JobCard
             string jobcard = $"//{username}{count} JOB CLASS={jobClass},SCHENV={schenv},NOTIFY={username}\r\n";
