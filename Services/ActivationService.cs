@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -14,17 +12,16 @@ using Newtonsoft.Json.Linq;
 
 namespace AutoActivator.Services
 {
-    public class ActivationService : IDisposable
+    public class ActivationService
     {
         private readonly string _jclDirectory;
-        private readonly HttpClient _httpClient;
         private readonly CookieContainer _cookieContainer;
         private string _activeServer;
         private string _currentEnv;
         private string _baseUrl;
         private string _nodeUrl;
 
-        // Dictionnaire des serveurs actifs par environnement (récupéré de ton outil interne AGConnector)
+        // Dictionnaire des serveurs actifs par environnement
         private readonly Dictionary<string, List<string>> _activeServers = new Dictionary<string, List<string>>()
         {
             { "D", new List<string> { "sdmfas01", "sdmfas03", "sdmfas05" } },
@@ -38,19 +35,13 @@ namespace AutoActivator.Services
             _jclDirectory = jclDirectory;
             _cookieContainer = new CookieContainer();
 
-            // Instanciation unique du HttpClient pour éviter l'épuisement des sockets
-            var handler = new HttpClientHandler
-            {
-                CookieContainer = _cookieContainer,
-                ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true
-            };
+            // Ignore les erreurs de certificat SSL (Auto-signé en Intranet)
+            ServicePointManager.ServerCertificateValidationCallback = (sender, cert, chain, sslPolicyErrors) => true;
 
-            _httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
+            // Force l'utilisation des protocoles de sécurité modernes et anciens pour la compatibilité
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
         }
 
-        /// <summary>
-        /// Orchestre la séquence complète d'activation.
-        /// </summary>
         public async Task RunActivationSequenceAsync(Dictionary<string, string> generalVariables, Dictionary<string, string> addprctSpecificVariables, string username, string password, Action<string> onProgress, CancellationToken cancellationToken = default)
         {
             try
@@ -107,58 +98,66 @@ namespace AutoActivator.Services
 
                 _activeServer = server;
                 _nodeUrl = $"{_baseUrl}/native/v1/regions/{_activeServer}/86/BATCH{env}/";
+                string logonUrl = $"{_baseUrl}/logon";
 
-                var payload = new { mfUser = username, mfNewPassword = "", mfPassword = password };
-                var content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8);
-                content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                var request = CreateRequest(logonUrl, "POST", logonUrl);
 
-                var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/logon") { Content = content };
-                request.Headers.ConnectionClose = true;
-                AddCommonHeaders(request.Headers);
-                request.Headers.TryAddWithoutValidation("Referer", $"{_baseUrl}/logon");
+                string jsonPayload = $"{{\"mfUser\":\"{username}\",\"mfNewPassword\":\"\",\"mfPassword\":\"{password}\"}}";
 
                 try
                 {
-                    var response = await _httpClient.SendAsync(request, cancellationToken);
-
-                    if (response.IsSuccessStatusCode)
+                    using (cancellationToken.Register(() => request.Abort()))
+                    using (var streamWriter = new StreamWriter(await request.GetRequestStreamAsync()))
                     {
-                        var testRequest = new HttpRequestMessage(HttpMethod.Get, $"{_nodeUrl}region-functionality");
-                        AddCommonHeaders(testRequest.Headers);
-                        testRequest.Headers.TryAddWithoutValidation("Referer", $"{_nodeUrl}region-functionality");
+                        await streamWriter.WriteAsync(jsonPayload);
+                    }
 
-                        var testResponse = await _httpClient.SendAsync(testRequest, cancellationToken);
-
-                        if (testResponse.IsSuccessStatusCode) return true;
-                        else
+                    using (var response = (HttpWebResponse)await request.GetResponseAsync())
+                    {
+                        if (response.StatusCode == HttpStatusCode.OK)
                         {
-                            lastErrorMessage = $"Test région refusé (Erreur HTTP {testResponse.StatusCode})";
+                            // Test de fonctionnalité
+                            var testRequest = CreateRequest($"{_nodeUrl}region-functionality", "GET", $"{_nodeUrl}region-functionality");
+                            using (cancellationToken.Register(() => testRequest.Abort()))
+                            using (var testResponse = (HttpWebResponse)await testRequest.GetResponseAsync())
+                            {
+                                if (testResponse.StatusCode == HttpStatusCode.OK) return true;
+                            }
+                        }
+                    }
+                }
+                catch (WebException ex)
+                {
+                    if (ex.Response is HttpWebResponse errorResponse)
+                    {
+                        if (errorResponse.StatusCode == HttpStatusCode.Unauthorized || errorResponse.StatusCode == HttpStatusCode.Forbidden)
+                        {
+                            // PREVENT BAN : Si 401 ou 403, mauvais mot de passe
+                            throw new UnauthorizedAccessException("Mot de passe incorrect ou compte verrouillé. Arrêt immédiat pour éviter le bannissement.");
+                        }
+
+                        using (var reader = new StreamReader(errorResponse.GetResponseStream()))
+                        {
+                            string errorBody = await reader.ReadToEndAsync();
+                            lastErrorMessage = $"Logon refusé (HTTP {(int)errorResponse.StatusCode}). Détails : {errorBody}";
                             onProgress($"Serveur {_activeServer} ignoré : {lastErrorMessage}");
                         }
                     }
-                    else if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
-                    {
-                        // PRÉVENTION DU BANNISSEMENT : Si on a un 401 ou 403, le mot de passe est faux.
-                        // On lance une exception immédiatement au lieu d'essayer les serveurs suivants.
-                        throw new UnauthorizedAccessException("Mot de passe incorrect ou compte verrouillé. Arrêt immédiat pour éviter le bannissement.");
-                    }
                     else
                     {
-                        string errorBody = await response.Content.ReadAsStringAsync();
-                        lastErrorMessage = $"Logon refusé (Code HTTP {(int)response.StatusCode}). Détails : {errorBody}";
-                        onProgress($"Serveur {_activeServer} ignoré : {lastErrorMessage}");
+                        lastErrorMessage = ex.Message;
+                        onProgress($"Erreur connexion {_activeServer} : {ex.Message}");
                     }
+                    // Continue vers le serveur suivant
                 }
                 catch (UnauthorizedAccessException)
                 {
-                    // On remonte l'erreur critique sans essayer les autres serveurs
-                    throw;
+                    throw; // Remonte l'erreur critique
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     lastErrorMessage = ex.Message;
-                    onProgress($"Erreur connexion {_activeServer} : {ex.Message}");
-                    // Tente le serveur suivant
+                    onProgress($"Erreur inattendue {_activeServer} : {ex.Message}");
                 }
             }
 
@@ -210,49 +209,60 @@ namespace AutoActivator.Services
 
         private async Task<(bool Success, string JobNum, string Error)> SubmitJobAsync(string jclContent, CancellationToken cancellationToken)
         {
+            string submitUrl = $"{_nodeUrl}jescontrol/";
+            var request = CreateRequest(submitUrl, "POST", submitUrl);
+
             var payload = new { subJes = "2", ctlSubmit = "Submit", JCLIn = jclContent };
-            var request = new HttpRequestMessage(HttpMethod.Post, $"{_nodeUrl}jescontrol/");
-
-            var content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8);
-            content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-            request.Content = content;
-
-            AddCommonHeaders(request.Headers);
-            request.Headers.TryAddWithoutValidation("Referer", $"{_nodeUrl}jescontrol/");
+            string jsonPayload = JsonConvert.SerializeObject(payload);
 
             try
             {
-                var response = await _httpClient.SendAsync(request, cancellationToken);
-                if (!response.IsSuccessStatusCode)
+                using (cancellationToken.Register(() => request.Abort()))
+                using (var streamWriter = new StreamWriter(await request.GetRequestStreamAsync()))
                 {
-                    string err = await response.Content.ReadAsStringAsync();
-                    return (false, null, $"HTTP Error {response.StatusCode} : {err}");
+                    await streamWriter.WriteAsync(jsonPayload);
                 }
 
-                string responseBody = await response.Content.ReadAsStringAsync();
-                JObject doc = JObject.Parse(responseBody);
-
-                if (doc.TryGetValue("JobMsg", out JToken jobMsgToken))
+                using (var response = (HttpWebResponse)await request.GetResponseAsync())
+                using (var reader = new StreamReader(response.GetResponseStream()))
                 {
-                    string jobNum = null;
-                    bool isReady = false;
-                    var errorMsg = new StringBuilder();
+                    string responseBody = await reader.ReadToEndAsync();
+                    JObject doc = JObject.Parse(responseBody);
 
-                    foreach (var lineToken in jobMsgToken)
+                    if (doc.TryGetValue("JobMsg", out JToken jobMsgToken))
                     {
-                        string line = lineToken.ToString();
-                        if (line.Contains("JOBNUM="))
+                        string jobNum = null;
+                        bool isReady = false;
+                        var errorMsg = new StringBuilder();
+
+                        foreach (var lineToken in jobMsgToken)
                         {
-                            var match = Regex.Match(line, @"JOBNUM=(\d+)");
-                            if (match.Success) jobNum = "J" + match.Groups[1].Value;
+                            string line = lineToken.ToString();
+                            if (line.Contains("JOBNUM="))
+                            {
+                                var match = Regex.Match(line, @"JOBNUM=(\d+)");
+                                if (match.Success) jobNum = "J" + match.Groups[1].Value;
+                            }
+                            if (line.Contains("Job ready for execution")) isReady = true;
+                            if (line.Contains("JCL parsing error")) errorMsg.AppendLine(line);
                         }
-                        if (line.Contains("Job ready for execution")) isReady = true;
-                        if (line.Contains("JCL parsing error")) errorMsg.AppendLine(line);
+                        if (isReady) return (true, jobNum, null);
+                        return (false, null, errorMsg.ToString());
                     }
-                    if (isReady) return (true, jobNum, null);
-                    return (false, null, errorMsg.ToString());
+                    return (false, null, "Format de réponse JSON inattendu.");
                 }
-                return (false, null, "Format de réponse JSON inattendu.");
+            }
+            catch (WebException ex)
+            {
+                if (ex.Response is HttpWebResponse errResp)
+                {
+                    using (var reader = new StreamReader(errResp.GetResponseStream()))
+                    {
+                        string err = await reader.ReadToEndAsync();
+                        return (false, null, $"HTTP Error {errResp.StatusCode} : {err}");
+                    }
+                }
+                return (false, null, ex.Message);
             }
             catch (Exception ex)
             {
@@ -262,18 +272,19 @@ namespace AutoActivator.Services
 
         private async Task<string> CheckJobStatusAsync(string jobNum, CancellationToken cancellationToken)
         {
-            var request = new HttpRequestMessage(HttpMethod.Get, $"{_nodeUrl}jobview/{jobNum}");
-            AddCommonHeaders(request.Headers);
-            request.Headers.TryAddWithoutValidation("Referer", $"{_nodeUrl}jobview/{jobNum}");
+            string url = $"{_nodeUrl}jobview/{jobNum}";
+            var request = CreateRequest(url, "GET", url);
 
             try
             {
-                var response = await _httpClient.SendAsync(request, cancellationToken);
-                if (!response.IsSuccessStatusCode) return "Unknown";
-
-                string responseBody = await response.Content.ReadAsStringAsync();
-                JObject doc = JObject.Parse(responseBody);
-                return doc["JobStatus"]?.ToString().Trim() ?? "Unknown";
+                using (cancellationToken.Register(() => request.Abort()))
+                using (var response = (HttpWebResponse)await request.GetResponseAsync())
+                using (var reader = new StreamReader(response.GetResponseStream()))
+                {
+                    string responseBody = await reader.ReadToEndAsync();
+                    JObject doc = JObject.Parse(responseBody);
+                    return doc["JobStatus"]?.ToString().Trim() ?? "Unknown";
+                }
             }
             catch
             {
@@ -281,16 +292,36 @@ namespace AutoActivator.Services
             }
         }
 
-        private void AddCommonHeaders(HttpRequestHeaders headers)
+        private HttpWebRequest CreateRequest(string url, string method, string referer)
         {
-            headers.TryAddWithoutValidation("accept-encoding", "gzip, deflate, br");
-            headers.TryAddWithoutValidation("sec-fetch-dest", "empty");
-            headers.TryAddWithoutValidation("sec-fetch-mode", "cors");
-            headers.TryAddWithoutValidation("sec-fetch-site", "same-origin");
-            headers.TryAddWithoutValidation("accept-language", "en-BE");
-            headers.TryAddWithoutValidation("x-requested-with", "XMLHttpRequest");
-            headers.TryAddWithoutValidation("Accept", "application/json, text/plain, */*");
+            var request = (HttpWebRequest)WebRequest.Create(url);
+            request.Method = method;
+            request.ContentType = "application/json";
+            request.Accept = "application/json, text/plain, */*";
+            request.KeepAlive = false;
+            request.Referer = referer;
+            request.CookieContainer = _cookieContainer;
+
+            // Timeout fixé à 30 secondes
+            request.Timeout = 30000;
+
+            // Décompression GZip
+            request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+
+            // Ajout des Headers exactement comme dans l'ancien code
+            request.Headers.Add("accept-encoding", "gzip, deflate, br");
+            request.Headers.Add("sec-fetch-dest", "empty");
+            request.Headers.Add("sec-fetch-mode", "cors");
+            request.Headers.Add("sec-fetch-site", "same-origin");
+            request.Headers.Add("accept-language", "en-BE");
+            request.Headers.Add("x-requested-with", "XMLHttpRequest");
+
+            return request;
         }
+
+        // =========================================================================================
+        // Méthodes de parsing et de nettoyage des JCL
+        // =========================================================================================
 
         private string DoCorrections(string content)
         {
@@ -395,11 +426,6 @@ namespace AutoActivator.Services
             }
 
             return finalContent.ToString().TrimEnd('\n', '\r');
-        }
-
-        public void Dispose()
-        {
-            _httpClient?.Dispose();
         }
     }
 }

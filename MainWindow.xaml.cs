@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Data;
@@ -81,7 +82,7 @@ namespace AutoActivator.Gui
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Préparation de l'activation (JCLs)...");
 
                 string envValue = "D";
-                string contract = "", cus = "", amount = "", bucp = "", username = "";
+                string contract = "", cus = "", amount = "", bucp = "";
 
                 // Récupération sécurisée des valeurs depuis l'interface graphique (Thread UI)
                 Application.Current.Dispatcher.Invoke(() =>
@@ -95,8 +96,16 @@ namespace AutoActivator.Gui
                     cus = TxtActCus.Text.Trim();
                     amount = TxtActAmount.Text.Trim();
                     bucp = TxtActBucp.Text.Trim();
-                    username = TxtActUsername.Text.Trim();
                 });
+
+                // --- UTILISATION DES IDENTIFIANTS DEPUIS LES SETTINGS ---
+                string username = Settings.DbConfig.Uid;
+                string password = Settings.DbConfig.Pwd;
+
+                if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+                {
+                    throw new Exception("Les identifiants (Uid/Pwd) ne sont pas configurés. Veuillez vous reconnecter.");
+                }
 
                 // 1. Définition des variables générales
                 var generalVariables = new Dictionary<string, string>
@@ -130,26 +139,23 @@ namespace AutoActivator.Gui
                     throw new Exception($"Impossible d'accéder au dossier réseau contenant les JCLs :\n{jclFolder}\nVérifiez votre connexion au réseau de l'entreprise ou vos droits d'accès.");
                 }
 
-                var activationService = new ActivationService(jclFolder);
-
-                // --- IMPORTANT : MOT DE PASSE ---
-                // Tu devras soit demander le mot de passe via une boite de dialogue,
-                // soit l'ajouter dans ton XAML avec un champ <PasswordBox>.
-                // Pour l'instant on met une variable :
-                string password = "TON_MOT_DE_PASSE_ICI";
-
-                // 4. Exécution de la séquence
-                // On passe bien le username, le password, et la fonction pour mettre à jour le TxtStatus
-                await activationService.RunActivationSequenceAsync(
-                    generalVariables,
-                    addprctVariables,
-                    username,
-                    password,
-                    message =>
-                    {
-                        // Cette fonction est appelée depuis le service pour mettre à jour l'interface
-                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = message);
-                    });
+                // On instancie le service dans un bloc 'using' pour libérer les ressources réseau à la fin
+                using (var activationService = new ActivationService(jclFolder))
+                {
+                    // 4. Exécution de la séquence
+                    await activationService.RunActivationSequenceAsync(
+                        generalVariables,
+                        addprctVariables,
+                        username,
+                        password,
+                        message =>
+                        {
+                            // Cette fonction est appelée depuis le service pour mettre à jour l'interface
+                            Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = message);
+                        },
+                        CancellationToken.None // Token par défaut, à modifier si on ajoute un bouton "Annuler"
+                    );
+                }
 
                 Application.Current.Dispatcher.Invoke(() =>
                 {

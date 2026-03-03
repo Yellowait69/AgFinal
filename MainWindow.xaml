@@ -213,24 +213,6 @@
 
                                 <TextBlock Text="Bureau Number (BUCP):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
                                 <TextBox x:Name="TxtActBucp" Margin="0,0,0,15" Padding="8" FontSize="14" BorderBrush="#DCDDE1" Text="12831"/>
-
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="10"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Text="Username:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
-                                        <TextBox x:Name="TxtActUsername" Margin="0,0,0,15" Padding="8" FontSize="14" BorderBrush="#DCDDE1" Text="AUTO_TEST"/>
-                                    </StackPanel>
-
-                                    <StackPanel Grid.Column="2">
-                                        <TextBlock Text="Password:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
-                                        <PasswordBox x:Name="TxtActPassword" Margin="0,0,0,15" Padding="8" FontSize="14" BorderBrush="#DCDDE1"/>
-                                    </StackPanel>
-                                </Grid>
                             </StackPanel>
                         </Grid>
 
