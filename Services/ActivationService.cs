@@ -5,9 +5,10 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace AutoActivator.Services
 {
@@ -97,7 +98,9 @@ namespace AutoActivator.Services
                 _httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
 
                 var payload = new { mfUser = username, mfNewPassword = "", mfPassword = password };
-                var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+                // Utilisation de Newtonsoft.Json
+                var content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json");
                 AddCommonHeaders(content.Headers);
 
                 try
@@ -166,9 +169,11 @@ namespace AutoActivator.Services
         {
             var payload = new { subJes = "2", ctlSubmit = "Submit", JCLIn = jclContent };
             var request = new HttpRequestMessage(HttpMethod.Post, $"{_nodeUrl}jescontrol/");
-            request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-            AddCommonHeaders(request.Content.Headers); // Ajout des headers au bon endroit
-            _httpClient.DefaultRequestHeaders.Referrer = new Uri($"{_nodeUrl}jescontrol/"); // Referer obligatoire
+
+            // Utilisation de Newtonsoft.Json
+            request.Content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json");
+            AddCommonHeaders(request.Content.Headers);
+            _httpClient.DefaultRequestHeaders.Referrer = new Uri($"{_nodeUrl}jescontrol/");
 
             try
             {
@@ -176,17 +181,19 @@ namespace AutoActivator.Services
                 if (!response.IsSuccessStatusCode) return (false, null, $"HTTP Error {response.StatusCode}");
 
                 string responseBody = await response.Content.ReadAsStringAsync();
-                using JsonDocument doc = JsonDocument.Parse(responseBody);
 
-                if (doc.RootElement.TryGetProperty("JobMsg", out JsonElement jobMsgArray))
+                // Utilisation de JObject (Newtonsoft)
+                JObject doc = JObject.Parse(responseBody);
+
+                if (doc.TryGetValue("JobMsg", out JToken jobMsgToken))
                 {
                     string jobNum = null;
                     bool isReady = false;
                     var errorMsg = new StringBuilder();
 
-                    foreach (var lineElement in jobMsgArray.EnumerateArray())
+                    foreach (var lineToken in jobMsgToken)
                     {
-                        string line = lineElement.GetString();
+                        string line = lineToken.ToString();
                         if (line.Contains("JOBNUM="))
                         {
                             var match = Regex.Match(line, @"JOBNUM=(\d+)");
@@ -218,8 +225,10 @@ namespace AutoActivator.Services
                 if (!response.IsSuccessStatusCode) return "Unknown";
 
                 string responseBody = await response.Content.ReadAsStringAsync();
-                using JsonDocument doc = JsonDocument.Parse(responseBody);
-                return doc.RootElement.GetProperty("JobStatus").GetString().Trim();
+
+                // Utilisation de JObject (Newtonsoft)
+                JObject doc = JObject.Parse(responseBody);
+                return doc["JobStatus"]?.ToString().Trim() ?? "Unknown";
             }
             catch
             {
@@ -244,12 +253,21 @@ namespace AutoActivator.Services
         private string DoCorrections(string content)
         {
             var output = new StringBuilder();
+
+            // Coupure à 72 caractères si la suite est un numéro de séquence
             foreach (string line in content.Replace("\r", "").Split('\n'))
             {
-                if (line.Length > 72 && int.TryParse(line.Substring(72).Trim(), out _)) output.AppendLine(line.Substring(0, 72));
-                else output.AppendLine(line);
+                if (line.Length > 72 && int.TryParse(line.Substring(72).Trim(), out _))
+                {
+                    output.AppendLine(line.Substring(0, 72));
+                }
+                else
+                {
+                    output.AppendLine(line);
+                }
             }
 
+            // Suppression de l'ancienne JobCard
             var output2 = new StringBuilder();
             var lines = output.ToString().Replace("\r", "").Split('\n').ToList();
             bool existingJobcard = false;
@@ -257,10 +275,16 @@ namespace AutoActivator.Services
             for (int i = 0; i < lines.Count; i++)
             {
                 string line = lines[i];
-                if (i == 0 && !line.StartsWith("//*") && line.ToUpper().Contains(" JOB ")) existingJobcard = true;
+                if (i == 0 && !line.StartsWith("//*") && line.ToUpper().Contains(" JOB "))
+                    existingJobcard = true;
+
                 if (!existingJobcard) output2.AppendLine(line);
-                if (!line.Trim().EndsWith(",") && !line.StartsWith("//*")) existingJobcard = false;
+
+                // Fin de la JobCard quand il n'y a plus de virgule à la fin
+                if (!line.Trim().EndsWith(",") && !line.StartsWith("//*"))
+                    existingJobcard = false;
             }
+
             return output2.ToString().TrimEnd('\n', '\r');
         }
 
@@ -269,22 +293,34 @@ namespace AutoActivator.Services
             var contentBuilder = new StringBuilder();
             foreach (string line in content.Replace("\r", "").Split('\n')) contentBuilder.AppendLine(line);
 
+            // Récupération des paramètres pour la JobCard
             string env = vars.ContainsKey("ENVIMS") ? vars["ENVIMS"] : "D";
             string jobClass = vars.ContainsKey("CLASS") ? vars["CLASS"] : "A";
             string username = vars.ContainsKey("USERNAME") ? vars["USERNAME"] : Environment.UserName;
 
-            string schenv = env switch { "D" => "IM7T", "Q" => "IM7C", "A" => "IM7Q", "P" => "IM7P", _ => "IM7T" };
+            // Environnement cible
+            string schenv = env switch
+            {
+                "D" => "IM7T",
+                "Q" => "IM7C",
+                "A" => "IM7Q",
+                "P" => "IM7P",
+                _ => "IM7T"
+            };
 
+            // Insertion de la nouvelle JobCard
             string jobcard = $"//{username}{count} JOB CLASS={jobClass},SCHENV={schenv},NOTIFY={username}\r\n";
             contentBuilder.Insert(0, jobcard);
 
             string tempContent = contentBuilder.ToString().Replace("\r\n\r\n", "\r\n").TrimEnd('\n', '\r');
 
+            // Remplacement des variables
             foreach (var kvp in vars)
             {
                 string varName = kvp.Key.Trim().ToUpper();
                 string value = kvp.Value ?? "";
 
+                // Échappement des quotes exactement comme l'original
                 if (value == "''") value = "";
                 else if (value.StartsWith("'") && value.EndsWith("'") && value.Length >= 3)
                 {
@@ -295,6 +331,7 @@ namespace AutoActivator.Services
 
                 try
                 {
+                    // Les 6 Regex originales pour gérer les ponctuations adjacentes
                     tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")(?=%)", value);
                     tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")([, \n\r])", value + "$2");
                     tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")(\.)", value);
@@ -302,9 +339,10 @@ namespace AutoActivator.Services
                     tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")(\))", value + "$2");
                     tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")$", value);
                 }
-                catch { }
+                catch { /* Ignore regex errors silently */ }
             }
 
+            // Fix temporaire pour les "+" en début de ligne
             var finalContent = new StringBuilder();
             foreach (string line in tempContent.Replace("\r", "").Split('\n'))
             {
@@ -315,6 +353,7 @@ namespace AutoActivator.Services
                 }
                 else finalContent.AppendLine(line);
             }
+
             return finalContent.ToString().TrimEnd('\n', '\r');
         }
     }
