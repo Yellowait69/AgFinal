@@ -23,8 +23,8 @@ namespace AutoActivator.Services
             if (!File.Exists(filePath))
                 throw new FileNotFoundException("The specified CSV file could not be found.", filePath);
 
-            StringBuilder globalLisa = new StringBuilder();
-            StringBuilder globalElia = new StringBuilder();
+            // Remplacement des deux StringBuilder par un seul
+            StringBuilder globalCombined = new StringBuilder();
 
             List<string> processedTestIds = new List<string>();
 
@@ -86,20 +86,24 @@ namespace AutoActivator.Services
                                 // Passing the environment parameter down to the ExtractionService
                                 ExtractionResult result = _extractionService.PerformExtraction(contractNumber, env, false);
 
-                                if (!string.IsNullOrWhiteSpace(result.LisaContent))
+                                // Si on a des données, on les ajoute au StringBuilder combiné
+                                if (!string.IsNullOrWhiteSpace(result.LisaContent) || !string.IsNullOrWhiteSpace(result.EliaContent))
                                 {
-                                    globalLisa.AppendLine(new string('-', 60));
-                                    globalLisa.AppendLine($"### CONTRACT: {contractNumber} | TEST ID: {testId} | ENV: {env}");
-                                    globalLisa.AppendLine(new string('-', 60));
-                                    globalLisa.Append(result.LisaContent).AppendLine();
-                                }
+                                    globalCombined.AppendLine(new string('=', 80));
+                                    globalCombined.AppendLine($"### GLOBAL CONTRACT REPORT: {contractNumber} | TEST ID: {testId} | ENV: {env} ###");
+                                    globalCombined.AppendLine(new string('=', 80));
 
-                                if (!string.IsNullOrWhiteSpace(result.EliaContent))
-                                {
-                                    globalElia.AppendLine(new string('-', 60));
-                                    globalElia.AppendLine($"### CONTRACT: {contractNumber} | TEST ID: {testId} | UCON: {result.UconId} | ENV: {env}");
-                                    globalElia.AppendLine(new string('-', 60));
-                                    globalElia.Append(result.EliaContent).AppendLine();
+                                    if (!string.IsNullOrWhiteSpace(result.LisaContent))
+                                    {
+                                        globalCombined.AppendLine($"--- SECTION LISA ---");
+                                        globalCombined.Append(result.LisaContent).AppendLine();
+                                    }
+
+                                    if (!string.IsNullOrWhiteSpace(result.EliaContent))
+                                    {
+                                        globalCombined.AppendLine($"--- SECTION ELIA (UCON: {result.UconId}) ---");
+                                        globalCombined.Append(result.EliaContent).AppendLine();
+                                    }
                                 }
 
                                 // Keep track of the successfully processed Test IDs
@@ -161,15 +165,12 @@ namespace AutoActivator.Services
             // Get the first uppercase letter of the environment (e.g., "D" for "D000")
             char envLetter = !string.IsNullOrEmpty(env) ? char.ToUpper(env[0]) : 'U';
 
-            // Generate the output files
-            File.WriteAllText(
-                Path.Combine(Settings.OutputDir, $"ExtractionLISA_{envLetter}_{sizeTag}_{fileSignature}_{timestamp}.csv"),
-                globalLisa.Length > 0 ? globalLisa.ToString() : "NO LISA CONTRACT FOUND.",
-                Encoding.UTF8);
+            // Generate the single combined output file
+            string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_{sizeTag}_{fileSignature}_{timestamp}.csv");
 
             File.WriteAllText(
-                Path.Combine(Settings.OutputDir, $"ExtractionELIA_{envLetter}_{sizeTag}_{fileSignature}_{timestamp}.csv"),
-                globalElia.Length > 0 ? globalElia.ToString() : "NO ELIA CONTRACT FOUND.",
+                combinedPath,
+                globalCombined.Length > 0 ? globalCombined.ToString() : "NO CONTRACT FOUND.",
                 Encoding.UTF8);
         }
 

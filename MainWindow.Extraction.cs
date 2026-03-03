@@ -58,7 +58,8 @@ namespace AutoActivator.Gui
                 ContractId = contract,
                 InternalId = result.InternalId,
                 Product = env,
-                Premium = "0",
+                // MISE À JOUR : Utilisation de la prime récupérée par le service d'extraction
+                Premium = string.IsNullOrWhiteSpace(result.Premium) ? "0" : result.Premium,
                 Ucon = result.UconId,
                 Hdmd = result.DemandId,
                 Time = DateTime.Now.ToString("HH:mm:ss"),

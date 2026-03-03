@@ -43,6 +43,7 @@ namespace AutoActivator.Services
             var sbElia = new StringBuilder();
 
             string eliaUconId = "Not found", eliaDemandId = "Not found", internalIdString = "Not found";
+            string premiumAmount = "0"; // NOUVEAU : Initialisation de la prime
 
             #region SECTION LISA
             if (dtLisa.Rows.Count > 0)
@@ -66,6 +67,22 @@ namespace AutoActivator.Services
             if (dtElia.Rows.Count > 0)
             {
                 eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"]?.ToString()?.Trim() ?? "Not found";
+
+                // --- NOUVEAU : Récupération spécifique de la prime (Premium) ---
+                if (SqlQueries.Queries.ContainsKey("FJ1.TB5UPRP"))
+                {
+                    try
+                    {
+                        var dtPremium = db.GetData(SqlQueries.Queries["FJ1.TB5UPRP"], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
+                        if (dtPremium.Rows.Count > 0 && dtPremium.Columns.Contains("IT5UPRPUBRU"))
+                        {
+                            premiumAmount = dtPremium.Rows[0]["IT5UPRPUBRU"]?.ToString()?.Trim() ?? "0";
+                        }
+                    }
+                    catch { /* Ignore l'erreur silencieusement et garde "0" */ }
+                }
+                // ---------------------------------------------------------------
+
                 var dtDemand = db.GetData(SqlQueries.Queries["GET_ELIA_DEMAND_IDS"], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
 
                 var demandIds = new List<string>();
@@ -96,24 +113,26 @@ namespace AutoActivator.Services
                 // Get uppercase letter of the environment (e.g., "D" for "D000")
                 char envLetter = !string.IsNullOrEmpty(envSuffix) ? char.ToUpper(envSuffix[0]) : 'U';
 
-                // Nouveaux noms : ExtractionLISA_D_Uniq_182-2728195-31_20260228_153000.csv
-                string lisaPath = Path.Combine(Settings.OutputDir, $"ExtractionLISA_{envLetter}_Uniq_{cleanedContract}_{timestamp}.csv");
-                string eliaPath = Path.Combine(Settings.OutputDir, $"ExtractionELIA_{envLetter}_Uniq_{cleanedContract}_{timestamp}.csv");
+                // Nouveau nom : un seul fichier combiné
+                string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_Uniq_{cleanedContract}_{timestamp}.csv");
 
                 string lisaHeader = $"================================================================================\n=== SECTION LISA (INTERNAL ID: {internalIdString} | ENV: {envSuffix}) ===\n================================================================================\n";
-                File.WriteAllText(lisaPath, lisaHeader + sbLisa.ToString(), Encoding.UTF8);
-
                 string eliaHeader = $"================================================================================\n=== SECTION ELIA (UCON ID: {eliaUconId} | ENV: {envSuffix}) ===\n================================================================================\n";
-                File.WriteAllText(eliaPath, eliaHeader + sbElia.ToString(), Encoding.UTF8);
+
+                // Combinaison des deux sections
+                string combinedContent = lisaHeader + sbLisa.ToString() + "\n" + eliaHeader + sbElia.ToString();
+
+                File.WriteAllText(combinedPath, combinedContent, Encoding.UTF8);
             }
 
             return new ExtractionResult
             {
                 // We return the output directory so the UI can open the folder containing both files
                 FilePath = Settings.OutputDir,
-                StatusMessage = $"LISA & ELIA saved | ID: {internalIdString}",
+                StatusMessage = $"Extraction saved | ID: {internalIdString}",
                 InternalId = internalIdString, UconId = eliaUconId, DemandId = eliaDemandId,
-                LisaContent = sbLisa.ToString(), EliaContent = sbElia.ToString()
+                LisaContent = sbLisa.ToString(), EliaContent = sbElia.ToString(),
+                Premium = premiumAmount // NOUVEAU : On passe la prime au résultat
             };
         }
 

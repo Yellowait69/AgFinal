@@ -15,6 +15,9 @@ namespace AutoActivator.Models
         public string DemandId { get; set; }
         public string LisaContent { get; set; }
         public string EliaContent { get; set; }
+
+        // NOUVEAU : Propriété pour transporter la prime extraite depuis ELIA
+        public string Premium { get; set; }
     }
 
     public class BatchProgressInfo

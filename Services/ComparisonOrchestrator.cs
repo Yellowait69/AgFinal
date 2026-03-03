@@ -3,26 +3,25 @@ using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions; // Ajouté pour Regex.Replace
 using AutoActivator.Models;
-using AutoActivator.Utils; // Ajouté pour accéder à CsvFormatter
+using AutoActivator.Utils;
 
 namespace AutoActivator.Services
 {
     public class ComparisonOrchestrator
     {
-        // Assumes the file format is "Type_ID1_ID2_ID3_RestOfName.csv"
-        // Example: "Elia_1001_2002_3003_v1.csv"
+        // Le format de fichier actuel est "Extraction_Env_Size_Signature_Timestamp.csv"
+        // Exemple : "Extraction_D_Uniq_182-2728195-31_20260228_153000.csv"
 
         /// <summary>
-        /// Extracts the first 3 IDs from the file name for filtering.
+        /// Extrait l'environnement, la taille et la signature du nom de fichier pour le filtrage.
         /// </summary>
         public string[] GetFileIds(string filePath)
         {
             var fileName = Path.GetFileNameWithoutExtension(filePath);
             var parts = fileName.Split('_');
 
-            // Expects at least: Type(0)_Id1(1)_Id2(2)_Id3(3)
+            // Attend au moins : Prefix(0)_Env(1)_Size(2)_Signature(3)
             if (parts.Length >= 4)
             {
                 return new[] { parts[1], parts[2], parts[3] };
@@ -31,7 +30,7 @@ namespace AutoActivator.Services
         }
 
         /// <summary>
-        /// Returns the list of compatible target files (having the same first 3 IDs).
+        /// Retourne la liste des fichiers cibles compatibles (ayant le même Env, Size et Signature).
         /// </summary>
         public List<string> GetCompatibleTargetFiles(string baseFilePath, IEnumerable<string> allAvailableFiles)
         {
@@ -40,7 +39,9 @@ namespace AutoActivator.Services
 
             return allAvailableFiles.Where(file =>
             {
-                if (file == baseFilePath) return false;
+                // Ignorer le fichier de base lui-même
+                if (file.Equals(baseFilePath, StringComparison.OrdinalIgnoreCase)) return false;
+
                 var targetIds = GetFileIds(file);
                 return targetIds.Length == 3 &&
                        targetIds[0] == baseIds[0] &&
@@ -50,20 +51,13 @@ namespace AutoActivator.Services
         }
 
         /// <summary>
-        /// Launches the full comparison. Automatically handles the Elia/Lisa mirror comparison for ALL tables.
+        /// Lance la comparaison complète. Lit toutes les tables du fichier combiné et les compare une par une.
         /// </summary>
         public ComparisonReport RunFullComparison(string baseFile, string targetFile)
         {
             var report = new ComparisonReport();
 
-            string baseType = Path.GetFileName(baseFile).StartsWith("Elia", StringComparison.OrdinalIgnoreCase) ? "ELIA" : "LISA";
-            string mirrorType = baseType == "ELIA" ? "Lisa" : "Elia";
-
-            // CORRECTION: Utilisation de Regex pour ignorer la casse car string.Replace avec StringComparison n'est pas supporté en .NET Framework
-            string baseMirrorFile = Regex.Replace(baseFile, baseType, mirrorType, RegexOptions.IgnoreCase);
-            string targetMirrorFile = Regex.Replace(targetFile, baseType, mirrorType, RegexOptions.IgnoreCase);
-
-            // NOUVEAU : Récupère automatiquement TOUTES les tables du fichier
+            // Récupère automatiquement TOUTES les tables contenues dans le fichier combiné
             List<string> tablesToCompare = CsvFormatter.GetAllTableNames(baseFile);
 
             if (tablesToCompare.Count == 0)
@@ -71,21 +65,18 @@ namespace AutoActivator.Services
                 throw new Exception("Aucune table trouvée dans le fichier de base. Le format est-il correct ?");
             }
 
-            // NOUVEAU : Boucle de comparaison sur chaque table trouvée
+            // Boucle de comparaison sur chaque table trouvée
             foreach (var tableName in tablesToCompare)
             {
-                // 1. Comparison of the main selected file
-                CompareAndAppendToReport(baseFile, targetFile, tableName, baseType, report);
+                // Déduction automatique de la section (LISA ou ELIA) selon le préfixe de la table
+                // "LV." correspond généralement à LISA et "FJ1." à ELIA dans votre structure
+                string tableType = tableName.StartsWith("LV.") ? "LISA" : (tableName.StartsWith("FJ1.") ? "ELIA" : "COMBINED");
 
-                // 2. Automatic deduction of the twin file (If Elia -> look for Lisa, and vice versa)
-                // If mirror files exist, compare them automatically as well
-                if (File.Exists(baseMirrorFile) && File.Exists(targetMirrorFile))
-                {
-                    CompareAndAppendToReport(baseMirrorFile, targetMirrorFile, tableName, mirrorType.ToUpper(), report);
-                }
+                // Comparaison de la table extraite depuis les deux fichiers globaux
+                CompareAndAppendToReport(baseFile, targetFile, tableName, tableType, report);
             }
 
-            // 3. Calculation of the global success percentage
+            // Calcul du pourcentage de réussite global
             CalculateGlobalScore(report);
 
             return report;
@@ -93,7 +84,7 @@ namespace AutoActivator.Services
 
         private void CompareAndAppendToReport(string file1, string file2, string tableName, string type, ComparisonReport report)
         {
-            // REMPLACEMENT : Utilisation du vrai parseur CSV robuste
+            // Utilisation du parseur CSV pour extraire la table spécifique du fichier combiné
             DataTable df1 = CsvFormatter.LoadTableFromCsv(file1, tableName);
             DataTable df2 = CsvFormatter.LoadTableFromCsv(file2, tableName);
 
@@ -111,18 +102,20 @@ namespace AutoActivator.Services
 
             report.FileResults.Add(fileResult);
 
-            // Update counters for the global score
+            // Mise à jour des compteurs pour le score global
             int rowsCount = Math.Max(df1?.Rows.Count ?? 0, df2?.Rows.Count ?? 0);
             report.TotalRowsCompared += rowsCount;
 
             if (Status != "OK" && Status != "OK_EMPTY")
             {
-                // Approximation: Count the number of rows reported with errors from "Details"
+                // Approximation : Compte le nombre de lignes remontées avec des erreurs depuis "Details"
                 if (!string.IsNullOrEmpty(Details))
                 {
-                    // Count the number of occurrences of "Row #" in the report to know how many rows failed
+                    // Compte le nombre d'occurrences de "Row #" dans le rapport pour savoir combien de lignes ont échoué
                     int diffCount = Details.Split(new[] { "Row #" }, StringSplitOptions.None).Length - 1;
-                    report.TotalDifferencesFound += diffCount > 0 ? diffCount : rowsCount; // If structural error, everything is marked as failed
+
+                    // Si aucune ligne spécifique n'est pointée (erreur structurelle), on considère que toute la table a échoué
+                    report.TotalDifferencesFound += diffCount > 0 ? diffCount : rowsCount;
                 }
                 else
                 {
@@ -141,7 +134,7 @@ namespace AutoActivator.Services
 
             int successfulRows = report.TotalRowsCompared - report.TotalDifferencesFound;
 
-            // Prevent negative values if global errors skew the calculation
+            // Empêche les valeurs négatives si des erreurs structurelles faussent le calcul global
             if (successfulRows < 0) successfulRows = 0;
 
             report.GlobalSuccessPercentage = Math.Round(((double)successfulRows / report.TotalRowsCompared) * 100, 2);
