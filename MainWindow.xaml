@@ -194,7 +194,7 @@
                     <StackPanel>
                         <TextBlock Text="Select the base and target CSV files to compare. All tables within the files will be analyzed automatically." Margin="0,0,0,15" Foreground="#7F8C8D" TextWrapping="Wrap"/>
 
-                        <TextBlock Text="Base File (Elia or Lisa):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                        <TextBlock Text="Base Extraction File:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
                         <Grid Margin="0,0,0,15">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -204,7 +204,7 @@
                             <Button Content="Browse..." Grid.Column="1" Padding="15,8" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnBrowseBase_Click"/>
                         </Grid>
 
-                        <TextBlock Text="Target File (to compare against):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                        <TextBlock Text="Target Extraction File (to compare against):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
                         <Grid Margin="0,0,0,20">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -214,7 +214,19 @@
                             <Button Content="Browse..." Grid.Column="1" Padding="15,8" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnBrowseTarget_Click"/>
                         </Grid>
 
-                        <Button x:Name="BtnRunComparison" Content="🚀 Run Deep Comparison" Click="BtnRunComparisonAction_Click" Style="{StaticResource ActionButtonStyle}" HorizontalAlignment="Right" Width="240" IsEnabled="False"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="BtnOpenComparisonFolder" Content="📁 Open Report Folder" Click="BtnOpenFolder_Click" Background="#3498DB" Foreground="White" Padding="15,10" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
+                            <Button x:Name="BtnRunComparison" Content="🚀 Run Deep Comparison" Click="BtnRunComparisonAction_Click" Style="{StaticResource ActionButtonStyle}" Width="240" IsEnabled="False"/>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
