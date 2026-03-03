@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -99,11 +100,15 @@ namespace AutoActivator.Services
 
                 var payload = new { mfUser = username, mfNewPassword = "", mfPassword = password };
                 var content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json");
-                AddCommonHeaders(content.Headers);
+
+                // CORRECTION : Ajout des headers sur l'objet HttpRequestMessage et non sur le contenu
+                var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/logon");
+                request.Content = content;
+                AddCommonHeaders(request.Headers);
 
                 try
                 {
-                    var response = await _httpClient.PostAsync($"{_baseUrl}/logon", content);
+                    var response = await _httpClient.SendAsync(request);
                     if (response.IsSuccessStatusCode)
                     {
                         // Test de la région pour confirmer que ce serveur fonctionne bien
@@ -133,7 +138,6 @@ namespace AutoActivator.Services
 
             onProgress($"\nPréparation du job {jobName}...");
 
-            // CORRECTION C# 7.3 : Utilisation de StreamReader au lieu de File.ReadAllTextAsync
             string rawContent;
             using (StreamReader reader = new StreamReader(filePath))
             {
@@ -175,8 +179,10 @@ namespace AutoActivator.Services
             var payload = new { subJes = "2", ctlSubmit = "Submit", JCLIn = jclContent };
             var request = new HttpRequestMessage(HttpMethod.Post, $"{_nodeUrl}jescontrol/");
             request.Content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json");
-            AddCommonHeaders(request.Content.Headers);
-            _httpClient.DefaultRequestHeaders.Referrer = new Uri($"{_nodeUrl}jescontrol/");
+
+            // CORRECTION : Ajout des headers sur la requête
+            AddCommonHeaders(request.Headers);
+            request.Headers.TryAddWithoutValidation("Referer", $"{_nodeUrl}jescontrol/");
 
             try
             {
@@ -184,6 +190,8 @@ namespace AutoActivator.Services
                 if (!response.IsSuccessStatusCode) return (false, null, $"HTTP Error {response.StatusCode}");
 
                 string responseBody = await response.Content.ReadAsStringAsync();
+
+                // Utilisation de JObject (Newtonsoft)
                 JObject doc = JObject.Parse(responseBody);
 
                 if (doc.TryGetValue("JobMsg", out JToken jobMsgToken))
@@ -218,7 +226,7 @@ namespace AutoActivator.Services
         {
             var request = new HttpRequestMessage(HttpMethod.Get, $"{_nodeUrl}jobview/{jobNum}");
             AddCommonHeaders(request.Headers);
-            _httpClient.DefaultRequestHeaders.Referrer = new Uri($"{_nodeUrl}jobview/{jobNum}");
+            request.Headers.TryAddWithoutValidation("Referer", $"{_nodeUrl}jobview/{jobNum}");
 
             try
             {
@@ -226,6 +234,8 @@ namespace AutoActivator.Services
                 if (!response.IsSuccessStatusCode) return "Unknown";
 
                 string responseBody = await response.Content.ReadAsStringAsync();
+
+                // Utilisation de JObject (Newtonsoft)
                 JObject doc = JObject.Parse(responseBody);
                 return doc["JobStatus"]?.ToString().Trim() ?? "Unknown";
             }
@@ -235,14 +245,16 @@ namespace AutoActivator.Services
             }
         }
 
-        private void AddCommonHeaders(System.Net.Http.Headers.HttpHeaders headers)
+        // CORRECTION MAJEURE ICI : Utilisation de HttpRequestHeaders et de TryAddWithoutValidation
+        private void AddCommonHeaders(HttpRequestHeaders headers)
         {
-            headers.Add("accept-encoding", "gzip, deflate, br");
-            headers.Add("sec-fetch-dest", "empty");
-            headers.Add("sec-fetch-mode", "cors");
-            headers.Add("sec-fetch-site", "same-origin");
-            headers.Add("accept-language", "en-BE");
-            headers.Add("x-requested-with", "XMLHttpRequest");
+            headers.TryAddWithoutValidation("accept-encoding", "gzip, deflate, br");
+            headers.TryAddWithoutValidation("sec-fetch-dest", "empty");
+            headers.TryAddWithoutValidation("sec-fetch-mode", "cors");
+            headers.TryAddWithoutValidation("sec-fetch-site", "same-origin");
+            headers.TryAddWithoutValidation("accept-language", "en-BE");
+            headers.TryAddWithoutValidation("x-requested-with", "XMLHttpRequest");
+            headers.TryAddWithoutValidation("Accept", "application/json, text/plain, */*");
         }
 
         // =========================================================================================
