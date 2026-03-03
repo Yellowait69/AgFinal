@@ -23,7 +23,7 @@ namespace AutoActivator.Services
         private string _baseUrl;
         private string _nodeUrl;
 
-        // Dictionnaire des serveurs actifs par environnement (récupéré de ton outil interne AGConnector)
+        // Dictionnaire des serveurs actifs par environnement
         private readonly Dictionary<string, List<string>> _activeServers = new Dictionary<string, List<string>>()
         {
             { "D", new List<string> { "sdmfas01", "sdmfas03", "sdmfas05" } },
@@ -37,9 +37,6 @@ namespace AutoActivator.Services
             _jclDirectory = jclDirectory;
         }
 
-        /// <summary>
-        /// Orchestre la séquence complète d'activation.
-        /// </summary>
         public async Task RunActivationSequenceAsync(Dictionary<string, string> generalVariables, Dictionary<string, string> addprctSpecificVariables, string username, string password, Action<string> onProgress)
         {
             try
@@ -48,10 +45,12 @@ namespace AutoActivator.Services
 
                 _currentEnv = generalVariables.ContainsKey("ENVIMS") ? generalVariables["ENVIMS"] : "D";
 
-                // 1. Authentification MicroFocus (Logon)
+                // 1. Authentification MicroFocus
                 onProgress($"Connexion au serveur MicroFocus ({_currentEnv}000)...");
-                bool isLogged = await LogonAsync(username, password, _currentEnv);
-                if (!isLogged) throw new Exception("Impossible de se connecter au serveur MicroFocus. Vérifiez vos identifiants ou l'état des serveurs.");
+
+                bool isLogged = await LogonAsync(username, password, _currentEnv, onProgress);
+
+                if (!isLogged) throw new Exception("Impossible de se connecter à MicroFocus.");
 
                 onProgress($"Connecté avec succès au serveur : {_activeServer}");
 
@@ -70,20 +69,20 @@ namespace AutoActivator.Services
 
                 onProgress("=== SÉQUENCE D'ACTIVATION TERMINÉE ===");
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 onProgress("[ERREUR CRITIQUE] La chaîne d'activation a été interrompue.");
-                throw;
+                throw new Exception($"Erreur lors de l'activation : {ex.Message}");
             }
         }
 
-        private async Task<bool> LogonAsync(string username, string password, string env)
+        private async Task<bool> LogonAsync(string username, string password, string env, Action<string> onProgress)
         {
             _baseUrl = $"https://escwa{env.ToLower()}.aginsurance.intranet:10086";
-
             if (!_activeServers.ContainsKey(env)) throw new Exception($"Environnement inconnu: {env}");
 
-            // Teste les serveurs de l'environnement un par un jusqu'à en trouver un actif
+            string lastErrorMessage = "";
+
             foreach (var server in _activeServers[env])
             {
                 _activeServer = server;
@@ -93,7 +92,7 @@ namespace AutoActivator.Services
                 var handler = new HttpClientHandler
                 {
                     CookieContainer = _cookieContainer,
-                    ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true // Ignore les erreurs SSL internes si besoin
+                    ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true
                 };
 
                 _httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
@@ -110,33 +109,37 @@ namespace AutoActivator.Services
                     var response = await _httpClient.SendAsync(request);
                     if (response.IsSuccessStatusCode)
                     {
-                        // Test de la région pour confirmer que ce serveur fonctionne bien
                         var testRequest = new HttpRequestMessage(HttpMethod.Get, $"{_nodeUrl}region-functionality");
                         AddCommonHeaders(testRequest.Headers);
                         var testResponse = await _httpClient.SendAsync(testRequest);
 
-                        if (testResponse.IsSuccessStatusCode) return true; // Ce serveur est le bon !
+                        if (testResponse.IsSuccessStatusCode) return true;
+                        else
+                        {
+                            lastErrorMessage = $"Test région refusé (Erreur {testResponse.StatusCode})";
+                            onProgress($"Serveur {_activeServer} : {lastErrorMessage}");
+                        }
                     }
                     else
                     {
-                         System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                            System.Windows.MessageBox.Show($"Erreur HTTP sur {_activeServer} : {response.StatusCode}"));
+                        lastErrorMessage = $"Logon refusé (Code HTTP {response.StatusCode})";
+                        onProgress($"Serveur {_activeServer} : {lastErrorMessage}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    // Affiche l'erreur exacte pour savoir ce qui bloque
-                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                        System.Windows.MessageBox.Show($"Erreur sur {_activeServer} : {ex.Message}"));
+                    lastErrorMessage = ex.Message;
+                    onProgress($"Erreur connexion {_activeServer} : {ex.Message}");
                     continue;
                 }
             }
-            return false; // Tous les serveurs sont KO
+
+            // Si on sort de la boucle, c'est que TOUS les serveurs ont échoué.
+            throw new Exception($"Aucun serveur n'a répondu. Dernière erreur : {lastErrorMessage}");
         }
 
         private async Task ProcessSubmitAndWaitAsync(string jobName, Dictionary<string, string> variables, int count, Action<string> onProgress)
         {
-            // 1. Lecture et corrections du JCL
             string fileName = jobName.EndsWith(".JCL") ? jobName : jobName + ".JCL";
             string filePath = Path.Combine(_jclDirectory, fileName);
             if (!File.Exists(filePath)) filePath = Path.Combine(_jclDirectory, jobName);
@@ -153,19 +156,17 @@ namespace AutoActivator.Services
             string correctedContent = DoCorrections(rawContent);
             string readyContent = ApplyVariables(correctedContent, variables, count);
 
-            // 2. Soumission
             var (Success, JobNum, Error) = await SubmitJobAsync(readyContent);
             if (!Success) throw new Exception($"Échec de soumission de {jobName}. Erreur: {Error}");
 
             onProgress($"Job {jobName} soumis (JOBNUM: {JobNum}). Attente de la fin de l'exécution...");
 
-            // 3. Polling (Attente de la fin du Job)
             int[] sleepDelays = { 1, 2, 3, 5, 8, 10, 15, 30, 30, 30, 30, 30, 45, 60 };
             bool finished = false;
 
             for (int i = 0; i < sleepDelays.Length; i++)
             {
-                await Task.Delay(sleepDelays[i] * 1000); // Pause
+                await Task.Delay(sleepDelays[i] * 1000);
                 string status = await CheckJobStatusAsync(JobNum);
 
                 if (status == "Complete")
@@ -195,8 +196,6 @@ namespace AutoActivator.Services
                 if (!response.IsSuccessStatusCode) return (false, null, $"HTTP Error {response.StatusCode}");
 
                 string responseBody = await response.Content.ReadAsStringAsync();
-
-                // Utilisation de JObject (Newtonsoft)
                 JObject doc = JObject.Parse(responseBody);
 
                 if (doc.TryGetValue("JobMsg", out JToken jobMsgToken))
@@ -239,8 +238,6 @@ namespace AutoActivator.Services
                 if (!response.IsSuccessStatusCode) return "Unknown";
 
                 string responseBody = await response.Content.ReadAsStringAsync();
-
-                // Utilisation de JObject (Newtonsoft)
                 JObject doc = JObject.Parse(responseBody);
                 return doc["JobStatus"]?.ToString().Trim() ?? "Unknown";
             }
@@ -261,15 +258,10 @@ namespace AutoActivator.Services
             headers.TryAddWithoutValidation("Accept", "application/json, text/plain, */*");
         }
 
-        // =========================================================================================
-        // Méthodes de parsing et de nettoyage des JCL (Issues du code historique)
-        // =========================================================================================
-
         private string DoCorrections(string content)
         {
             var output = new StringBuilder();
 
-            // Coupure à 72 caractères si la suite est un numéro de séquence
             foreach (string line in content.Replace("\r", "").Split('\n'))
             {
                 if (line.Length > 72 && int.TryParse(line.Substring(72).Trim(), out _))
@@ -282,7 +274,6 @@ namespace AutoActivator.Services
                 }
             }
 
-            // Suppression de l'ancienne JobCard
             var output2 = new StringBuilder();
             var lines = output.ToString().Replace("\r", "").Split('\n').ToList();
             bool existingJobcard = false;
@@ -295,7 +286,6 @@ namespace AutoActivator.Services
 
                 if (!existingJobcard) output2.AppendLine(line);
 
-                // Fin de la JobCard quand il n'y a plus de virgule à la fin
                 if (!line.Trim().EndsWith(",") && !line.StartsWith("//*"))
                     existingJobcard = false;
             }
@@ -308,12 +298,10 @@ namespace AutoActivator.Services
             var contentBuilder = new StringBuilder();
             foreach (string line in content.Replace("\r", "").Split('\n')) contentBuilder.AppendLine(line);
 
-            // Récupération des paramètres pour la JobCard
             string env = vars.ContainsKey("ENVIMS") ? vars["ENVIMS"] : "D";
             string jobClass = vars.ContainsKey("CLASS") ? vars["CLASS"] : "A";
             string username = vars.ContainsKey("USERNAME") ? vars["USERNAME"] : Environment.UserName;
 
-            // CORRECTION C# 7.3 : Remplacement du switch expression par un switch classique
             string schenv;
             switch (env)
             {
@@ -324,19 +312,16 @@ namespace AutoActivator.Services
                 default: schenv = "IM7T"; break;
             }
 
-            // Insertion de la nouvelle JobCard
             string jobcard = $"//{username}{count} JOB CLASS={jobClass},SCHENV={schenv},NOTIFY={username}\r\n";
             contentBuilder.Insert(0, jobcard);
 
             string tempContent = contentBuilder.ToString().Replace("\r\n\r\n", "\r\n").TrimEnd('\n', '\r');
 
-            // Remplacement des variables
             foreach (var kvp in vars)
             {
                 string varName = kvp.Key.Trim().ToUpper();
                 string value = kvp.Value ?? "";
 
-                // Échappement des quotes exactement comme l'original
                 if (value == "''") value = "";
                 else if (value.StartsWith("'") && value.EndsWith("'") && value.Length >= 3)
                 {
@@ -347,7 +332,6 @@ namespace AutoActivator.Services
 
                 try
                 {
-                    // Les 6 Regex originales pour gérer les ponctuations adjacentes
                     tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")(?=%)", value);
                     tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")([, \n\r])", value + "$2");
                     tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")(\.)", value);
@@ -355,10 +339,9 @@ namespace AutoActivator.Services
                     tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")(\))", value + "$2");
                     tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")$", value);
                 }
-                catch { /* Ignore regex errors silently */ }
+                catch { }
             }
 
-            // Fix temporaire pour les "+" en début de ligne
             var finalContent = new StringBuilder();
             foreach (string line in tempContent.Replace("\r", "").Split('\n'))
             {
