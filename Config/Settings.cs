@@ -37,10 +37,10 @@ namespace AutoActivator.Config
             // SET TO "no" TO FORCE THE USE OF UID AND PWD BELOW
             public const string TrustedConnection = "yes";
 
-            // Hardcoded credentials for testing purposes
-            // (Note: Consider moving to environment variables or appsettings.json for production security)
-            public const string Uid = "XA3894";
-            public static string Pwd => "Maxpanpan02!Amandine";
+            // Les identifiants sont maintenant stockés en mémoire pour la session en cours
+            // Uid a une valeur par défaut, Pwd est vide au démarrage.
+            public static string Uid { get; set; } = "XA3894";
+            public static string Pwd { get; set; } = string.Empty;
 
             /// <summary>
             /// Generates the connection string dynamically based on the target environment.
