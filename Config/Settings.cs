@@ -3,6 +3,12 @@ using System.IO;
 
 namespace AutoActivator.Config
 {
+    /// <summary>
+    /// This file contains the global configuration settings for the AutoActivator application.
+    /// It centrally manages directory paths for input, output, and snapshot files.
+    /// It also handles database connection parameters, including the logic to dynamically
+    /// generate the correct connection string based on the target environment (e.g., D000 for Dev, Q000 for Test).
+    /// </summary>
     public static class Settings
     {
         // -----------------------------------------------------------------------------
@@ -27,7 +33,6 @@ namespace AutoActivator.Config
         public static class DbConfig
         {
             public const string Driver = "SQL Server";
-            public const string Server = "SQLMFDBD01";
 
             // SET TO "no" TO FORCE THE USE OF UID AND PWD BELOW
             public const string TrustedConnection = "yes";
@@ -44,12 +49,18 @@ namespace AutoActivator.Config
             /// <returns>The formatted SQL connection string</returns>
             public static string GetConnectionString(string envSuffix)
             {
+                // Récupère la lettre de l'environnement (D ou Q) en fonction du suffixe
+                string envLetter = string.IsNullOrEmpty(envSuffix) ? "D" : envSuffix.Substring(0, 1).ToUpper();
+
+                // Détermine dynamiquement le nom du serveur
+                string server = $"SQLMFDB{envLetter}01";
+
                 // Concatène le préfixe de la base avec l'environnement demandé (D000 ou Q000)
                 string database = $"FJ0AGDB_{envSuffix}";
 
                 return TrustedConnection.Equals("yes", StringComparison.OrdinalIgnoreCase)
-                    ? $"Server={Server};Database={database};Integrated Security=True;TrustServerCertificate=True;"
-                    : $"Server={Server};Database={database};User Id={Uid};Password={Pwd};TrustServerCertificate=True;";
+                    ? $"Server={server};Database={database};Integrated Security=True;TrustServerCertificate=True;"
+                    : $"Server={server};Database={database};User Id={Uid};Password={Pwd};TrustServerCertificate=True;";
             }
         }
     }
