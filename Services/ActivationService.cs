@@ -154,7 +154,7 @@ namespace AutoActivator.Services
                 {
                     throw; // Remonte l'erreur critique
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                catch (Exception ex) when (!(ex is OperationCanceledException)) // CORRECTION C# 7.3
                 {
                     lastErrorMessage = ex.Message;
                     onProgress($"Erreur inattendue {_activeServer} : {ex.Message}");
