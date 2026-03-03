@@ -23,7 +23,7 @@ namespace AutoActivator.Services
         private string _baseUrl;
         private string _nodeUrl;
 
-        // Dictionnaire des serveurs actifs par environnement
+        // Dictionnaire des serveurs actifs par environnement (récupéré de ton outil interne AGConnector)
         private readonly Dictionary<string, List<string>> _activeServers = new Dictionary<string, List<string>>()
         {
             { "D", new List<string> { "sdmfas01", "sdmfas03", "sdmfas05" } },
@@ -37,6 +37,9 @@ namespace AutoActivator.Services
             _jclDirectory = jclDirectory;
         }
 
+        /// <summary>
+        /// Orchestre la séquence complète d'activation.
+        /// </summary>
         public async Task RunActivationSequenceAsync(Dictionary<string, string> generalVariables, Dictionary<string, string> addprctSpecificVariables, string username, string password, Action<string> onProgress)
         {
             try
@@ -47,10 +50,9 @@ namespace AutoActivator.Services
 
                 // 1. Authentification MicroFocus
                 onProgress($"Connexion au serveur MicroFocus ({_currentEnv}000)...");
-
                 bool isLogged = await LogonAsync(username, password, _currentEnv, onProgress);
 
-                if (!isLogged) throw new Exception("Impossible de se connecter à MicroFocus.");
+                if (!isLogged) throw new Exception("Impossible de se connecter à MicroFocus. Vérifiez vos identifiants ou l'état du VPN/Serveur.");
 
                 onProgress($"Connecté avec succès au serveur : {_activeServer}");
 
@@ -98,11 +100,21 @@ namespace AutoActivator.Services
                 _httpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
 
                 var payload = new { mfUser = username, mfNewPassword = "", mfPassword = password };
-                var content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json");
+
+                // FORCAGE DU CONTENT-TYPE SANS CHARSET POUR ÉVITER LES ERREURS 400 BAD REQUEST
+                var content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8);
+                content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
                 var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/logon");
                 request.Content = content;
+
+                // KeepAlive = false comme dans l'ancien script
+                request.Headers.ConnectionClose = true;
+
                 AddCommonHeaders(request.Headers);
+
+                // Ajout du Referer essentiel pour Microfocus
+                request.Headers.TryAddWithoutValidation("Referer", $"{_baseUrl}/logon");
 
                 try
                 {
@@ -111,30 +123,32 @@ namespace AutoActivator.Services
                     {
                         var testRequest = new HttpRequestMessage(HttpMethod.Get, $"{_nodeUrl}region-functionality");
                         AddCommonHeaders(testRequest.Headers);
+                        testRequest.Headers.TryAddWithoutValidation("Referer", $"{_nodeUrl}region-functionality");
+
                         var testResponse = await _httpClient.SendAsync(testRequest);
 
                         if (testResponse.IsSuccessStatusCode) return true;
                         else
                         {
-                            lastErrorMessage = $"Test région refusé (Erreur {testResponse.StatusCode})";
-                            onProgress($"Serveur {_activeServer} : {lastErrorMessage}");
+                            lastErrorMessage = $"Test région refusé (Erreur HTTP {testResponse.StatusCode})";
+                            onProgress($"Serveur {_activeServer} ignoré : {lastErrorMessage}");
                         }
                     }
                     else
                     {
-                        lastErrorMessage = $"Logon refusé (Code HTTP {response.StatusCode})";
-                        onProgress($"Serveur {_activeServer} : {lastErrorMessage}");
+                        string errorBody = await response.Content.ReadAsStringAsync();
+                        lastErrorMessage = $"Logon refusé (Code HTTP {(int)response.StatusCode}). Détails : {errorBody}";
+                        onProgress($"Serveur {_activeServer} ignoré : {lastErrorMessage}");
                     }
                 }
                 catch (Exception ex)
                 {
                     lastErrorMessage = ex.Message;
                     onProgress($"Erreur connexion {_activeServer} : {ex.Message}");
-                    continue;
+                    continue; // Tente le serveur suivant
                 }
             }
 
-            // Si on sort de la boucle, c'est que TOUS les serveurs ont échoué.
             throw new Exception($"Aucun serveur n'a répondu. Dernière erreur : {lastErrorMessage}");
         }
 
@@ -185,7 +199,11 @@ namespace AutoActivator.Services
         {
             var payload = new { subJes = "2", ctlSubmit = "Submit", JCLIn = jclContent };
             var request = new HttpRequestMessage(HttpMethod.Post, $"{_nodeUrl}jescontrol/");
-            request.Content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json");
+
+            // FORCAGE DU CONTENT-TYPE SANS CHARSET
+            var content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8);
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            request.Content = content;
 
             AddCommonHeaders(request.Headers);
             request.Headers.TryAddWithoutValidation("Referer", $"{_nodeUrl}jescontrol/");
@@ -193,7 +211,11 @@ namespace AutoActivator.Services
             try
             {
                 var response = await _httpClient.SendAsync(request);
-                if (!response.IsSuccessStatusCode) return (false, null, $"HTTP Error {response.StatusCode}");
+                if (!response.IsSuccessStatusCode)
+                {
+                    string err = await response.Content.ReadAsStringAsync();
+                    return (false, null, $"HTTP Error {response.StatusCode} : {err}");
+                }
 
                 string responseBody = await response.Content.ReadAsStringAsync();
                 JObject doc = JObject.Parse(responseBody);
@@ -257,6 +279,10 @@ namespace AutoActivator.Services
             headers.TryAddWithoutValidation("x-requested-with", "XMLHttpRequest");
             headers.TryAddWithoutValidation("Accept", "application/json, text/plain, */*");
         }
+
+        // =========================================================================================
+        // Méthodes de parsing et de nettoyage des JCL
+        // =========================================================================================
 
         private string DoCorrections(string content)
         {
