@@ -101,7 +101,6 @@ namespace AutoActivator.Services
                 var payload = new { mfUser = username, mfNewPassword = "", mfPassword = password };
                 var content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json");
 
-                // CORRECTION : Ajout des headers sur l'objet HttpRequestMessage et non sur le contenu
                 var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/logon");
                 request.Content = content;
                 AddCommonHeaders(request.Headers);
@@ -118,10 +117,17 @@ namespace AutoActivator.Services
 
                         if (testResponse.IsSuccessStatusCode) return true; // Ce serveur est le bon !
                     }
+                    else
+                    {
+                         System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                            System.Windows.MessageBox.Show($"Erreur HTTP sur {_activeServer} : {response.StatusCode}"));
+                    }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Si ce serveur plante, la boucle continue et tente le serveur suivant
+                    // Affiche l'erreur exacte pour savoir ce qui bloque
+                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                        System.Windows.MessageBox.Show($"Erreur sur {_activeServer} : {ex.Message}"));
                     continue;
                 }
             }
@@ -180,7 +186,6 @@ namespace AutoActivator.Services
             var request = new HttpRequestMessage(HttpMethod.Post, $"{_nodeUrl}jescontrol/");
             request.Content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json");
 
-            // CORRECTION : Ajout des headers sur la requête
             AddCommonHeaders(request.Headers);
             request.Headers.TryAddWithoutValidation("Referer", $"{_nodeUrl}jescontrol/");
 
@@ -245,7 +250,6 @@ namespace AutoActivator.Services
             }
         }
 
-        // CORRECTION MAJEURE ICI : Utilisation de HttpRequestHeaders et de TryAddWithoutValidation
         private void AddCommonHeaders(HttpRequestHeaders headers)
         {
             headers.TryAddWithoutValidation("accept-encoding", "gzip, deflate, br");
