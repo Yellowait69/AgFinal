@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq; // Indispensable pour la recherche de clés
+using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -14,7 +14,6 @@ namespace AutoActivator.Services
 {
     public class MicroFocusApiService
     {
-        // STATIC : Permet de conserver la session et le meilleur serveur entre les instances
         private static readonly CookieContainer _cookieContainer = new CookieContainer();
         private static readonly Dictionary<string, string> _lastWorkingServers = new Dictionary<string, string>();
 
@@ -161,9 +160,6 @@ namespace AutoActivator.Services
             catch (Exception ex) { return (false, null, ex.Message); }
         }
 
-        // =========================================================================
-        // MÉTHODE MODIFIÉE AVEC LE MOUCHARD DE DÉBOGAGE
-        // =========================================================================
         public async Task<(string Status, string ReturnCode)> CheckJobStatusAsync(string jobNum, CancellationToken cancellationToken)
         {
             string url = $"{_nodeUrl}jobview/{jobNum}";
@@ -178,26 +174,18 @@ namespace AutoActivator.Services
                     string responseBody = await reader.ReadToEndAsync();
                     JObject doc = JObject.Parse(responseBody);
 
-                    // Helper local pour extraire une valeur sans se soucier de la casse
                     string GetValueCI(string key) =>
                         doc.Properties().FirstOrDefault(p => p.Name.Equals(key, StringComparison.OrdinalIgnoreCase))?.Value?.ToString().Trim();
 
                     string status = GetValueCI("JobStatus") ?? "Unknown";
 
-                    // Vérification de toutes les variantes possibles
-                    string returnCode = GetValueCI("JobRetCode")
+                    // La clé "JobCOND" a été identifiée grâce au débuggage précédent !
+                    string returnCode = GetValueCI("JobCOND")
+                                     ?? GetValueCI("JobRetCode")
                                      ?? GetValueCI("MaxCC")
                                      ?? GetValueCI("ReturnCode")
                                      ?? GetValueCI("RetCode")
-                                     ?? GetValueCI("ConditionCode")
-                                     ?? GetValueCI("jobCorCondCode");
-
-                    // SI INTROUVABLE : On capture toutes les clés du JSON pour voir ce que le serveur nous envoie vraiment !
-                    if (string.IsNullOrEmpty(returnCode) || returnCode == "Unknown")
-                    {
-                        var keys = string.Join(", ", doc.Properties().Select(p => p.Name));
-                        returnCode = $"INTROUVABLE - Clés JSON : [{keys}]";
-                    }
+                                     ?? "Unknown";
 
                     return (status, returnCode);
                 }
