@@ -131,7 +131,7 @@ namespace AutoActivator.Gui
                     { "USERNAME", username }
                 };
 
-                // 3. Initialisation du service d'activation avec le bon chemin réseau
+                // 3. Initialisation du dossier contenant les JCLs
                 string jclFolder = @"\\Jafile02\elia\11 - Technical Architecture\11 - IS Tooling\01 - Tools\LVCHAIN\JCL";
 
                 if (!Directory.Exists(jclFolder))
@@ -139,23 +139,22 @@ namespace AutoActivator.Gui
                     throw new Exception($"Impossible d'accéder au dossier réseau contenant les JCLs :\n{jclFolder}\nVérifiez votre connexion au réseau de l'entreprise ou vos droits d'accès.");
                 }
 
-                // On instancie le service dans un bloc 'using' pour libérer les ressources réseau à la fin
-                using (var activationService = new ActivationService(jclFolder))
-                {
-                    // 4. Exécution de la séquence
-                    await activationService.RunActivationSequenceAsync(
-                        generalVariables,
-                        addprctVariables,
-                        username,
-                        password,
-                        message =>
-                        {
-                            // Cette fonction est appelée depuis le service pour mettre à jour l'interface
-                            Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = message);
-                        },
-                        CancellationToken.None // Token par défaut, à modifier si on ajoute un bouton "Annuler"
-                    );
-                }
+                // 4. Instanciation de l'orchestrateur
+                var activationOrchestrator = new ActivationOrchestrator(jclFolder);
+
+                // 5. Exécution de la séquence
+                await activationOrchestrator.RunActivationSequenceAsync(
+                    generalVariables,
+                    addprctVariables,
+                    username,
+                    password,
+                    message =>
+                    {
+                        // Cette fonction est appelée depuis le service pour mettre à jour l'interface
+                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = message);
+                    },
+                    CancellationToken.None // Token par défaut, à modifier si on ajoute un bouton "Annuler"
+                );
 
                 Application.Current.Dispatcher.Invoke(() =>
                 {
