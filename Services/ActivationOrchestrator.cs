@@ -35,10 +35,10 @@ namespace AutoActivator.Services
 
                 int jobCounter = 1;
 
-                // Soumission séquentielle des 5 Jobs critiques
+                // Soumission séquentielle des 5 Jobs critiques avec les NOUVEAUX NOMS
                 await ProcessSubmitAndWaitAsync("ADDPRCT", addprctVars, jobCounter++, onProgress, cancellationToken);
-                await ProcessSubmitAndWaitAsync("LVD4PP06", generalVariables, jobCounter++, onProgress, cancellationToken);
-                await ProcessSubmitAndWaitAsync("LVD4PG22", generalVariables, jobCounter++, onProgress, cancellationToken);
+                await ProcessSubmitAndWaitAsync("LVPP06U", generalVariables, jobCounter++, onProgress, cancellationToken);
+                await ProcessSubmitAndWaitAsync("LVPG22U", generalVariables, jobCounter++, onProgress, cancellationToken);
                 await ProcessSubmitAndWaitAsync("LI1J04D0", generalVariables, jobCounter++, onProgress, cancellationToken);
                 await ProcessSubmitAndWaitAsync("LI1J04D2", generalVariables, jobCounter++, onProgress, cancellationToken);
 
@@ -80,7 +80,7 @@ namespace AutoActivator.Services
             {
                 await Task.Delay(sleepDelays[i] * 1000, cancellationToken);
 
-                // Récupération du Status ET du ReturnCode (MaxCC)
+                // Récupération du Status ET du ReturnCode
                 var (Status, ReturnCode) = await _apiService.CheckJobStatusAsync(JobNum, cancellationToken);
 
                 // Cas 1 : Crash système (JCL Error ou ABEND)
@@ -92,9 +92,12 @@ namespace AutoActivator.Services
                 // Cas 2 : Exécution terminée
                 if (Status == "Complete")
                 {
-                    // Vérification du code retour métier (souvent "0000" ou "0004" max)
-                    // On accepte les formats courts "0" ou longs "0000"
-                    if (ReturnCode != "0000" && ReturnCode != "0" && ReturnCode != "0004" && ReturnCode != "4")
+                    // Nettoyage des zéros initiaux ("0000" devient "0", "0008" devient "8")
+                    string cleanRC = ReturnCode.TrimStart('0');
+                    if (string.IsNullOrEmpty(cleanRC)) cleanRC = "0";
+
+                    // Vérification du code retour métier (on accepte 0 ou 4)
+                    if (cleanRC != "0" && cleanRC != "4")
                     {
                         throw new Exception($"Le job {jobName} s'est terminé avec une erreur métier (Code retour: {ReturnCode}). ARRÊT DE LA SÉQUENCE pour protéger l'intégrité des données.");
                     }
