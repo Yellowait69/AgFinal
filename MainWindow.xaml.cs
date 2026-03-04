@@ -19,6 +19,9 @@ namespace AutoActivator.Gui
         private string _lastGeneratedPath = "";
         private readonly ExtractionService _extractionService;
 
+        // AJOUT : Jeton d'annulation pour arrêter la séquence d'activation à tout moment
+        private CancellationTokenSource _cts;
+
         public ObservableCollection<ExtractionItem> ExtractionHistory { get; set; } = new ObservableCollection<ExtractionItem>();
 
         public MainWindow()
@@ -77,6 +80,9 @@ namespace AutoActivator.Gui
 
         private async void BtnRunActivation_Click(object sender, RoutedEventArgs e)
         {
+            // Initialisation du jeton d'annulation avant de lancer le process
+            _cts = new CancellationTokenSource();
+
             await RunProcessAsync(async () =>
             {
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Préparation de l'activation (JCLs)...");
@@ -94,8 +100,11 @@ namespace AutoActivator.Gui
 
                     contract = TxtActContract.Text.Trim();
                     cus = TxtActCus.Text.Trim();
-                    amount = TxtActAmount.Text.Trim();
-                    bucp = TxtActBucp.Text.Trim();
+
+                    // AJOUT CRITIQUE : Formatage strict pour le Mainframe (ajoute des zéros devant)
+                    // (ex: "150.50" devient "0000150.50" pour correspondre aux longueurs attendues par COBOL)
+                    amount = TxtActAmount.Text.Trim().PadLeft(10, '0');
+                    bucp = TxtActBucp.Text.Trim().PadLeft(5, '0');
                 });
 
                 // --- UTILISATION DES IDENTIFIANTS DEPUIS LES SETTINGS ---
@@ -126,8 +135,8 @@ namespace AutoActivator.Gui
                 {
                     { "STE", "A" },
                     { "CMDPMT", "6" },
-                    { "AMOUNT", amount },
-                    { "BUCP", bucp },
+                    { "AMOUNT", amount }, // Variable désormais correctement paddée
+                    { "BUCP", bucp },     // Variable désormais correctement paddée
                     { "USERNAME", username }
                 };
 
@@ -142,7 +151,7 @@ namespace AutoActivator.Gui
                 // 4. Instanciation de l'orchestrateur
                 var activationOrchestrator = new ActivationOrchestrator(jclFolder);
 
-                // 5. Exécution de la séquence
+                // 5. Exécution de la séquence AVEC le jeton d'annulation
                 await activationOrchestrator.RunActivationSequenceAsync(
                     generalVariables,
                     addprctVariables,
@@ -153,15 +162,26 @@ namespace AutoActivator.Gui
                         // Cette fonction est appelée depuis le service pour mettre à jour l'interface
                         Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = message);
                     },
-                    CancellationToken.None // Token par défaut, à modifier si on ajoute un bouton "Annuler"
+                    _cts.Token // Passage du token pour pouvoir annuler
                 );
 
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     TxtStatus.Text = "Séquence d'activation terminée avec succès !";
-                    MessageBox.Show("Les 5 Jobs ont été soumis et acceptés par le serveur.", "Activation Réussie", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show("Les 5 Jobs ont été soumis et acceptés par le serveur sans erreur métier.", "Activation Réussie", MessageBoxButton.OK, MessageBoxImage.Information);
                 });
             });
+        }
+
+        // AJOUT : Événement pour intercepter le clic sur le bouton "Cancel"
+        private void BtnCancelActivation_Click(object sender, RoutedEventArgs e)
+        {
+            if (_cts != null && !_cts.IsCancellationRequested)
+            {
+                _cts.Cancel(); // Envoie le signal d'annulation
+                TxtStatus.Text = "Annulation en cours... La séquence va s'arrêter.";
+                TxtStatus.Foreground = System.Windows.Media.Brushes.DarkOrange;
+            }
         }
 
         // =========================================================================
@@ -178,6 +198,9 @@ namespace AutoActivator.Gui
             if (BtnRunActivation != null) BtnRunActivation.IsEnabled = false;
             if (BtnRunComparison != null) BtnRunComparison.IsEnabled = false;
 
+            // AJOUT : Activer le bouton d'annulation pendant l'exécution
+            if (BtnCancelActivation != null) BtnCancelActivation.IsEnabled = true;
+
             TxtStatus.Foreground = System.Windows.Media.Brushes.Blue;
 
             try
@@ -186,20 +209,29 @@ namespace AutoActivator.Gui
                 LnkFile.Visibility = Visibility.Visible;
                 TxtStatus.Foreground = System.Windows.Media.Brushes.Green;
             }
+            catch (OperationCanceledException)
+            {
+                // AJOUT : Interception de l'annulation par l'utilisateur
+                TxtStatus.Text = "Opération annulée par l'utilisateur.";
+                TxtStatus.Foreground = System.Windows.Media.Brushes.DarkOrange;
+            }
             catch (Exception ex)
             {
-                TxtStatus.Text = $"Error: {ex.Message}";
+                TxtStatus.Text = $"Erreur: {ex.Message}";
                 TxtStatus.Foreground = System.Windows.Media.Brushes.Red;
-                MessageBox.Show(ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(ex.Message, "Erreur d'exécution", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
                 PrgLoading.Visibility = Visibility.Collapsed;
 
-                // Réactiver les boutons
+                // Réactiver les boutons normaux
                 if (BtnRunSingle != null) BtnRunSingle.IsEnabled = true;
                 if (BtnRunBatch != null) BtnRunBatch.IsEnabled = true;
                 if (BtnRunActivation != null) BtnRunActivation.IsEnabled = true;
+
+                // AJOUT : Désactiver le bouton d'annulation car l'opération est finie
+                if (BtnCancelActivation != null) BtnCancelActivation.IsEnabled = false;
 
                 // Le bouton de comparaison dépend des champs de texte
                 if (BtnRunComparison != null)

@@ -60,26 +60,44 @@ namespace AutoActivator.Services
         {
             onProgress($"\nPréparation du job {jobName}...");
 
-            // 1. Préparer le JCL via le service dédié
+            // 1. Ajout de la variable implicite JOBNAM requise par certains scripts
+            variables["JOBNAM"] = jobName;
+
+            // 2. Préparer le JCL via le service dédié
             string readyContent = await _jclProcessor.GetPreparedJclAsync(jobName, variables, count);
 
-            // 2. Soumettre via l'API
+            // 3. Soumettre via l'API
             var (Success, JobNum, Error) = await _apiService.SubmitJobAsync(readyContent, cancellationToken);
             if (!Success) throw new Exception($"Échec de soumission de {jobName}. Erreur: {Error}");
 
             onProgress($"Job {jobName} soumis (JOBNUM: {JobNum}). Attente de la fin...");
 
-            // 3. Attente (Polling)
+            // 4. Attente (Polling)
             int[] sleepDelays = { 1, 2, 3, 5, 8, 10, 15, 30, 30, 30, 30, 30, 45, 60 };
             bool finished = false;
 
             for (int i = 0; i < sleepDelays.Length; i++)
             {
                 await Task.Delay(sleepDelays[i] * 1000, cancellationToken);
-                string status = await _apiService.CheckJobStatusAsync(JobNum, cancellationToken);
 
-                if (status == "Complete")
+                // Récupération du Status ET du ReturnCode
+                var (Status, ReturnCode) = await _apiService.CheckJobStatusAsync(JobNum, cancellationToken);
+
+                // Si le job a planté au niveau système
+                if (Status == "JCLError" || Status == "Abend")
                 {
+                    throw new Exception($"Crash système du job {jobName}. Statut: {Status}. ARRÊT DE LA SÉQUENCE.");
+                }
+
+                // Si le job a fini de s'exécuter
+                if (Status == "Complete")
+                {
+                    // Vérification CRITIQUE du code retour (souvent "0000" ou "0004" max)
+                    if (ReturnCode != "0000" && ReturnCode != "0004")
+                    {
+                        throw new Exception($"Le job {jobName} s'est terminé avec une erreur métier (Code retour: {ReturnCode}). ARRÊT DE LA SÉQUENCE pour protéger les données.");
+                    }
+
                     finished = true;
                     break;
                 }

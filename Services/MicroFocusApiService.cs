@@ -162,7 +162,8 @@ namespace AutoActivator.Services
             catch (Exception ex) { return (false, null, ex.Message); }
         }
 
-        public async Task<string> CheckJobStatusAsync(string jobNum, CancellationToken cancellationToken)
+        // MODIFICATION : Retourne désormais un Tuple avec le Status ET le ReturnCode
+        public async Task<(string Status, string ReturnCode)> CheckJobStatusAsync(string jobNum, CancellationToken cancellationToken)
         {
             string url = $"{_nodeUrl}jobview/{jobNum}";
             var request = CreateRequest(url, "GET", url);
@@ -174,10 +175,24 @@ namespace AutoActivator.Services
                 using (var reader = new StreamReader(response.GetResponseStream()))
                 {
                     string responseBody = await reader.ReadToEndAsync();
-                    return JObject.Parse(responseBody)["JobStatus"]?.ToString().Trim() ?? "Unknown";
+                    JObject doc = JObject.Parse(responseBody);
+
+                    string status = doc["JobStatus"]?.ToString().Trim() ?? "Unknown";
+
+                    // Selon la version d'ESCWA, le code retour peut avoir un nom différent.
+                    // On tente de récupérer "JobRetCode", sinon "MaxCC", sinon "RetCode".
+                    string returnCode = doc["JobRetCode"]?.ToString().Trim()
+                                     ?? doc["MaxCC"]?.ToString().Trim()
+                                     ?? doc["RetCode"]?.ToString().Trim()
+                                     ?? "Unknown";
+
+                    return (status, returnCode);
                 }
             }
-            catch { return "Unknown"; }
+            catch
+            {
+                return ("Unknown", "Unknown");
+            }
         }
 
         private async Task<bool> TestConnectionAsync(string nodeUrl, CancellationToken cancellationToken)

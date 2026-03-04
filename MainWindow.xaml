@@ -27,6 +27,30 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+
+        <Style TargetType="Button" x:Key="CancelButtonStyle">
+            <Setter Property="Background" Value="#E74C3C"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="15,10"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Background" Value="#BDC3C7"/>
+                    <Setter Property="Foreground" Value="#7F8C8D"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -216,7 +240,10 @@
                             </StackPanel>
                         </Grid>
 
-                        <Button x:Name="BtnRunActivation" Content="🚀 Run Activation Sequence" Click="BtnRunActivation_Click" Style="{StaticResource ActionButtonStyle}" HorizontalAlignment="Right" Width="260" Margin="0,15,0,0"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
+                            <Button x:Name="BtnCancelActivation" Content="🛑 Cancel" Click="BtnCancelActivation_Click" Style="{StaticResource CancelButtonStyle}" Width="120" Margin="0,0,10,0" IsEnabled="False"/>
+                            <Button x:Name="BtnRunActivation" Content="🚀 Run Activation Sequence" Click="BtnRunActivation_Click" Style="{StaticResource ActionButtonStyle}" Width="260"/>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
             </Grid>
