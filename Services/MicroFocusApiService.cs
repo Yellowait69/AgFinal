@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq; // Indispensable pour la recherche de clés
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -41,7 +42,6 @@ namespace AutoActivator.Services
 
             string logonUrl = $"{baseUrl}/logon";
 
-            // 1. Tenter de réutiliser la session existante
             if (_lastWorkingServers.TryGetValue(env, out string lastServer))
             {
                 _nodeUrl = $"{baseUrl}/native/v1/regions/{lastServer}/86/BATCH{env}/";
@@ -67,7 +67,6 @@ namespace AutoActivator.Services
                 }
             }
 
-            // 2. Connexion classique avec Failover
             string lastErrorMessage = "";
 
             foreach (var server in _activeServers[env])
@@ -162,7 +161,9 @@ namespace AutoActivator.Services
             catch (Exception ex) { return (false, null, ex.Message); }
         }
 
-        // MODIFICATION : Retourne un Tuple avec le Status ET le ReturnCode (Insensible à la casse)
+        // =========================================================================
+        // MÉTHODE MODIFIÉE AVEC LE MOUCHARD DE DÉBOGAGE
+        // =========================================================================
         public async Task<(string Status, string ReturnCode)> CheckJobStatusAsync(string jobNum, CancellationToken cancellationToken)
         {
             string url = $"{_nodeUrl}jobview/{jobNum}";
@@ -177,21 +178,33 @@ namespace AutoActivator.Services
                     string responseBody = await reader.ReadToEndAsync();
                     JObject doc = JObject.Parse(responseBody);
 
-                    // Recherche insensible à la casse pour le statut
-                    string status = doc.GetValue("JobStatus", StringComparison.OrdinalIgnoreCase)?.ToString().Trim() ?? "Unknown";
+                    // Helper local pour extraire une valeur sans se soucier de la casse
+                    string GetValueCI(string key) =>
+                        doc.Properties().FirstOrDefault(p => p.Name.Equals(key, StringComparison.OrdinalIgnoreCase))?.Value?.ToString().Trim();
 
-                    // Recherche insensible à la casse pour le code retour (gère maxcc, MaxCC, jobretcode, etc.)
-                    string returnCode = doc.GetValue("JobRetCode", StringComparison.OrdinalIgnoreCase)?.ToString().Trim()
-                                     ?? doc.GetValue("MaxCC", StringComparison.OrdinalIgnoreCase)?.ToString().Trim()
-                                     ?? doc.GetValue("RetCode", StringComparison.OrdinalIgnoreCase)?.ToString().Trim()
-                                     ?? "Unknown";
+                    string status = GetValueCI("JobStatus") ?? "Unknown";
+
+                    // Vérification de toutes les variantes possibles
+                    string returnCode = GetValueCI("JobRetCode")
+                                     ?? GetValueCI("MaxCC")
+                                     ?? GetValueCI("ReturnCode")
+                                     ?? GetValueCI("RetCode")
+                                     ?? GetValueCI("ConditionCode")
+                                     ?? GetValueCI("jobCorCondCode");
+
+                    // SI INTROUVABLE : On capture toutes les clés du JSON pour voir ce que le serveur nous envoie vraiment !
+                    if (string.IsNullOrEmpty(returnCode) || returnCode == "Unknown")
+                    {
+                        var keys = string.Join(", ", doc.Properties().Select(p => p.Name));
+                        returnCode = $"INTROUVABLE - Clés JSON : [{keys}]";
+                    }
 
                     return (status, returnCode);
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                return ("Unknown", "Unknown");
+                return ("Unknown", $"Erreur de lecture: {ex.Message}");
             }
         }
 
