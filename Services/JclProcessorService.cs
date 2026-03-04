@@ -79,13 +79,23 @@ namespace AutoActivator.Services
             string jobClass = vars.ContainsKey("CLASS") ? vars["CLASS"] : "A";
             string username = vars.ContainsKey("USERNAME") ? vars["USERNAME"] : Environment.UserName;
 
-            string schenv = env switch
+            // Remplacement de la syntaxe C# 8.0 par la syntaxe classique compatible C# 7.3
+            string schenv;
+            switch (env)
             {
-                "Q" => "IM7C",
-                "A" => "IM7Q",
-                "P" => "IM7P",
-                _ => "IM7T"
-            };
+                case "Q":
+                    schenv = "IM7C";
+                    break;
+                case "A":
+                    schenv = "IM7Q";
+                    break;
+                case "P":
+                    schenv = "IM7P";
+                    break;
+                default:
+                    schenv = "IM7T";
+                    break;
+            }
 
             string jobcard = $"//{username}{count} JOB CLASS={jobClass},SCHENV={schenv},NOTIFY={username}\r\n";
             string tempContent = jobcard + content;
