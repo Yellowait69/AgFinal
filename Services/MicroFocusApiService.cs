@@ -162,7 +162,7 @@ namespace AutoActivator.Services
             catch (Exception ex) { return (false, null, ex.Message); }
         }
 
-        // MODIFICATION : Retourne désormais un Tuple avec le Status ET le ReturnCode
+        // MODIFICATION : Retourne un Tuple avec le Status ET le ReturnCode (Insensible à la casse)
         public async Task<(string Status, string ReturnCode)> CheckJobStatusAsync(string jobNum, CancellationToken cancellationToken)
         {
             string url = $"{_nodeUrl}jobview/{jobNum}";
@@ -177,13 +177,13 @@ namespace AutoActivator.Services
                     string responseBody = await reader.ReadToEndAsync();
                     JObject doc = JObject.Parse(responseBody);
 
-                    string status = doc["JobStatus"]?.ToString().Trim() ?? "Unknown";
+                    // Recherche insensible à la casse pour le statut
+                    string status = doc.GetValue("JobStatus", StringComparison.OrdinalIgnoreCase)?.ToString().Trim() ?? "Unknown";
 
-                    // Selon la version d'ESCWA, le code retour peut avoir un nom différent.
-                    // On tente de récupérer "JobRetCode", sinon "MaxCC", sinon "RetCode".
-                    string returnCode = doc["JobRetCode"]?.ToString().Trim()
-                                     ?? doc["MaxCC"]?.ToString().Trim()
-                                     ?? doc["RetCode"]?.ToString().Trim()
+                    // Recherche insensible à la casse pour le code retour (gère maxcc, MaxCC, jobretcode, etc.)
+                    string returnCode = doc.GetValue("JobRetCode", StringComparison.OrdinalIgnoreCase)?.ToString().Trim()
+                                     ?? doc.GetValue("MaxCC", StringComparison.OrdinalIgnoreCase)?.ToString().Trim()
+                                     ?? doc.GetValue("RetCode", StringComparison.OrdinalIgnoreCase)?.ToString().Trim()
                                      ?? "Unknown";
 
                     return (status, returnCode);

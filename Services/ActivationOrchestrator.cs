@@ -35,18 +35,18 @@ namespace AutoActivator.Services
 
                 int jobCounter = 1;
 
-                // Soumission des 5 Jobs
+                // Soumission séquentielle des 5 Jobs critiques
                 await ProcessSubmitAndWaitAsync("ADDPRCT", addprctVars, jobCounter++, onProgress, cancellationToken);
                 await ProcessSubmitAndWaitAsync("LVD4PP06", generalVariables, jobCounter++, onProgress, cancellationToken);
                 await ProcessSubmitAndWaitAsync("LVD4PG22", generalVariables, jobCounter++, onProgress, cancellationToken);
                 await ProcessSubmitAndWaitAsync("LI1J04D0", generalVariables, jobCounter++, onProgress, cancellationToken);
                 await ProcessSubmitAndWaitAsync("LI1J04D2", generalVariables, jobCounter++, onProgress, cancellationToken);
 
-                onProgress("=== SÉQUENCE D'ACTIVATION TERMINÉE ===");
+                onProgress("=== SÉQUENCE D'ACTIVATION TERMINÉE AVEC SUCCÈS ===");
             }
             catch (OperationCanceledException)
             {
-                onProgress("[ANNULATION] La séquence a été annulée par l'utilisateur.");
+                onProgress("[ANNULATION] La séquence a été arrêtée par l'utilisateur.");
                 throw;
             }
             catch (Exception ex)
@@ -60,19 +60,19 @@ namespace AutoActivator.Services
         {
             onProgress($"\nPréparation du job {jobName}...");
 
-            // 1. Ajout de la variable implicite JOBNAM requise par certains scripts
+            // 1. Ajout de la variable implicite JOBNAM requise par les scripts JCL
             variables["JOBNAM"] = jobName;
 
             // 2. Préparer le JCL via le service dédié
             string readyContent = await _jclProcessor.GetPreparedJclAsync(jobName, variables, count);
 
-            // 3. Soumettre via l'API
+            // 3. Soumettre via l'API Micro Focus
             var (Success, JobNum, Error) = await _apiService.SubmitJobAsync(readyContent, cancellationToken);
             if (!Success) throw new Exception($"Échec de soumission de {jobName}. Erreur: {Error}");
 
-            onProgress($"Job {jobName} soumis (JOBNUM: {JobNum}). Attente de la fin...");
+            onProgress($"Job {jobName} soumis (JOBNUM: {JobNum}). Attente des résultats...");
 
-            // 4. Attente (Polling)
+            // 4. Attente active (Polling) avec vérification des codes retours
             int[] sleepDelays = { 1, 2, 3, 5, 8, 10, 15, 30, 30, 30, 30, 30, 45, 60 };
             bool finished = false;
 
@@ -80,22 +80,23 @@ namespace AutoActivator.Services
             {
                 await Task.Delay(sleepDelays[i] * 1000, cancellationToken);
 
-                // Récupération du Status ET du ReturnCode
+                // Récupération du Status ET du ReturnCode (MaxCC)
                 var (Status, ReturnCode) = await _apiService.CheckJobStatusAsync(JobNum, cancellationToken);
 
-                // Si le job a planté au niveau système
+                // Cas 1 : Crash système (JCL Error ou ABEND)
                 if (Status == "JCLError" || Status == "Abend")
                 {
                     throw new Exception($"Crash système du job {jobName}. Statut: {Status}. ARRÊT DE LA SÉQUENCE.");
                 }
 
-                // Si le job a fini de s'exécuter
+                // Cas 2 : Exécution terminée
                 if (Status == "Complete")
                 {
-                    // Vérification CRITIQUE du code retour (souvent "0000" ou "0004" max)
-                    if (ReturnCode != "0000" && ReturnCode != "0004")
+                    // Vérification du code retour métier (souvent "0000" ou "0004" max)
+                    // On accepte les formats courts "0" ou longs "0000"
+                    if (ReturnCode != "0000" && ReturnCode != "0" && ReturnCode != "0004" && ReturnCode != "4")
                     {
-                        throw new Exception($"Le job {jobName} s'est terminé avec une erreur métier (Code retour: {ReturnCode}). ARRÊT DE LA SÉQUENCE pour protéger les données.");
+                        throw new Exception($"Le job {jobName} s'est terminé avec une erreur métier (Code retour: {ReturnCode}). ARRÊT DE LA SÉQUENCE pour protéger l'intégrité des données.");
                     }
 
                     finished = true;
@@ -103,9 +104,9 @@ namespace AutoActivator.Services
                 }
             }
 
-            if (!finished) throw new Exception($"Le Job {JobNum} ({jobName}) prend trop de temps. Vérifiez dans ESCWA.");
+            if (!finished) throw new Exception($"Le Job {JobNum} ({jobName}) a dépassé le délai d'attente. Vérifiez manuellement dans ESCWA.");
 
-            onProgress($"✅ Job {jobName} terminé avec succès !");
+            onProgress($"✅ Job {jobName} terminé avec succès (RC: {JobNum}) !");
         }
     }
 }
