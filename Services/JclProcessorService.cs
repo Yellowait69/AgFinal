@@ -117,13 +117,13 @@ namespace AutoActivator.Services
             else if (env == "A") schenv = "IM7Q";
             else if (env == "P") schenv = "IM7P";
 
-            // SÉCURITÉ CRITIQUE : Hard-limit absolu à 8 caractères pour le JobName
+            // SÉCURITÉ CRITIQUE : Hard-limit absolu à 8 caractères pour le JobName (Compatible tout .NET)
             string safeJobName = vars.ContainsKey("JOBNAM") ? vars["JOBNAM"] : (username + count);
-            safeJobName = safeJobName.Replace(".JCL", "", StringComparison.OrdinalIgnoreCase).Replace(".", "").ToUpper();
+            safeJobName = safeJobName.ToUpper().Replace(".JCL", "").Replace(".", "");
             if (safeJobName.Length > 8) safeJobName = safeJobName.Substring(0, 8);
 
             // SÉCURITÉ CRITIQUE : Hard-limit absolu à 8 caractères pour le paramètre NOTIFY
-            string safeNotify = username.Replace(".", "").ToUpper();
+            string safeNotify = username.ToUpper().Replace(".", "");
             if (safeNotify.Length > 8) safeNotify = safeNotify.Substring(0, 8);
 
             // Construction de la JOBCARD
