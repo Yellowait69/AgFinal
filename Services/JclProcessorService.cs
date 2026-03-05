@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -36,12 +37,11 @@ namespace AutoActivator.Services
         }
 
         // =========================================================================
-        // PARTIE 1 : TRAITEMENT DES FICHIERS JCL CLASSIQUES (COPIE EXACTE DE L'ORIGINAL)
+        // PARTIE 1 : TRAITEMENT DES FICHIERS JCL CLASSIQUES (CLONE LVCHAINTOOL)
         // =========================================================================
 
         public async Task<string> GetPreparedJclAsync(string jobName, Dictionary<string, string> variables, int count)
         {
-            // Correction de compilation : Replace à 2 arguments
             string cleanJobName = jobName.ToUpper().Replace(".JCL", "");
             string fileName = jobName.ToUpper().EndsWith(".JCL") ? jobName : jobName + ".JCL";
             string filePath = Path.Combine(_jclDirectory, fileName);
@@ -75,12 +75,12 @@ namespace AutoActivator.Services
 
             // 2. Suppression de la JobCard existante
             StringBuilder output2 = new StringBuilder();
-            List<string> lines = new List<string>(output.ToString().Replace("\r", "").Split('\n'));
+            List<string> lines = output.ToString().Replace("\r", "").Split('\n').ToList();
             bool existingJobcard = false;
 
             foreach (string line in lines)
             {
-                if (lines.Count > 0 && lines[0] == line && !line.StartsWith("//*") && line.ToUpper().Contains(" JOB "))
+                if (lines.Count > 0 && lines.First() == line && !line.StartsWith("//*") && line.ToUpper().Contains(" JOB "))
                     existingJobcard = true;
 
                 if (!existingJobcard)
@@ -97,9 +97,9 @@ namespace AutoActivator.Services
 
         private string ApplyVariables(string cleanJobName, string content, Dictionary<string, string> vars, int count)
         {
-            List<string> jclLines = new List<string>(content.Replace("\r", "").Split('\n'));
+            List<string> jclLines = content.Replace("\r", "").Split('\n').ToList();
 
-            // Ajout de la logique de LvChainTool : Injection de la variable JOBNAM si elle n'existe pas
+            // Logique de LvChainTool : Injection de la variable JOBNAM si elle n'existe pas
             Dictionary<string, string> localVars = new Dictionary<string, string>(vars);
             if (!localVars.ContainsKey("JOBNAM"))
             {
@@ -114,6 +114,8 @@ namespace AutoActivator.Services
 
             string env = localVars.ContainsKey("ENVIMS") ? localVars["ENVIMS"] : "D";
             string jobClass = localVars.ContainsKey("CLASS") ? localVars["CLASS"] : "A";
+
+            // On conserve Environment.UserName tel quel comme vous l'avez demandé
             string username = localVars.ContainsKey("USERNAME") ? localVars["USERNAME"] : Environment.UserName;
 
             string schenv = "IM7T";
@@ -122,16 +124,20 @@ namespace AutoActivator.Services
             else if (env == "A") schenv = "IM7Q";
             else if (env == "P") schenv = "IM7P";
 
-            // JobName tel que généré dans l'ancien code
-            string jobNameStr = localVars.ContainsKey("JOBNAM") ? localVars["JOBNAM"].Trim().ToUpper() : (username + count);
+            string jobcard = "//";
 
-            // Sécurité anti-parsing error (limite stricte de 8 caractères pour la JobCard)
-            if (jobNameStr.Length > 8) jobNameStr = jobNameStr.Substring(0, 8);
+            // Reproduction de la logique de nommage de job EXACTE de l'ancien outil
+            if (localVars.ContainsKey("JOBNAM") && !string.IsNullOrEmpty(localVars["JOBNAM"]))
+            {
+                 jobcard += localVars["JOBNAM"].Trim().ToUpper();
+            }
+            else
+            {
+                 jobcard += username + count;
+            }
 
-            string safeNotify = username.Replace(".", "").ToUpper();
-            if (safeNotify.Length > 8) safeNotify = safeNotify.Substring(0, 8);
+            jobcard += " JOB CLASS=" + jobClass + ",SCHENV=" + schenv + ",NOTIFY=" + username + "\r\n";
 
-            string jobcard = "//" + jobNameStr + " JOB CLASS=" + jobClass + ",SCHENV=" + schenv + ",NOTIFY=" + safeNotify + "\r\n";
             contentBuilder.Insert(0, jobcard);
 
             string content2 = contentBuilder.ToString().Replace("\r\n\r\n", "\r\n").TrimEnd(new char[] { '\n', '\r' });
@@ -189,7 +195,7 @@ namespace AutoActivator.Services
 
                     temp = Regex.Replace(temp, pattern, value);
                     temp = Regex.Replace(temp, pattern2, value + "$2");
-                    temp = Regex.Replace(temp, pattern3, value); // Conserve l'ingestion du point !
+                    temp = Regex.Replace(temp, pattern3, value);
                     temp = Regex.Replace(temp, pattern4, value + "$2");
                     temp = Regex.Replace(temp, pattern5, value + "$2");
                     temp = Regex.Replace(temp, pattern6, value);
@@ -203,14 +209,11 @@ namespace AutoActivator.Services
         // PARTIE 2 : UTILITAIRES D'ANALYSE (INSPIRÉ DE LVCHAINTOOL)
         // =========================================================================
 
-        /// <summary>
-        /// Extrait la liste de tous les DSN (Data Sets) référencés dans un JCL en ignorant les temporaires (&&).
-        /// </summary>
         public List<string> FindDSNs(string jclContent)
         {
             // remove comments
             StringBuilder content = new StringBuilder();
-            List<string> jclLines = new List<string>(jclContent.Replace("\r", "").Split('\n'));
+            List<string> jclLines = jclContent.Replace("\r", "").Split('\n').ToList();
             foreach (string jclLine in jclLines)
             {
                 if (jclLine.StartsWith("//*")) continue;
@@ -221,30 +224,32 @@ namespace AutoActivator.Services
             HashSet<string> dsnList = new HashSet<string>();
 
             // find DSNs based on regexes
-            string pattern = @"DSN=([^,\r\n]+)([,% \n\r])";
-            var matches = Regex.Matches(cleanContent, pattern);
-
-            for (int i = 0; i < matches.Count; i++)
+            List<string> patterns = new List<string>()
             {
-                var value = matches[i].Groups[1].Value;
-                // exceptions
-                if (value.StartsWith("&&")) continue;
-                dsnList.Add((value ?? "").Trim());
+                @"DSN=([^,\r\n]+)([,% \n\r])",
+            };
+
+            foreach (string pattern in patterns)
+            {
+                var matches = Regex.Matches(cleanContent, pattern);
+
+                for (int i = 0; i < matches.Count; i++)
+                {
+                    var value = matches[i].Groups[1].Value;
+                    // exceptions
+                    if (value.StartsWith("&&")) continue;
+                    dsnList.Add((value ?? "").Trim());
+                }
             }
 
-            List<string> result = new List<string>(dsnList);
-            result.Sort(); // OrderBy(x => x)
-            return result;
+            return dsnList.OrderBy(x => x).ToList();
         }
 
-        /// <summary>
-        /// Scanne le JCL pour lister toutes les variables (%%...) qui s'y trouvent.
-        /// </summary>
         public List<string> FindAllVars(string jclContent)
         {
             // remove comments
             StringBuilder content2 = new StringBuilder();
-            List<string> jclLines = new List<string>(jclContent.Replace("\r", "").Split('\n'));
+            List<string> jclLines = jclContent.Replace("\r", "").Split('\n').ToList();
             foreach (string jclLine in jclLines)
             {
                 if (jclLine.StartsWith("//*")) continue;
@@ -273,9 +278,7 @@ namespace AutoActivator.Services
                 }
             }
 
-            List<string> result = new List<string>(vars2);
-            result.Sort(); // OrderBy(x => x)
-            return result;
+            return vars2.OrderBy(x => x).ToList();
         }
 
         // =========================================================================
