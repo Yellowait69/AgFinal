@@ -8,6 +8,7 @@ using AutoActivator.Config;
 
 namespace AutoActivator.Services
 {
+    // Énumérations nécessaires pour définir le sens et le mode de transfert FTP
     public enum DsnDirection
     {
         Read,
@@ -24,6 +25,7 @@ namespace AutoActivator.Services
     {
         private readonly string _jclDirectory;
 
+        // Paramètres réseau pour le transfert FTP avec le Mainframe
         private static readonly string TempShare = "FILES.FIBE.FORTIS";
         private static readonly string WriteTempFolder = @"\elia\11 - Technical Architecture\11 - IS Tooling\01 - Tools\FTP-Write\";
         private static readonly string ReadTempFolder = @"\elia\11 - Technical Architecture\11 - IS Tooling\01 - Tools\FTP-Read\";
@@ -39,7 +41,9 @@ namespace AutoActivator.Services
 
         public async Task<string> GetPreparedJclAsync(string jobName, Dictionary<string, string> variables, int count)
         {
-            string fileName = jobName.EndsWith(".JCL", StringComparison.OrdinalIgnoreCase) ? jobName : jobName + ".JCL";
+            // Correction de compilation : Replace à 2 arguments
+            string cleanJobName = jobName.ToUpper().Replace(".JCL", "");
+            string fileName = jobName.ToUpper().EndsWith(".JCL") ? jobName : jobName + ".JCL";
             string filePath = Path.Combine(_jclDirectory, fileName);
 
             if (!File.Exists(filePath)) filePath = Path.Combine(_jclDirectory, jobName);
@@ -53,7 +57,7 @@ namespace AutoActivator.Services
 
             // Exécution STRICTEMENT identique à l'ancien code
             string correctedContent = DoCorrections(rawContent);
-            return ApplyVariables(correctedContent, variables, count);
+            return ApplyVariables(cleanJobName, correctedContent, variables, count);
         }
 
         private string DoCorrections(string content)
@@ -91,9 +95,16 @@ namespace AutoActivator.Services
             return output2.ToString().TrimEnd(new char[] { '\n', '\r' });
         }
 
-        private string ApplyVariables(string content, Dictionary<string, string> vars, int count)
+        private string ApplyVariables(string cleanJobName, string content, Dictionary<string, string> vars, int count)
         {
             List<string> jclLines = new List<string>(content.Replace("\r", "").Split('\n'));
+
+            // Ajout de la logique de LvChainTool : Injection de la variable JOBNAM si elle n'existe pas
+            Dictionary<string, string> localVars = new Dictionary<string, string>(vars);
+            if (!localVars.ContainsKey("JOBNAM"))
+            {
+                localVars.Add("JOBNAM", cleanJobName);
+            }
 
             StringBuilder contentBuilder = new StringBuilder();
             foreach (string jclLine in jclLines)
@@ -101,9 +112,9 @@ namespace AutoActivator.Services
                 contentBuilder.AppendLine(jclLine);
             }
 
-            string env = vars.ContainsKey("ENVIMS") ? vars["ENVIMS"] : "D";
-            string jobClass = vars.ContainsKey("CLASS") ? vars["CLASS"] : "A";
-            string username = vars.ContainsKey("USERNAME") ? vars["USERNAME"] : Environment.UserName;
+            string env = localVars.ContainsKey("ENVIMS") ? localVars["ENVIMS"] : "D";
+            string jobClass = localVars.ContainsKey("CLASS") ? localVars["CLASS"] : "A";
+            string username = localVars.ContainsKey("USERNAME") ? localVars["USERNAME"] : Environment.UserName;
 
             string schenv = "IM7T";
             if (env == "D") schenv = "IM7T";
@@ -112,18 +123,24 @@ namespace AutoActivator.Services
             else if (env == "P") schenv = "IM7P";
 
             // JobName tel que généré dans l'ancien code
-            string jobNameStr = vars.ContainsKey("JOBNAM") ? vars["JOBNAM"].Trim().ToUpper() : (username + count);
+            string jobNameStr = localVars.ContainsKey("JOBNAM") ? localVars["JOBNAM"].Trim().ToUpper() : (username + count);
 
-            string jobcard = "//" + jobNameStr + " JOB CLASS=" + jobClass + ",SCHENV=" + schenv + ",NOTIFY=" + username + "\r\n";
+            // Sécurité anti-parsing error (limite stricte de 8 caractères pour la JobCard)
+            if (jobNameStr.Length > 8) jobNameStr = jobNameStr.Substring(0, 8);
+
+            string safeNotify = username.Replace(".", "").ToUpper();
+            if (safeNotify.Length > 8) safeNotify = safeNotify.Substring(0, 8);
+
+            string jobcard = "//" + jobNameStr + " JOB CLASS=" + jobClass + ",SCHENV=" + schenv + ",NOTIFY=" + safeNotify + "\r\n";
             contentBuilder.Insert(0, jobcard);
 
             string content2 = contentBuilder.ToString().Replace("\r\n\r\n", "\r\n").TrimEnd(new char[] { '\n', '\r' });
 
-            string tempContent = ApplyVarsCore(content2, vars);
+            string tempContent = ApplyVarsCore(content2, localVars);
             while (content2 != tempContent)
             {
                 content2 = tempContent;
-                tempContent = ApplyVarsCore(content2, vars);
+                tempContent = ApplyVarsCore(content2, localVars);
             }
 
             // temporary fix for +'s
@@ -172,7 +189,7 @@ namespace AutoActivator.Services
 
                     temp = Regex.Replace(temp, pattern, value);
                     temp = Regex.Replace(temp, pattern2, value + "$2");
-                    temp = Regex.Replace(temp, pattern3, value);
+                    temp = Regex.Replace(temp, pattern3, value); // Conserve l'ingestion du point !
                     temp = Regex.Replace(temp, pattern4, value + "$2");
                     temp = Regex.Replace(temp, pattern5, value + "$2");
                     temp = Regex.Replace(temp, pattern6, value);
@@ -183,7 +200,86 @@ namespace AutoActivator.Services
         }
 
         // =========================================================================
-        // PARTIE 2 : GENERATION DES JCL MFFTP
+        // PARTIE 2 : UTILITAIRES D'ANALYSE (INSPIRÉ DE LVCHAINTOOL)
+        // =========================================================================
+
+        /// <summary>
+        /// Extrait la liste de tous les DSN (Data Sets) référencés dans un JCL en ignorant les temporaires (&&).
+        /// </summary>
+        public List<string> FindDSNs(string jclContent)
+        {
+            // remove comments
+            StringBuilder content = new StringBuilder();
+            List<string> jclLines = new List<string>(jclContent.Replace("\r", "").Split('\n'));
+            foreach (string jclLine in jclLines)
+            {
+                if (jclLine.StartsWith("//*")) continue;
+                content.AppendLine(jclLine);
+            }
+            string cleanContent = content.ToString();
+
+            HashSet<string> dsnList = new HashSet<string>();
+
+            // find DSNs based on regexes
+            string pattern = @"DSN=([^,\r\n]+)([,% \n\r])";
+            var matches = Regex.Matches(cleanContent, pattern);
+
+            for (int i = 0; i < matches.Count; i++)
+            {
+                var value = matches[i].Groups[1].Value;
+                // exceptions
+                if (value.StartsWith("&&")) continue;
+                dsnList.Add((value ?? "").Trim());
+            }
+
+            List<string> result = new List<string>(dsnList);
+            result.Sort(); // OrderBy(x => x)
+            return result;
+        }
+
+        /// <summary>
+        /// Scanne le JCL pour lister toutes les variables (%%...) qui s'y trouvent.
+        /// </summary>
+        public List<string> FindAllVars(string jclContent)
+        {
+            // remove comments
+            StringBuilder content2 = new StringBuilder();
+            List<string> jclLines = new List<string>(jclContent.Replace("\r", "").Split('\n'));
+            foreach (string jclLine in jclLines)
+            {
+                if (jclLine.StartsWith("//*")) continue;
+                content2.AppendLine(jclLine);
+            }
+
+            // loop over search in
+            List<string> patterns = new List<string>()
+            {
+                @"(%%[ABCDEFGHIJKLMNOPQRSTUVWXYZ]+)(?=%)",
+                @"(%%[ABCDEFGHIJKLMNOPQRSTUVWXYZ]+)([, \n\r])",
+                @"(%%[ABCDEFGHIJKLMNOPQRSTUVWXYZ]+)(\.)",
+                @"(%%[ABCDEFGHIJKLMNOPQRSTUVWXYZ]+)(\')",
+                @"(%%[ABCDEFGHIJKLMNOPQRSTUVWXYZ]+)(\))",
+                @"(%%[ABCDEFGHIJKLMNOPQRSTUVWXYZ]+)$"
+            };
+
+            HashSet<string> vars2 = new HashSet<string>();
+
+            foreach (string pattern in patterns)
+            {
+                var matches = Regex.Matches(content2.ToString(), pattern);
+                for (int i = 0; i < matches.Count; i++)
+                {
+                    vars2.Add(matches[i].Groups[1].Value.TrimStart('%'));
+                }
+            }
+
+            List<string> result = new List<string>(vars2);
+            result.Sort(); // OrderBy(x => x)
+            return result;
+        }
+
+        // =========================================================================
+        // PARTIE 3 : GENERATION DES JCL MFFTP
         // =========================================================================
 
         public string GenerateFtpJcl(DsnDirection direction, string dsn, string tempFileName, TransferMode transferMode)
