@@ -149,7 +149,10 @@ namespace AutoActivator.Services
                             var match = Regex.Match(line, @"JOBNUM=(\d+)");
                             if (match.Success) jobNum = "J" + match.Groups[1].Value;
                             if (line.Contains("Job ready for execution")) isReady = true;
-                            if (line.Contains("JCL parsing error")) errorMsg.AppendLine(line);
+
+                            // MOUCHARD 1 : On ajoute toutes les lignes retournées par le serveur
+                            // au lieu de ne filtrer que "JCL parsing error"
+                            errorMsg.AppendLine(line);
                         }
                         if (isReady) return (true, jobNum, null);
                         return (false, null, errorMsg.ToString());

@@ -66,9 +66,23 @@ namespace AutoActivator.Services
             // 2. Préparer le JCL via le service dédié
             string readyContent = await _jclProcessor.GetPreparedJclAsync(jobName, variables, count);
 
+            // --- DÉBUT DU MOUCHARD 2 ---
+            // On sauvegarde le fichier JCL complet dans votre dossier temporaire (ex: %TEMP%)
+            try
+            {
+                string debugFilePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"DEBUG_JCL_{jobName}.txt");
+                System.IO.File.WriteAllText(debugFilePath, readyContent);
+                onProgress($"[DEBUG] JCL complet généré et sauvegardé pour inspection dans : {debugFilePath}");
+            }
+            catch (Exception ex)
+            {
+                onProgress($"[DEBUG] Impossible de sauvegarder le fichier de trace JCL : {ex.Message}");
+            }
+            // --- FIN DU MOUCHARD 2 ---
+
             // 3. Soumettre via l'API Micro Focus
             var (Success, JobNum, Error) = await _apiService.SubmitJobAsync(readyContent, cancellationToken);
-            if (!Success) throw new Exception($"Échec de soumission de {jobName}. Erreur: {Error}");
+            if (!Success) throw new Exception($"Échec de soumission de {jobName}. Erreur:\n{Error}");
 
             onProgress($"Job {jobName} soumis (JOBNUM: {JobNum}). Attente des résultats...");
 
