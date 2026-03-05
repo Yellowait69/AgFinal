@@ -54,11 +54,27 @@ namespace AutoActivator.Services
             }
 
             // =========================================================================
-            // CORRECTION À LA VOLÉE EN MÉMOIRE (POUR LES FICHIERS PARTAGÉS INMODIFIABLES)
+            // CORRECTIONS À LA VOLÉE EN MÉMOIRE (POUR FICHIERS PARTAGÉS INMODIFIABLES)
             // =========================================================================
-            // La ligne orpheline "MAXSIZE=300 RECORDS" dans le fichier LVPP06U provoque un plantage JES.
-            // On la commente virtuellement en lui ajoutant un "//* " devant.
+
+            // 1. JES exige strictement des espaces autour des opérateurs de comparaison
+            rawContent = rawContent.Replace("RC<5", "RC < 5");
+
+            // 2. La ligne orpheline "MAXSIZE=300 RECORDS" (sans //) provoque un plantage. On la commente.
             rawContent = Regex.Replace(rawContent, @"(?m)^(\s*MAXSIZE=300 RECORDS.*)$", "//* $1");
+
+            // 3. Les commentaires (//*) au milieu d'une continuation provoquent l'erreur JES000050E.
+            // On les déplace juste après la dernière instruction du bloc, rendant le JCL 100% valide sans rien effacer !
+
+            // On intervertit "CKPTID=LAST" avec "CPUTIME"
+            rawContent = Regex.Replace(rawContent,
+                @"(?m)^([ \t]*//\*[ \t]*CKPTID=LAST,?[ \t]*\r?\n)([ \t]*//[ \t]*CPUTIME=\d+[ \t]*\r?\n?)",
+                "$2$1");
+
+            // On intervertit "DISP=SHR" avec "DISP=(NEW,CATLG,CATLG)"
+            rawContent = Regex.Replace(rawContent,
+                @"(?m)^([ \t]*//\*[ \t]*DISP=SHR[ \t]*\r?\n)([ \t]*//[ \t]*DISP=\(NEW,CATLG,CATLG\),?[ \t]*\r?\n?)",
+                "$2$1");
             // =========================================================================
 
             string correctedContent = DoCorrections(rawContent);
