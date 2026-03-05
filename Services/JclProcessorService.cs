@@ -57,14 +57,17 @@ namespace AutoActivator.Services
             // RÉPARATION DE LA SYNTAXE STRICTE JES (EN MÉMOIRE UNIQUEMENT)
             // =========================================================================
 
-            // 1. IBM JCL exige OBLIGATOIREMENT des parenthèses autour des conditions IF
-            // On transforme "IF RC<5 THEN" ou "IF RC < 5 THEN" en "IF (RC < 5) THEN"
-            rawContent = Regex.Replace(rawContent, @"IF\s+RC\s*<\s*5\s+THEN", "IF (RC < 5) THEN", RegexOptions.IgnoreCase);
+            // 1. IBM JCL exige OBLIGATOIREMENT des parenthèses autour des conditions avec symboles
+            // Transforme de manière générique "IF RC<5 THEN" ou "IF RC < 5 THEN" en "IF (RC < 5) THEN"
+            rawContent = Regex.Replace(rawContent, @"(?i)IF\s+RC\s*([<>=!]+|EQ|NE|GT|LT|GE|LE)\s*(\d+)\s+THEN", "IF (RC $1 $2) THEN");
 
-            // 2. La ligne orpheline "MAXSIZE=300 RECORDS" (sans //) provoque un plantage. On la commente.
+            // 2. Commente la ligne orpheline "MAXSIZE=300 RECORDS" (sans //) qui provoque un plantage
             rawContent = Regex.Replace(rawContent, @"(?m)^([ \t]*MAXSIZE=300 RECORDS.*)$", "//* $1");
 
-            // 3. Décalage intelligent des commentaires qui coupent les instructions à rallonge
+            // 3. Commente les lignes complètement vides (qui crashent souvent le parseur Micro Focus)
+            rawContent = Regex.Replace(rawContent, @"(?m)^\s*$", "//*");
+
+            // 4. Décalage intelligent des commentaires qui coupent illégalement les instructions à rallonge
             string correctedContent = FixJclContinuations(rawContent);
             // =========================================================================
 
@@ -131,10 +134,15 @@ namespace AutoActivator.Services
                 string line;
                 while ((line = reader.ReadLine()) != null)
                 {
-                    if (line.Length > 72 && int.TryParse(line.Substring(72).Trim(), out _))
-                        output.AppendLine(line.Substring(0, 72));
-                    else
-                        output.AppendLine(line);
+                    // SÉCURITÉ 1 : Les instructions JCL (//) NE DOIVENT PAS dépasser la colonne 72.
+                    if (line.StartsWith("//") && line.Length > 72)
+                    {
+                        line = line.Substring(0, 72);
+                    }
+
+                    // SÉCURITÉ 2 : On supprime les espaces blancs à la fin des lignes.
+                    // Empêche le plantage par dépassement de ligne (> 80 chars) après remplacement de variables.
+                    output.AppendLine(line.TrimEnd());
                 }
             }
 
