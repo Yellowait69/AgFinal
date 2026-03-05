@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using AutoActivator.Config; // Ajout nécessaire pour accéder à Settings.DbConfig.Uid et Pwd
+using AutoActivator.Config;
 
 namespace AutoActivator.Services
 {
@@ -65,7 +65,7 @@ namespace AutoActivator.Services
             StringBuilder output = new StringBuilder();
 
             // 1. Coupure à 72 caractères uniquement s'il s'agit de numéros de séquence (colonnes 73-80)
-            foreach (String line in content.Replace("\r", "").Split('\n'))
+            foreach (string line in content.Replace("\r", "").Split('\n'))
             {
                 if (line.Length > 72 && int.TryParse(line.Substring(72).Trim(), out int _))
                     output.AppendLine(line.Substring(0, 72));
@@ -75,33 +75,37 @@ namespace AutoActivator.Services
 
             // 2. Suppression de la JobCard existante
             StringBuilder output2 = new StringBuilder();
-            List<String> lines = new List<string>(output.ToString().Replace("\r", "").Split('\n'));
+            List<string> lines = new List<string>(output.ToString().Replace("\r", "").Split('\n'));
             bool existingJobcard = false;
 
-            foreach (String line in lines)
+            for (int i = 0; i < lines.Count; i++)
             {
-                // Utilisation de la même logique stricte d'origine pour cibler la jobcard
-                if (lines.Count > 0 && lines[0] == line && !line.StartsWith("//*") && line.ToUpper().Contains(" JOB "))
+                string line = lines[i];
+
+                // Sécurité : On s'assure de ne cibler que la première ligne pour chercher la JobCard
+                if (i == 0 && !line.StartsWith("//*") && line.ToUpper().Contains(" JOB "))
                     existingJobcard = true;
 
                 if (!existingJobcard)
                     output2.AppendLine(line);
 
                 // Pas de virgule à la fin = fin de la définition de la job card
-                if (!line.Trim().EndsWith(",") && !line.StartsWith("//*"))
+                if (!line.TrimEnd().EndsWith(",") && !line.StartsWith("//*"))
                     existingJobcard = false;
             }
 
-            return output2.ToString().TrimEnd(new char[] { '\n', '\r' });
+            return output2.ToString().TrimEnd('\n', '\r');
         }
 
         private string ApplyVariables(string content, Dictionary<string, string> vars, int count)
         {
-            List<String> jclLines = new List<string>(content.Replace("\r", "").Split('\n'));
+            List<string> jclLines = new List<string>(content.Replace("\r", "").Split('\n'));
 
             StringBuilder contentBuilder = new StringBuilder();
-            foreach (String jclLine in jclLines)
+            foreach (string jclLine in jclLines)
+            {
                 contentBuilder.AppendLine(jclLine);
+            }
 
             string env = vars.ContainsKey("ENVIMS") ? vars["ENVIMS"] : "D";
             string jobClass = vars.ContainsKey("CLASS") ? vars["CLASS"] : "A";
@@ -109,33 +113,37 @@ namespace AutoActivator.Services
 
             // Définition de l'environnement (SCHENV)
             string schenv = "IM7T";
-            if (env == "D") schenv = "IM7T";
-            else if (env == "Q") schenv = "IM7C";
+            if (env == "Q") schenv = "IM7C";
             else if (env == "A") schenv = "IM7Q";
             else if (env == "P") schenv = "IM7P";
 
-            // Récupération du JOBNAM comme dans LvChainTool
-            string jobNameStr = vars.ContainsKey("JOBNAM") ? vars["JOBNAM"] : (username + count);
+            // SÉCURITÉ CRITIQUE : Hard-limit absolu à 8 caractères pour le JobName
+            string safeJobName = vars.ContainsKey("JOBNAM") ? vars["JOBNAM"] : (username + count);
+            safeJobName = safeJobName.Replace(".JCL", "", StringComparison.OrdinalIgnoreCase).Replace(".", "").ToUpper();
+            if (safeJobName.Length > 8) safeJobName = safeJobName.Substring(0, 8);
+
+            // SÉCURITÉ CRITIQUE : Hard-limit absolu à 8 caractères pour le paramètre NOTIFY
+            string safeNotify = username.Replace(".", "").ToUpper();
+            if (safeNotify.Length > 8) safeNotify = safeNotify.Substring(0, 8);
 
             // Construction de la JOBCARD
-            String jobcard = "//" + jobNameStr.Trim().ToUpper() + " JOB CLASS=" + jobClass + ",SCHENV=" + schenv + ",NOTIFY=" + username + "\r\n";
-
+            string jobcard = $"//{safeJobName} JOB CLASS={jobClass},SCHENV={schenv},NOTIFY={safeNotify}\r\n";
             contentBuilder.Insert(0, jobcard);
 
-            // Le fix indispensable : supprime les lignes vides multiples qui causent le parsing error !
-            String content2 = contentBuilder.ToString().Replace("\r\n\r\n", "\r\n").TrimEnd(new char[] { '\n', '\r' });
+            // SÉCURITÉ : supprime les lignes vides multiples qui causent le parsing error !
+            string content2 = contentBuilder.ToString().Replace("\r\n\r\n", "\r\n").TrimEnd('\n', '\r');
 
             // Boucle d'application pour gérer les variables imbriquées (nested variables)
-            String tempContent = ApplyVars(content2, vars);
+            string tempContent = ApplyVarsCore(content2, vars);
             while (content2 != tempContent)
             {
                 content2 = tempContent;
-                tempContent = ApplyVars(content2, vars);
+                tempContent = ApplyVarsCore(content2, vars);
             }
 
             // Gestion du symbole '+' en début de ligne (ex: les SYSIN et SYSPARM)
             StringBuilder content3 = new StringBuilder();
-            foreach (String line in content2.Replace("\r", "").Split('\n'))
+            foreach (string line in content2.Replace("\r", "").Split('\n'))
             {
                 if (line.StartsWith("+"))
                 {
@@ -148,19 +156,19 @@ namespace AutoActivator.Services
                 }
             }
 
-            return content3.ToString().TrimEnd(new char[] { '\n', '\r' });
+            return content3.ToString().TrimEnd('\n', '\r');
         }
 
         /// <summary>
         /// Moteur de Regex copié trait pour trait depuis LvChainTool pour garantir un matching parfait
         /// </summary>
-        private string ApplyVars(string content, Dictionary<string, string> vars)
+        private string ApplyVarsCore(string content, Dictionary<string, string> vars)
         {
-            String temp = content;
+            string temp = content;
             foreach (var kvp in vars)
             {
-                String varName = kvp.Key.Trim().ToUpper();
-                String value = kvp.Value ?? "";
+                string varName = kvp.Key.Trim().ToUpper();
+                string value = kvp.Value ?? "";
 
                 if (value == "''") value = "";
                 else if (value.StartsWith("'") && value.EndsWith("'") && value.Length >= 3)
@@ -175,14 +183,18 @@ namespace AutoActivator.Services
                 {
                     string pattern = @"(%%" + varName + @")(?=%)";
                     string pattern2 = @"(%%" + varName + @")([, \n\r])";
+
+                    // SÉCURITÉ : Le pattern 3 capture et "avale" le point.
+                    // Indispensable pour ne pas générer de doubles points '..' dans les DSN !
                     string pattern3 = @"(%%" + varName + @")(\.)";
+
                     string pattern4 = @"(%%" + varName + @")(\')";
                     string pattern5 = @"(%%" + varName + @")(\))";
                     string pattern6 = @"(%%" + varName + @")$";
 
                     temp = Regex.Replace(temp, pattern, value);
                     temp = Regex.Replace(temp, pattern2, value + "$2");
-                    temp = Regex.Replace(temp, pattern3, value);
+                    temp = Regex.Replace(temp, pattern3, value); // Ne surtout pas mettre + "$2"
                     temp = Regex.Replace(temp, pattern4, value + "$2");
                     temp = Regex.Replace(temp, pattern5, value + "$2");
                     temp = Regex.Replace(temp, pattern6, value);
@@ -193,7 +205,7 @@ namespace AutoActivator.Services
         }
 
         // =========================================================================
-        // PARTIE 2 : GENERATION DES JCL MFFTP (NOUVEAU)
+        // PARTIE 2 : GENERATION DES JCL MFFTP
         // =========================================================================
 
         public string GenerateFtpJcl(DsnDirection direction, string dsn, string tempFileName, TransferMode transferMode)
@@ -265,7 +277,7 @@ MFFTP_PROCESS_TRAILS_ONGET=FALSE
 
             string jcl = jclTemplate
                 .Replace("##USER##", uid)
-                .Replace("##PASS##", pwd)
+                .Replace("##PASS##", pwd) // Injection du mot de passe pour le FTP
                 .Replace("##SERVER##", TempShare)
                 .Replace("##PATH##", tempFolder)
                 .Replace("##OPTIONS##", options)
