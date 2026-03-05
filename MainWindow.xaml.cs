@@ -138,21 +138,28 @@ namespace AutoActivator.Gui
                     { "CNTBEG", contract },
                     { "CNTEND", contract },
 
-                    // --- CORRECTION : AJOUT DES VARIABLES MANQUANTES ---
-                    { "MMDD", DateTime.Now.ToString("MMdd") },       // Mois et Jour (ex: 0305)
-                    { "CYMD", DateTime.Now.ToString("yyyyMMdd") },   // Année complète, Mois, Jour (ex: 20240305)
-                    { "STE", "A" },                                  // Code système habituel
-                    { "Q2", q2 }                                     // Préfixe 1 (ex: Q2T, Q2C)
-                    // La variable AP est retirée d'ici, elle est injectée par l'Orchestrateur pour chaque job
+                    // --- VARIABLES DÉJÀ PRÉSENTES ---
+                    { "MMDD", DateTime.Now.ToString("MMdd") },
+                    { "CYMD", DateTime.Now.ToString("yyyyMMdd") },
+                    { "STE", "A" },
+                    { "Q2", q2 },
+
+                    // --- AJOUT DES NOUVELLES VARIABLES POUR LVPG22U ---
+                    { "CM", "*" },
+                    { "DRUN", DateTime.Now.ToString("yyyyMMdd") },
+                    { "NREMB", "20" },
+                    { "CONTR-EX", "" },
+                    { "CONTR-RE", "" },
+                    { "CONTR-UN", "" },
+                    { "NJJART72", "5" }
                 };
 
                 // 2. Définition des variables spécifiques à ADDPRCT
                 var addprctVariables = new Dictionary<string, string>
                 {
-                    // La variable STE a été déplacée dans generalVariables pour être dispo partout
                     { "CMDPMT", "6" },
-                    { "AMOUNT", amount }, // Variable désormais correctement paddée
-                    { "BUCP", bucp },     // Variable désormais correctement paddée
+                    { "AMOUNT", amount },
+                    { "BUCP", bucp },
                     { "USERNAME", username }
                 };
 
