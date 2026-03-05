@@ -53,8 +53,13 @@ namespace AutoActivator.Services
                 rawContent = await reader.ReadToEndAsync();
             }
 
-            // On ne modifie plus le rawContent avec des Regex ici pour préserver
-            // l'intégrité des instructions et des commentaires du JCL partagé.
+            // =========================================================================
+            // CORRECTION À LA VOLÉE EN MÉMOIRE (POUR LES FICHIERS PARTAGÉS INMODIFIABLES)
+            // =========================================================================
+            // La ligne orpheline "MAXSIZE=300 RECORDS" dans le fichier LVPP06U provoque un plantage JES.
+            // On la commente virtuellement en lui ajoutant un "//* " devant.
+            rawContent = Regex.Replace(rawContent, @"(?m)^(\s*MAXSIZE=300 RECORDS.*)$", "//* $1");
+            // =========================================================================
 
             string correctedContent = DoCorrections(rawContent);
             return ApplyVariables(correctedContent, variables, count);
@@ -123,7 +128,11 @@ namespace AutoActivator.Services
             // Nettoyage des caractères spéciaux (ex: les points) qui causent l'erreur JCL Parsing.
             safeJobName = safeJobName.Replace(".", "").ToUpper();
 
-            string jobcard = $"//{safeJobName} JOB CLASS={jobClass},SCHENV={schenv},NOTIFY={username}\r\n";
+            // CORRECTION : Protection du paramètre NOTIFY (MAX 8 caractères imposés par JES)
+            string safeNotify = username.Length > 8 ? username.Substring(0, 8) : username;
+            safeNotify = safeNotify.Replace(".", "").ToUpper();
+
+            string jobcard = $"//{safeJobName} JOB CLASS={jobClass},SCHENV={schenv},NOTIFY={safeNotify}\r\n";
             string tempContent = jobcard + content;
 
             foreach (var kvp in vars)
