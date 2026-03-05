@@ -36,7 +36,7 @@ namespace AutoActivator.Services
         }
 
         // =========================================================================
-        // PARTIE 1 : TRAITEMENT DES FICHIERS JCL CLASSIQUES (VOTRE CODE EXISTANT)
+        // PARTIE 1 : TRAITEMENT DES FICHIERS JCL CLASSIQUES
         // =========================================================================
 
         public async Task<string> GetPreparedJclAsync(string jobName, Dictionary<string, string> variables, int count)
@@ -52,6 +52,9 @@ namespace AutoActivator.Services
             {
                 rawContent = await reader.ReadToEndAsync();
             }
+
+            // On ne modifie plus le rawContent avec des Regex ici pour préserver
+            // l'intégrité des instructions et des commentaires du JCL partagé.
 
             string correctedContent = DoCorrections(rawContent);
             return ApplyVariables(correctedContent, variables, count);
@@ -112,7 +115,15 @@ namespace AutoActivator.Services
                 default:  schenv = "IM7T"; break;
             }
 
-            string jobcard = $"//{username}{count} JOB CLASS={jobClass},SCHENV={schenv},NOTIFY={username}\r\n";
+            // CORRECTION ICI : Un JOBNAME sur Mainframe ne peut pas dépasser 8 caractères.
+            // On utilise le "JOBNAM" s'il est fourni (ex: LVPP06U), sinon on tronque le nom d'utilisateur.
+            string safeJobName = vars.ContainsKey("JOBNAM") ? vars["JOBNAM"] :
+                                 (username.Length > 7 ? username.Substring(0, 7) : username) + count;
+
+            // Nettoyage des caractères spéciaux (ex: les points) qui causent l'erreur JCL Parsing.
+            safeJobName = safeJobName.Replace(".", "").ToUpper();
+
+            string jobcard = $"//{safeJobName} JOB CLASS={jobClass},SCHENV={schenv},NOTIFY={username}\r\n";
             string tempContent = jobcard + content;
 
             foreach (var kvp in vars)
