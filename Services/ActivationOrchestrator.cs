@@ -63,6 +63,16 @@ namespace AutoActivator.Services
             // 1. Ajout de la variable implicite JOBNAM requise par les scripts JCL
             variables["JOBNAM"] = jobName;
 
+            // --- MISE À JOUR : Injection de la variable AP selon le job en cours ---
+            if (jobName == "LVPP06U" || jobName == "LVPG22U")
+            {
+                variables["AP"] = "LV";
+            }
+            else if (jobName == "LI1J04D0" || jobName == "LI1J04D2")
+            {
+                variables["AP"] = "LI";
+            }
+
             // 2. Préparer le JCL via le service dédié
             string readyContent = await _jclProcessor.GetPreparedJclAsync(jobName, variables, count);
 

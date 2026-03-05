@@ -117,15 +117,12 @@ namespace AutoActivator.Gui
                 }
 
                 // --- DÉTERMINATION DES PRÉFIXES MAINFRAME SELON L'ENVIRONNEMENT ---
-                string q2 = "DP"; // Par défaut pour D
-                string ap = "A1";
+                string q2 = "Q2T"; // Par défaut pour D
 
                 switch (envValue)
                 {
-                    case "D": q2 = "DP"; break;
-                    case "Q": q2 = "QQ"; break;
-                    case "A": q2 = "AQ"; break;
-                    case "P": q2 = "PP"; break;
+                    case "D": q2 = "Q2T"; break;
+                    case "Q": q2 = "Q2C"; break;
                 }
 
                 // 1. Définition des variables générales
@@ -145,8 +142,8 @@ namespace AutoActivator.Gui
                     { "MMDD", DateTime.Now.ToString("MMdd") },       // Mois et Jour (ex: 0305)
                     { "CYMD", DateTime.Now.ToString("yyyyMMdd") },   // Année complète, Mois, Jour (ex: 20240305)
                     { "STE", "A" },                                  // Code système habituel
-                    { "Q2", q2 },                                    // Préfixe 1 (ex: DP, QQ)
-                    { "AP", ap }                                     // Préfixe 2 (ex: A1)
+                    { "Q2", q2 }                                     // Préfixe 1 (ex: Q2T, Q2C)
+                    // La variable AP est retirée d'ici, elle est injectée par l'Orchestrateur pour chaque job
                 };
 
                 // 2. Définition des variables spécifiques à ADDPRCT
