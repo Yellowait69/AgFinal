@@ -54,31 +54,73 @@ namespace AutoActivator.Services
             }
 
             // =========================================================================
-            // CORRECTIONS À LA VOLÉE EN MÉMOIRE (POUR FICHIERS PARTAGÉS INMODIFIABLES)
+            // RÉPARATION DE LA SYNTAXE STRICTE JES (EN MÉMOIRE UNIQUEMENT)
             // =========================================================================
 
-            // 1. JES exige strictement des espaces autour des opérateurs de comparaison
-            rawContent = rawContent.Replace("RC<5", "RC < 5");
+            // 1. IBM JCL exige OBLIGATOIREMENT des parenthèses autour des conditions IF
+            // On transforme "IF RC<5 THEN" ou "IF RC < 5 THEN" en "IF (RC < 5) THEN"
+            rawContent = Regex.Replace(rawContent, @"IF\s+RC\s*<\s*5\s+THEN", "IF (RC < 5) THEN", RegexOptions.IgnoreCase);
 
             // 2. La ligne orpheline "MAXSIZE=300 RECORDS" (sans //) provoque un plantage. On la commente.
-            rawContent = Regex.Replace(rawContent, @"(?m)^(\s*MAXSIZE=300 RECORDS.*)$", "//* $1");
+            rawContent = Regex.Replace(rawContent, @"(?m)^([ \t]*MAXSIZE=300 RECORDS.*)$", "//* $1");
 
-            // 3. Les commentaires (//*) au milieu d'une continuation provoquent l'erreur JES000050E.
-            // On les déplace juste après la dernière instruction du bloc, rendant le JCL 100% valide sans rien effacer !
-
-            // On intervertit "CKPTID=LAST" avec "CPUTIME"
-            rawContent = Regex.Replace(rawContent,
-                @"(?m)^([ \t]*//\*[ \t]*CKPTID=LAST,?[ \t]*\r?\n)([ \t]*//[ \t]*CPUTIME=\d+[ \t]*\r?\n?)",
-                "$2$1");
-
-            // On intervertit "DISP=SHR" avec "DISP=(NEW,CATLG,CATLG)"
-            rawContent = Regex.Replace(rawContent,
-                @"(?m)^([ \t]*//\*[ \t]*DISP=SHR[ \t]*\r?\n)([ \t]*//[ \t]*DISP=\(NEW,CATLG,CATLG\),?[ \t]*\r?\n?)",
-                "$2$1");
+            // 3. Décalage intelligent des commentaires qui coupent les instructions à rallonge
+            string correctedContent = FixJclContinuations(rawContent);
             // =========================================================================
 
-            string correctedContent = DoCorrections(rawContent);
+            correctedContent = DoCorrections(correctedContent);
             return ApplyVariables(correctedContent, variables, count);
+        }
+
+        /// <summary>
+        /// Sépare les commentaires qui interrompent illégalement une commande JCL
+        /// et les replace de façon sécurisée à la fin de la commande sans rien effacer.
+        /// </summary>
+        private string FixJclContinuations(string content)
+        {
+            var lines = content.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            var result = new List<string>();
+            var pendingComments = new List<string>();
+            bool inContinuation = false;
+
+            foreach (var line in lines)
+            {
+                if (line.TrimStart().StartsWith("//*"))
+                {
+                    // Si on est en train de lire une commande étalée sur plusieurs lignes,
+                    // on met le commentaire de côté pour ne pas casser le JCL.
+                    if (inContinuation) pendingComments.Add(line);
+                    else result.Add(line);
+                }
+                else if (line.StartsWith("//"))
+                {
+                    result.Add(line);
+                    // Vérifie si la ligne se termine par une virgule (indique une continuation sur la ligne suivante)
+                    inContinuation = line.TrimEnd().EndsWith(",");
+
+                    // Si la commande est terminée, on réinjecte les commentaires mis de côté
+                    if (!inContinuation && pendingComments.Count > 0)
+                    {
+                        result.AddRange(pendingComments);
+                        pendingComments.Clear();
+                    }
+                }
+                else
+                {
+                    // Lignes de datas classiques
+                    result.Add(line);
+                    inContinuation = false;
+                    if (pendingComments.Count > 0)
+                    {
+                        result.AddRange(pendingComments);
+                        pendingComments.Clear();
+                    }
+                }
+            }
+            // Au cas où il resterait des commentaires à la toute fin
+            if (pendingComments.Count > 0) result.AddRange(pendingComments);
+
+            return string.Join("\r\n", result);
         }
 
         private string DoCorrections(string content)
