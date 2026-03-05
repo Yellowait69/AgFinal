@@ -4,11 +4,10 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using AutoActivator.Config; // Ajout nécessaire pour accéder à Settings.DbConfig.Uid et Pwd
+using AutoActivator.Config;
 
 namespace AutoActivator.Services
 {
-    // Énumérations nécessaires pour définir le sens et le mode de transfert FTP
     public enum DsnDirection
     {
         Read,
@@ -25,7 +24,6 @@ namespace AutoActivator.Services
     {
         private readonly string _jclDirectory;
 
-        // Paramètres réseau pour le transfert FTP avec le Mainframe
         private static readonly string TempShare = "FILES.FIBE.FORTIS";
         private static readonly string WriteTempFolder = @"\elia\11 - Technical Architecture\11 - IS Tooling\01 - Tools\FTP-Write\";
         private static readonly string ReadTempFolder = @"\elia\11 - Technical Architecture\11 - IS Tooling\01 - Tools\FTP-Read\";
@@ -53,130 +51,73 @@ namespace AutoActivator.Services
                 rawContent = await reader.ReadToEndAsync();
             }
 
-            // =========================================================================
-            // RÉPARATION DE LA SYNTAXE STRICTE JES (EN MÉMOIRE UNIQUEMENT)
-            // =========================================================================
+            // Étape 1 : Nettoyage d'origine basé sur l'app source (LvChainTool)
+            string correctedContent = DoCorrections(rawContent);
 
-            // 1. IBM JCL exige OBLIGATOIREMENT des parenthèses autour des conditions avec symboles
-            // Transforme de manière générique "IF RC<5 THEN" ou "IF RC < 5 THEN" en "IF (RC < 5) THEN"
-            rawContent = Regex.Replace(rawContent, @"(?i)IF\s+RC\s*([<>=!]+|EQ|NE|GT|LT|GE|LE)\s*(\d+)\s+THEN", "IF (RC $1 $2) THEN");
-
-            // 2. Commente la ligne orpheline "MAXSIZE=300 RECORDS" (sans //) qui provoque un plantage
-            rawContent = Regex.Replace(rawContent, @"(?m)^([ \t]*MAXSIZE=300 RECORDS.*)$", "//* $1");
-
-            // 3. Commente les lignes complètement vides (qui crashent souvent le parseur Micro Focus)
-            rawContent = Regex.Replace(rawContent, @"(?m)^\s*$", "//*");
-
-            // 4. Décalage intelligent des commentaires qui coupent illégalement les instructions à rallonge
-            string correctedContent = FixJclContinuations(rawContent);
-            // =========================================================================
-
-            correctedContent = DoCorrections(correctedContent);
+            // Étape 2 : Application récursive des variables et suppression des sauts de ligne fantômes
             return ApplyVariables(correctedContent, variables, count);
         }
 
         /// <summary>
-        /// Sépare les commentaires qui interrompent illégalement une commande JCL
-        /// et les replace de façon sécurisée à la fin de la commande sans rien effacer.
+        /// Nettoyage calqué sur le comportement d'origine de l'application source
         /// </summary>
-        private string FixJclContinuations(string content)
+        private string DoCorrections(string content)
         {
-            var lines = content.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
-            var result = new List<string>();
-            var pendingComments = new List<string>();
-            bool inContinuation = false;
+            StringBuilder output = new StringBuilder();
 
-            foreach (var line in lines)
+            // 1. Coupure stricte à 72 caractères UNIQUEMENT s'il s'agit de numéros de séquence (colonnes 73-80)
+            foreach (String line in content.Replace("\r", "").Split('\n'))
             {
-                if (line.TrimStart().StartsWith("//*"))
+                if (line.Length > 72 && int.TryParse(line.Substring(72).Trim(), out int _))
                 {
-                    // Si on est en train de lire une commande étalée sur plusieurs lignes,
-                    // on met le commentaire de côté pour ne pas casser le JCL.
-                    if (inContinuation) pendingComments.Add(line);
-                    else result.Add(line);
-                }
-                else if (line.StartsWith("//"))
-                {
-                    result.Add(line);
-                    // Vérifie si la ligne se termine par une virgule (indique une continuation sur la ligne suivante)
-                    inContinuation = line.TrimEnd().EndsWith(",");
-
-                    // Si la commande est terminée, on réinjecte les commentaires mis de côté
-                    if (!inContinuation && pendingComments.Count > 0)
-                    {
-                        result.AddRange(pendingComments);
-                        pendingComments.Clear();
-                    }
+                    output.AppendLine(line.Substring(0, 72));
                 }
                 else
                 {
-                    // Lignes de datas classiques
-                    result.Add(line);
-                    inContinuation = false;
-                    if (pendingComments.Count > 0)
-                    {
-                        result.AddRange(pendingComments);
-                        pendingComments.Clear();
-                    }
-                }
-            }
-            // Au cas où il resterait des commentaires à la toute fin
-            if (pendingComments.Count > 0) result.AddRange(pendingComments);
-
-            return string.Join("\r\n", result);
-        }
-
-        private string DoCorrections(string content)
-        {
-            var output = new StringBuilder();
-            using (StringReader reader = new StringReader(content))
-            {
-                string line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    // SÉCURITÉ 1 : Les instructions JCL (//) NE DOIVENT PAS dépasser la colonne 72.
-                    if (line.StartsWith("//") && line.Length > 72)
-                    {
-                        line = line.Substring(0, 72);
-                    }
-
-                    // SÉCURITÉ 2 : On supprime les espaces blancs à la fin des lignes.
-                    // Empêche le plantage par dépassement de ligne (> 80 chars) après remplacement de variables.
-                    output.AppendLine(line.TrimEnd());
+                    output.AppendLine(line);
                 }
             }
 
-            var output2 = new StringBuilder();
-            bool isFirstLine = true;
+            // 2. Suppression de la JobCard existante pour éviter les doublons avec celle que l'on va générer
+            StringBuilder output2 = new StringBuilder();
+            List<String> lines = new List<string>(output.ToString().Replace("\r", "").Split('\n'));
             bool existingJobcard = false;
 
-            using (StringReader reader = new StringReader(output.ToString()))
+            for (int i = 0; i < lines.Count; i++)
             {
-                string line;
-                while ((line = reader.ReadLine()) != null)
+                string line = lines[i];
+
+                // Détection du début de la JobCard d'origine
+                if (i == 0 && !line.StartsWith("//*") && line.ToUpper().Contains(" JOB "))
                 {
-                    if (isFirstLine && !line.StartsWith("//*") && line.ToUpper().Contains(" JOB "))
-                        existingJobcard = true;
+                    existingJobcard = true;
+                }
 
-                    if (!existingJobcard) output2.AppendLine(line);
+                if (!existingJobcard)
+                {
+                    output2.AppendLine(line);
+                }
 
-                    if (!line.TrimEnd().EndsWith(",") && !line.StartsWith("//*"))
-                        existingJobcard = false;
-
-                    isFirstLine = false;
+                // Pas de virgule à la fin = fin de la définition de la job card (sur plusieurs lignes)
+                if (!line.TrimEnd().EndsWith(",") && !line.StartsWith("//*"))
+                {
+                    existingJobcard = false;
                 }
             }
 
+            // cut off newline(s) at the end comme dans le code d'origine
             return output2.ToString().TrimEnd('\n', '\r');
         }
 
+        /// <summary>
+        /// Application des variables avec le même algorithme que l'app d'origine
+        /// </summary>
         private string ApplyVariables(string content, Dictionary<string, string> vars, int count)
         {
             string env = vars.ContainsKey("ENVIMS") ? vars["ENVIMS"] : "D";
             string jobClass = vars.ContainsKey("CLASS") ? vars["CLASS"] : "A";
             string username = vars.ContainsKey("USERNAME") ? vars["USERNAME"] : Environment.UserName;
 
-            // Remplacement de la syntaxe C# 8.0 par la syntaxe classique compatible C# 7.3
             string schenv;
             switch (env)
             {
@@ -186,21 +127,53 @@ namespace AutoActivator.Services
                 default:  schenv = "IM7T"; break;
             }
 
-            // CORRECTION ICI : Un JOBNAME sur Mainframe ne peut pas dépasser 8 caractères.
-            // On utilise le "JOBNAM" s'il est fourni (ex: LVPP06U), sinon on tronque le nom d'utilisateur.
+            // Sécurisation stricte du nom du job et notify (limite imposée de 8 caractères max en JCL)
             string safeJobName = vars.ContainsKey("JOBNAM") ? vars["JOBNAM"] :
                                  (username.Length > 7 ? username.Substring(0, 7) : username) + count;
-
-            // Nettoyage des caractères spéciaux (ex: les points) qui causent l'erreur JCL Parsing.
             safeJobName = safeJobName.Replace(".", "").ToUpper();
 
-            // CORRECTION : Protection du paramètre NOTIFY (MAX 8 caractères imposés par JES)
             string safeNotify = username.Length > 8 ? username.Substring(0, 8) : username;
             safeNotify = safeNotify.Replace(".", "").ToUpper();
 
+            // Création et injection de la nouvelle JobCard
             string jobcard = $"//{safeJobName} JOB CLASS={jobClass},SCHENV={schenv},NOTIFY={safeNotify}\r\n";
-            string tempContent = jobcard + content;
+            string contentWithJobcard = jobcard + content;
 
+            // SÉCURITÉ CRITIQUE : Supprime les lignes vides (\r\n\r\n) qui provoquent le "JES000050E Parsing Error"
+            string content2 = contentWithJobcard.Replace("\r\n\r\n", "\r\n").TrimEnd('\n', '\r');
+
+            // Boucle d'application des variables (Gère les variables imbriquées)
+            string tempContent = ApplyVarsCore(content2, vars);
+            while (content2 != tempContent)
+            {
+                content2 = tempContent;
+                tempContent = ApplyVarsCore(content2, vars);
+            }
+
+            // Étape finale d'origine : Retire les "+" en début de ligne (pour les SYSIN et SYSPARM)
+            StringBuilder content3 = new StringBuilder();
+            foreach (String line in content2.Replace("\r", "").Split('\n'))
+            {
+                if (line.StartsWith("+"))
+                {
+                    if (line.Length > 1) content3.AppendLine(line.Substring(1));
+                    else content3.AppendLine("");
+                }
+                else
+                {
+                    content3.AppendLine(line);
+                }
+            }
+
+            return content3.ToString().TrimEnd('\n', '\r');
+        }
+
+        /// <summary>
+        /// Moteur de Regex d'origine pour remplacer les variables
+        /// </summary>
+        private string ApplyVarsCore(string content, Dictionary<string, string> vars)
+        {
+            string temp = content;
             foreach (var kvp in vars)
             {
                 string varName = kvp.Key.Trim().ToUpper();
@@ -210,64 +183,42 @@ namespace AutoActivator.Services
                 else if (value.StartsWith("'") && value.EndsWith("'") && value.Length >= 3)
                 {
                     value = value.Substring(1, value.Length - 2);
+                    // unescaping single quotes
                     if (value.Contains("''")) value = value.Replace("''", "'");
                 }
                 value = value.Replace("$", "$$");
 
                 try
                 {
-                    tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")(?=%)", value);
-                    tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")([, \n\r])", value + "$2");
-                    tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")(\.)", value);
-                    tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")(\')", value + "$2");
-                    tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")(\))", value + "$2");
-                    tempContent = Regex.Replace(tempContent, @"(%%" + varName + @")$", value);
+                    temp = Regex.Replace(temp, @"(%%" + varName + @")(?=%)", value);
+                    temp = Regex.Replace(temp, @"(%%" + varName + @")([, \n\r])", value + "$2");
+                    temp = Regex.Replace(temp, @"(%%" + varName + @")(\.)", value);
+                    temp = Regex.Replace(temp, @"(%%" + varName + @")(\')", value + "$2");
+                    temp = Regex.Replace(temp, @"(%%" + varName + @")(\))", value + "$2");
+                    temp = Regex.Replace(temp, @"(%%" + varName + @")$", value);
                 }
                 catch { /* Ignorer les erreurs de RegEx mal formées */ }
             }
-
-            var finalContent = new StringBuilder();
-            using (StringReader reader = new StringReader(tempContent))
-            {
-                string line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    if (line.StartsWith("+"))
-                    {
-                        if (line.Length > 1) finalContent.AppendLine(line.Substring(1));
-                        else finalContent.AppendLine("");
-                    }
-                    else finalContent.AppendLine(line);
-                }
-            }
-
-            return finalContent.ToString().TrimEnd('\n', '\r');
+            return temp;
         }
 
         // =========================================================================
-        // PARTIE 2 : GENERATION DES JCL MFFTP (NOUVEAU - INSPIRÉ DE DSN.CS)
+        // PARTIE 2 : GENERATION DES JCL MFFTP
         // =========================================================================
 
-        /// <summary>
-        /// Génère le JCL nécessaire pour transférer un Data Set (DSN) via FTP vers/depuis un dossier partagé
-        /// </summary>
         public string GenerateFtpJcl(DsnDirection direction, string dsn, string tempFileName, TransferMode transferMode)
         {
             return GenerateFtpJcl(direction, new List<Tuple<string, string>> { new Tuple<string, string>(dsn, tempFileName) }, transferMode);
         }
 
-        /// <summary>
-        /// Génère le JCL nécessaire pour transférer plusieurs Data Sets (DSN) en une seule soumission
-        /// </summary>
         public string GenerateFtpJcl(DsnDirection direction, List<Tuple<string, string>> dsnAndFile, TransferMode transferMode)
         {
-            // Récupération sécurisée du mot de passe en mémoire (saisi via LoginWindow)
             string uid = Settings.DbConfig.Uid ?? "";
             string pwd = Settings.DbConfig.Pwd ?? "";
 
             if (string.IsNullOrEmpty(uid) || string.IsNullOrEmpty(pwd))
             {
-                throw new InvalidOperationException("Les identifiants (Uid/Pwd) ne sont pas définis dans Settings.DbConfig. Veuillez vous connecter d'abord.");
+                throw new InvalidOperationException("Les identifiants ne sont pas définis.");
             }
 
             string jclTemplate =
@@ -298,12 +249,10 @@ MFFTP_PROCESS_TRAILS_ONGET=FALSE
                     tempFolder = ReadTempFolder;
                     instructionTemplate = "PUT ##DSN## +\r\n##FILE##";
                     break;
-
                 case DsnDirection.Write:
                     tempFolder = WriteTempFolder;
                     instructionTemplate = "GET ##FILE## +\r\n'##DSN##' (REP";
                     break;
-
                 default:
                     throw new ArgumentException("Unknown DsnDirection");
             }
@@ -314,17 +263,15 @@ MFFTP_PROCESS_TRAILS_ONGET=FALSE
                 string instruction = instructionTemplate
                     .Replace("##DSN##", tuple.Item1.ToUpper().Trim().Trim('\''))
                     .Replace("##FILE##", tuple.Item2.Trim().Trim('\''));
-
                 instructions.AppendLine(instruction);
             }
 
             string options = transferMode == TransferMode.Text
-                ? "LOCSITE ENCODING=SBCS\r\nLOCSITE SBDATACONN=TABSTD\r\n"
-                : "";
+                ? "LOCSITE ENCODING=SBCS\r\nLOCSITE SBDATACONN=TABSTD\r\n" : "";
 
             string jcl = jclTemplate
                 .Replace("##USER##", uid)
-                .Replace("##PASS##", pwd) // Injection du mot de passe pour le FTP
+                .Replace("##PASS##", pwd)
                 .Replace("##SERVER##", TempShare)
                 .Replace("##PATH##", tempFolder)
                 .Replace("##OPTIONS##", options)
@@ -333,9 +280,6 @@ MFFTP_PROCESS_TRAILS_ONGET=FALSE
             return jcl;
         }
 
-        /// <summary>
-        /// Génère un nom de fichier temporaire unique pour le transfert
-        /// </summary>
         public string ComposeTempFileName(DsnDirection direction)
         {
             string uid = Settings.DbConfig.Uid ?? "UNKNOWN";
@@ -343,17 +287,11 @@ MFFTP_PROCESS_TRAILS_ONGET=FALSE
             return $"{uid}_{d}_{Guid.NewGuid()}.TXT";
         }
 
-        /// <summary>
-        /// Retourne le chemin UNC complet du dossier partagé de lecture
-        /// </summary>
         public string GetReadTempFolderPath()
         {
             return $@"\\{TempShare}\{ReadTempFolder.Trim('\\')}";
         }
 
-        /// <summary>
-        /// Retourne le chemin UNC complet du dossier partagé d'écriture
-        /// </summary>
         public string GetWriteTempFolderPath()
         {
             return $@"\\{TempShare}\{WriteTempFolder.Trim('\\')}";
