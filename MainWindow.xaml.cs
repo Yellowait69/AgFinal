@@ -116,6 +116,18 @@ namespace AutoActivator.Gui
                     throw new Exception("Les identifiants (Uid/Pwd) ne sont pas configurés. Veuillez vous reconnecter.");
                 }
 
+                // --- DÉTERMINATION DES PRÉFIXES MAINFRAME SELON L'ENVIRONNEMENT ---
+                string q2 = "DP"; // Par défaut pour D
+                string ap = "A1";
+
+                switch (envValue)
+                {
+                    case "D": q2 = "DP"; break;
+                    case "Q": q2 = "QQ"; break;
+                    case "A": q2 = "AQ"; break;
+                    case "P": q2 = "PP"; break;
+                }
+
                 // 1. Définition des variables générales
                 var generalVariables = new Dictionary<string, string>
                 {
@@ -127,13 +139,20 @@ namespace AutoActivator.Gui
                     { "DD", DateTime.Now.ToString("dd") },
                     { "CLASS", "A" },
                     { "CNTBEG", contract },
-                    { "CNTEND", contract }
+                    { "CNTEND", contract },
+
+                    // --- CORRECTION : AJOUT DES VARIABLES MANQUANTES ---
+                    { "MMDD", DateTime.Now.ToString("MMdd") },       // Mois et Jour (ex: 0305)
+                    { "CYMD", DateTime.Now.ToString("yyyyMMdd") },   // Année complète, Mois, Jour (ex: 20240305)
+                    { "STE", "A" },                                  // Code système habituel
+                    { "Q2", q2 },                                    // Préfixe 1 (ex: DP, QQ)
+                    { "AP", ap }                                     // Préfixe 2 (ex: A1)
                 };
 
                 // 2. Définition des variables spécifiques à ADDPRCT
                 var addprctVariables = new Dictionary<string, string>
                 {
-                    { "STE", "A" },
+                    // La variable STE a été déplacée dans generalVariables pour être dispo partout
                     { "CMDPMT", "6" },
                     { "AMOUNT", amount }, // Variable désormais correctement paddée
                     { "BUCP", bucp },     // Variable désormais correctement paddée
