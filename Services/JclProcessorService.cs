@@ -8,7 +8,6 @@ using AutoActivator.Config;
 
 namespace AutoActivator.Services
 {
-    // Énumérations nécessaires pour définir le sens et le mode de transfert FTP
     public enum DsnDirection
     {
         Read,
@@ -25,7 +24,6 @@ namespace AutoActivator.Services
     {
         private readonly string _jclDirectory;
 
-        // Paramètres réseau pour le transfert FTP avec le Mainframe
         private static readonly string TempShare = "FILES.FIBE.FORTIS";
         private static readonly string WriteTempFolder = @"\elia\11 - Technical Architecture\11 - IS Tooling\01 - Tools\FTP-Write\";
         private static readonly string ReadTempFolder = @"\elia\11 - Technical Architecture\11 - IS Tooling\01 - Tools\FTP-Read\";
@@ -36,7 +34,7 @@ namespace AutoActivator.Services
         }
 
         // =========================================================================
-        // PARTIE 1 : TRAITEMENT DES FICHIERS JCL CLASSIQUES (CLONE LVCHAINTOOL)
+        // PARTIE 1 : TRAITEMENT DES FICHIERS JCL CLASSIQUES (COPIE EXACTE DE L'ORIGINAL)
         // =========================================================================
 
         public async Task<string> GetPreparedJclAsync(string jobName, Dictionary<string, string> variables, int count)
@@ -53,10 +51,8 @@ namespace AutoActivator.Services
                 rawContent = await reader.ReadToEndAsync();
             }
 
-            // Étape 1 : Nettoyage d'origine basé strictement sur l'algorithme LvChainTool
+            // Exécution STRICTEMENT identique à l'ancien code
             string correctedContent = DoCorrections(rawContent);
-
-            // Étape 2 : Application des variables et formatage final comme l'application d'origine
             return ApplyVariables(correctedContent, variables, count);
         }
 
@@ -64,7 +60,7 @@ namespace AutoActivator.Services
         {
             StringBuilder output = new StringBuilder();
 
-            // 1. Coupure à 72 caractères uniquement s'il s'agit de numéros de séquence (colonnes 73-80)
+            // 1. Coupure à 72 caractères uniquement s'il s'agit de numéros de séquence
             foreach (string line in content.Replace("\r", "").Split('\n'))
             {
                 if (line.Length > 72 && int.TryParse(line.Substring(72).Trim(), out int _))
@@ -78,23 +74,21 @@ namespace AutoActivator.Services
             List<string> lines = new List<string>(output.ToString().Replace("\r", "").Split('\n'));
             bool existingJobcard = false;
 
-            for (int i = 0; i < lines.Count; i++)
+            foreach (string line in lines)
             {
-                string line = lines[i];
-
-                // Sécurité : On s'assure de ne cibler que la première ligne pour chercher la JobCard
-                if (i == 0 && !line.StartsWith("//*") && line.ToUpper().Contains(" JOB "))
+                if (lines.Count > 0 && lines[0] == line && !line.StartsWith("//*") && line.ToUpper().Contains(" JOB "))
                     existingJobcard = true;
 
                 if (!existingJobcard)
                     output2.AppendLine(line);
 
-                // Pas de virgule à la fin = fin de la définition de la job card
-                if (!line.TrimEnd().EndsWith(",") && !line.StartsWith("//*"))
+                // no comma at end = end of job card
+                if (!line.Trim().EndsWith(",") && !line.StartsWith("//*"))
                     existingJobcard = false;
             }
 
-            return output2.ToString().TrimEnd('\n', '\r');
+            // cut off newline(s) at the end
+            return output2.ToString().TrimEnd(new char[] { '\n', '\r' });
         }
 
         private string ApplyVariables(string content, Dictionary<string, string> vars, int count)
@@ -111,29 +105,20 @@ namespace AutoActivator.Services
             string jobClass = vars.ContainsKey("CLASS") ? vars["CLASS"] : "A";
             string username = vars.ContainsKey("USERNAME") ? vars["USERNAME"] : Environment.UserName;
 
-            // Définition de l'environnement (SCHENV)
             string schenv = "IM7T";
-            if (env == "Q") schenv = "IM7C";
+            if (env == "D") schenv = "IM7T";
+            else if (env == "Q") schenv = "IM7C";
             else if (env == "A") schenv = "IM7Q";
             else if (env == "P") schenv = "IM7P";
 
-            // SÉCURITÉ CRITIQUE : Hard-limit absolu à 8 caractères pour le JobName (Compatible tout .NET)
-            string safeJobName = vars.ContainsKey("JOBNAM") ? vars["JOBNAM"] : (username + count);
-            safeJobName = safeJobName.ToUpper().Replace(".JCL", "").Replace(".", "");
-            if (safeJobName.Length > 8) safeJobName = safeJobName.Substring(0, 8);
+            // JobName tel que généré dans l'ancien code
+            string jobNameStr = vars.ContainsKey("JOBNAM") ? vars["JOBNAM"].Trim().ToUpper() : (username + count);
 
-            // SÉCURITÉ CRITIQUE : Hard-limit absolu à 8 caractères pour le paramètre NOTIFY
-            string safeNotify = username.ToUpper().Replace(".", "");
-            if (safeNotify.Length > 8) safeNotify = safeNotify.Substring(0, 8);
-
-            // Construction de la JOBCARD
-            string jobcard = $"//{safeJobName} JOB CLASS={jobClass},SCHENV={schenv},NOTIFY={safeNotify}\r\n";
+            string jobcard = "//" + jobNameStr + " JOB CLASS=" + jobClass + ",SCHENV=" + schenv + ",NOTIFY=" + username + "\r\n";
             contentBuilder.Insert(0, jobcard);
 
-            // SÉCURITÉ : supprime les lignes vides multiples qui causent le parsing error !
-            string content2 = contentBuilder.ToString().Replace("\r\n\r\n", "\r\n").TrimEnd('\n', '\r');
+            string content2 = contentBuilder.ToString().Replace("\r\n\r\n", "\r\n").TrimEnd(new char[] { '\n', '\r' });
 
-            // Boucle d'application pour gérer les variables imbriquées (nested variables)
             string tempContent = ApplyVarsCore(content2, vars);
             while (content2 != tempContent)
             {
@@ -141,7 +126,7 @@ namespace AutoActivator.Services
                 tempContent = ApplyVarsCore(content2, vars);
             }
 
-            // Gestion du symbole '+' en début de ligne (ex: les SYSIN et SYSPARM)
+            // temporary fix for +'s
             StringBuilder content3 = new StringBuilder();
             foreach (string line in content2.Replace("\r", "").Split('\n'))
             {
@@ -156,12 +141,9 @@ namespace AutoActivator.Services
                 }
             }
 
-            return content3.ToString().TrimEnd('\n', '\r');
+            return content3.ToString().TrimEnd(new char[] { '\n', '\r' });
         }
 
-        /// <summary>
-        /// Moteur de Regex copié trait pour trait depuis LvChainTool pour garantir un matching parfait
-        /// </summary>
         private string ApplyVarsCore(string content, Dictionary<string, string> vars)
         {
             string temp = content;
@@ -174,7 +156,7 @@ namespace AutoActivator.Services
                 else if (value.StartsWith("'") && value.EndsWith("'") && value.Length >= 3)
                 {
                     value = value.Substring(1, value.Length - 2);
-                    // Unescaping single quotes
+                    // unescaping single quotes
                     if (value.Contains("''")) value = value.Replace("''", "'");
                 }
                 value = value.Replace("$", "$$");
@@ -183,18 +165,14 @@ namespace AutoActivator.Services
                 {
                     string pattern = @"(%%" + varName + @")(?=%)";
                     string pattern2 = @"(%%" + varName + @")([, \n\r])";
-
-                    // SÉCURITÉ : Le pattern 3 capture et "avale" le point.
-                    // Indispensable pour ne pas générer de doubles points '..' dans les DSN !
                     string pattern3 = @"(%%" + varName + @")(\.)";
-
                     string pattern4 = @"(%%" + varName + @")(\')";
                     string pattern5 = @"(%%" + varName + @")(\))";
                     string pattern6 = @"(%%" + varName + @")$";
 
                     temp = Regex.Replace(temp, pattern, value);
                     temp = Regex.Replace(temp, pattern2, value + "$2");
-                    temp = Regex.Replace(temp, pattern3, value); // Ne surtout pas mettre + "$2"
+                    temp = Regex.Replace(temp, pattern3, value);
                     temp = Regex.Replace(temp, pattern4, value + "$2");
                     temp = Regex.Replace(temp, pattern5, value + "$2");
                     temp = Regex.Replace(temp, pattern6, value);
@@ -220,7 +198,7 @@ namespace AutoActivator.Services
 
             if (string.IsNullOrEmpty(uid) || string.IsNullOrEmpty(pwd))
             {
-                throw new InvalidOperationException("Les identifiants (Uid/Pwd) ne sont pas définis dans Settings.DbConfig. Veuillez vous connecter d'abord.");
+                throw new InvalidOperationException("Les identifiants ne sont pas définis.");
             }
 
             string jclTemplate =
@@ -251,12 +229,10 @@ MFFTP_PROCESS_TRAILS_ONGET=FALSE
                     tempFolder = ReadTempFolder;
                     instructionTemplate = "PUT ##DSN## +\r\n##FILE##";
                     break;
-
                 case DsnDirection.Write:
                     tempFolder = WriteTempFolder;
                     instructionTemplate = "GET ##FILE## +\r\n'##DSN##' (REP";
                     break;
-
                 default:
                     throw new ArgumentException("Unknown DsnDirection");
             }
@@ -267,17 +243,15 @@ MFFTP_PROCESS_TRAILS_ONGET=FALSE
                 string instruction = instructionTemplate
                     .Replace("##DSN##", tuple.Item1.ToUpper().Trim().Trim('\''))
                     .Replace("##FILE##", tuple.Item2.Trim().Trim('\''));
-
                 instructions.AppendLine(instruction);
             }
 
             string options = transferMode == TransferMode.Text
-                ? "LOCSITE ENCODING=SBCS\r\nLOCSITE SBDATACONN=TABSTD\r\n"
-                : "";
+                ? "LOCSITE ENCODING=SBCS\r\nLOCSITE SBDATACONN=TABSTD\r\n" : "";
 
             string jcl = jclTemplate
                 .Replace("##USER##", uid)
-                .Replace("##PASS##", pwd) // Injection du mot de passe pour le FTP
+                .Replace("##PASS##", pwd)
                 .Replace("##SERVER##", TempShare)
                 .Replace("##PATH##", tempFolder)
                 .Replace("##OPTIONS##", options)
