@@ -55,7 +55,7 @@ namespace AutoActivator.Services
                 rawContent = await reader.ReadToEndAsync();
             }
 
-            // Exécution STRICTEMENT identique à l'ancien code
+            // Exécution STRICTEMENT identique à l'ancien code avec les corrections
             string correctedContent = DoCorrections(rawContent);
             return ApplyVariables(cleanJobName, correctedContent, variables, count);
         }
@@ -64,30 +64,49 @@ namespace AutoActivator.Services
         {
             StringBuilder output = new StringBuilder();
 
-            // 1. Coupure à 72 caractères uniquement s'il s'agit de numéros de séquence
+            // 1. Nettoyage initial et coupure à 72 caractères
             foreach (string line in content.Replace("\r", "").Split('\n'))
             {
-                if (line.Length > 72 && int.TryParse(line.Substring(72).Trim(), out int _))
-                    output.AppendLine(line.Substring(0, 72));
+                // CORRECTIF 1 : Ignorer totalement les lignes de commentaires JCL.
+                // Cela empêche les commentaires ("//* CKPTID=LAST,") de casser les continuations.
+                if (line.StartsWith("//*")) continue;
+
+                string processedLine = line;
+
+                // CORRECTIF 2 : Ajouter l'espace manquant pour les conditions IF (ex: "RC<5" devient "RC < 5")
+                if (processedLine.Contains(" IF ") && processedLine.Contains("RC<"))
+                {
+                    processedLine = processedLine.Replace("RC<", "RC < ");
+                }
+
+                // Coupure des numéros de séquence (colonnes > 72)
+                if (processedLine.Length > 72 && int.TryParse(processedLine.Substring(72).Trim(), out int _))
+                    output.AppendLine(processedLine.Substring(0, 72));
                 else
-                    output.AppendLine(line);
+                    output.AppendLine(processedLine);
             }
 
-            // 2. Suppression de la JobCard existante
+            // 2. Suppression sécurisée de la JobCard existante
             StringBuilder output2 = new StringBuilder();
             List<string> lines = output.ToString().Replace("\r", "").Split('\n').ToList();
+
             bool existingJobcard = false;
+            bool jobCardFound = false;
 
             foreach (string line in lines)
             {
-                if (lines.Count > 0 && lines.First() == line && !line.StartsWith("//*") && line.ToUpper().Contains(" JOB "))
+                // On détecte la JobCard même si elle n'est pas sur la première ligne
+                if (!jobCardFound && line.ToUpper().Contains(" JOB "))
+                {
                     existingJobcard = true;
+                    jobCardFound = true;
+                }
 
                 if (!existingJobcard)
                     output2.AppendLine(line);
 
-                // no comma at end = end of job card
-                if (!line.Trim().EndsWith(",") && !line.StartsWith("//*"))
+                // Si la ligne ne se termine pas par une virgule, c'est la fin de la JobCard
+                if (existingJobcard && !line.Trim().EndsWith(","))
                     existingJobcard = false;
             }
 
