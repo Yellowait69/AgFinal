@@ -104,7 +104,6 @@ namespace AutoActivator.Gui
                 string q2 = "Q2T";
                 string fastCtrl = "10T.DB.CA.FIB.FASTCTRL";
 
-
                 string envImsValue = "T";
 
                 switch (envValue)
@@ -124,6 +123,7 @@ namespace AutoActivator.Gui
 
                 var generalVariables = new Dictionary<string, string>
                 {
+                    { "ENV", envValue },
                     { "ENVIMS", envImsValue },
                     { "CUS", cus },
                     { "YYMMDD", DateTime.Now.ToString("yyMMdd") },

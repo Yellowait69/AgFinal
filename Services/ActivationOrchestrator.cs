@@ -21,7 +21,9 @@ namespace AutoActivator.Services
             try
             {
                 onProgress("=== START OF ACTIVATION SEQUENCE ===");
-                string currentEnv = generalVariables.ContainsKey("ENVIMS") ? generalVariables["ENVIMS"] : "D";
+
+                // CORRECTION ICI : On utilise "ENV" (qui vaut D, Q, A, ou P) pour le serveur API
+                string currentEnv = generalVariables.ContainsKey("ENV") ? generalVariables["ENV"] : "D";
 
                 onProgress($"Connecting to MicroFocus server ({currentEnv}000)...");
                 bool isLogged = await _apiService.LogonAsync(username, password, currentEnv, onProgress, cancellationToken);
@@ -94,7 +96,7 @@ namespace AutoActivator.Services
                     readyContent = readyContent.Replace("$JOBNAME", subJobName);
                 }
 
-                string envLetter = variables.ContainsKey("ENVIMS") ? variables["ENVIMS"] : "D";
+                string envLetter = variables.ContainsKey("ENVIMS") ? variables["ENVIMS"] : "T";
                 string notifyUser = variables.ContainsKey("USERNAME") ? variables["USERNAME"] : "XA3894";
 
                 string dataMarker = "DLM=##";
@@ -172,7 +174,6 @@ namespace AutoActivator.Services
                         }
                         catch { }
                     }
-
 
                     finished = true;
                     break;

@@ -130,7 +130,8 @@ namespace AutoActivator.Services
                 contentBuilder.AppendLine(jclLine);
             }
 
-            string env = localVars.ContainsKey("ENVIMS") ? localVars["ENVIMS"] : "D";
+
+            string env = localVars.ContainsKey("ENV") ? localVars["ENV"] : "D";
             string jobClass = localVars.ContainsKey("CLASS") ? localVars["CLASS"] : "A";
 
 
