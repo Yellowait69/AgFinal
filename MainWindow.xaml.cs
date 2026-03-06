@@ -104,22 +104,27 @@ namespace AutoActivator.Gui
                 string q2 = "Q2T";
                 string fastCtrl = "10T.DB.CA.FIB.FASTCTRL";
 
+                // Variable dédiée pour mapper l'environnement IMS
+                string envImsValue = "T";
+
                 switch (envValue)
                 {
                     case "D":
                         q2 = "Q2T";
                         fastCtrl = "I0T.DB.CA.FIB.FASTCTRL";
+                        envImsValue = "T"; // Map D to T
                         break;
 
                     case "Q":
                         q2 = "Q2C";
                         fastCtrl = "I10.DB.CA.FIB.FASTCTRL";
+                        envImsValue = "C"; // Map Q to C
                         break;
                 }
 
                 var generalVariables = new Dictionary<string, string>
                 {
-                    { "ENVIMS", envValue },
+                    { "ENVIMS", envImsValue }, // Utilisation de la variable mappée
                     { "CUS", cus },
                     { "YYMMDD", DateTime.Now.ToString("yyMMdd") },
                     { "YYYY", DateTime.Now.ToString("yyyy") },
