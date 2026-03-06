@@ -83,25 +83,25 @@ namespace AutoActivator.Utils
 
             string fileContent = File.ReadAllText(filePath);
 
-            // 1. Localiser le début de la table demandée
+            //  Localiser le début de la table demandée
             string searchString = $"### TABLE : {tableName} |";
             int tableStartIndex = fileContent.IndexOf(searchString);
 
             if (tableStartIndex == -1) return dt; // Table introuvable
 
-            // 2. Sauter l'en-tête de la table et la ligne de tirets "----"
+            // Sauter l'en-tête de la table et la ligne de tirets "----"
             int firstNewLine = fileContent.IndexOf('\n', tableStartIndex);
             int secondNewLine = fileContent.IndexOf('\n', firstNewLine + 1);
             if (firstNewLine == -1 || secondNewLine == -1) return dt;
 
-            int dataStartIndex = secondNewLine + 1; // Début de la ligne des noms de colonnes
+            int dataStartIndex = secondNewLine + 1;
 
             bool isHeader = true;
             bool inQuotes = false;
             StringBuilder currentField = new StringBuilder();
             List<string> currentLine = new List<string>();
 
-            // 3. Analyser le texte caractère par caractère (Machine à états)
+            //  Analyser le texte caractère par caractère
             for (int i = dataStartIndex; i < fileContent.Length; i++)
             {
                 char c = fileContent[i];
@@ -109,29 +109,29 @@ namespace AutoActivator.Utils
 
                 if (c == '"')
                 {
-                    if (inQuotes && nextC == '"') // Cas d'un guillemet échappé (Ex: "")
+                    if (inQuotes && nextC == '"')
                     {
                         currentField.Append('"');
-                        i++; // Ignorer le guillemet suivant
+                        i++;
                     }
                     else
                     {
-                        inQuotes = !inQuotes; // Entrer ou sortir d'un champ texte
+                        inQuotes = !inQuotes;
                     }
                 }
-                else if (c == ';' && !inQuotes) // Changement de colonne
+                else if (c == ';' && !inQuotes)
                 {
                     currentLine.Add(currentField.ToString());
                     currentField.Clear();
                 }
-                else if ((c == '\r' || c == '\n') && !inQuotes) // Fin de ligne (en dehors des guillemets)
+                else if ((c == '\r' || c == '\n') && !inQuotes)
                 {
-                    if (c == '\r' && nextC == '\n') i++; // Gérer les retours chariots Windows (\r\n)
+                    if (c == '\r' && nextC == '\n') i++;
 
                     currentLine.Add(currentField.ToString());
                     currentField.Clear();
 
-                    // Condition d'arrêt : fin de la table (ligne vide, tirets ou message d'erreur)
+                    // Condition d'arrêt fin de la table (ligne vide, tirets ou message d'erreur)
                     if (currentLine.Count == 1 && (string.IsNullOrWhiteSpace(currentLine[0]) || currentLine[0].StartsWith("---") || currentLine[0] == "AUCUNE DONNÉE TROUVÉE"))
                     {
                         break;
@@ -151,7 +151,7 @@ namespace AutoActivator.Utils
                         }
                         isHeader = false;
                     }
-                    else if (currentLine.Any(x => !string.IsNullOrWhiteSpace(x))) // Ajouter les données si la ligne n'est pas complètement vide
+                    else if (currentLine.Any(x => !string.IsNullOrWhiteSpace(x)))
                     {
                         var row = dt.NewRow();
                         for (int j = 0; j < currentLine.Count && j < dt.Columns.Count; j++)
@@ -165,7 +165,7 @@ namespace AutoActivator.Utils
                 }
                 else
                 {
-                    currentField.Append(c); // Ajouter le caractère au champ en cours
+                    currentField.Append(c);
                 }
             }
 

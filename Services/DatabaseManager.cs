@@ -14,13 +14,11 @@ namespace AutoActivator.Services
         public DatabaseManager(string envSuffix)
         {
             EnvironmentName = envSuffix;
-            // Secure retrieval of the connection string dynamically based on the environment
+
             _connectionString = Settings.DbConfig.GetConnectionString(envSuffix);
         }
 
-        /// <summary>
-        /// Checks the validity of the connection to the SQL server.
-        /// </summary>
+
         public bool TestConnection()
         {
             try
@@ -52,9 +50,7 @@ namespace AutoActivator.Services
             }
         }
 
-        /// <summary>
-        /// Executes a SELECT query with parameters to prevent SQL injections.
-        /// </summary>
+
         public DataTable GetData(string query, Dictionary<string, object> parameters = null)
         {
             DataTable dataTable = new DataTable();
@@ -69,12 +65,12 @@ namespace AutoActivator.Services
                         {
                             foreach (var param in parameters)
                             {
-                                // Clean handling of null values
+
                                 command.Parameters.AddWithValue(param.Key, param.Value ?? DBNull.Value);
                             }
                         }
 
-                        // Optimization: SqlDataReader is faster than SqlDataAdapter for a simple SELECT
+
                         connection.Open();
                         using (SqlDataReader reader = command.ExecuteReader())
                         {
@@ -86,23 +82,20 @@ namespace AutoActivator.Services
             catch (SqlException ex)
             {
                 Console.WriteLine($"[ERROR] SQL Error (Code {ex.Number}) on query: {query}\nDetails: {ex.Message}");
-                // AJOUT DE 'ex' POUR PRESERVER LA STACK TRACE
+
                 throw new Exception($"DB Error ({ex.Number}) : {ex.Message}", ex);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[ERROR] System Error on query: {query}\nDetails: {ex.Message}");
-                // AJOUT DE 'ex' POUR PRESERVER LA STACK TRACE
+
                 throw new Exception($"System Error : {ex.Message}", ex);
             }
 
             return dataTable;
         }
 
-        /// <summary>
-        /// Injects a test payment into the LV.PRCTT0 table safely and dynamically.
-        /// Optional parameters replace hardcoded values for more flexibility.
-        /// </summary>
+
         public bool InjectPayment(
             string contractInternalId,
             decimal amount,
@@ -121,11 +114,11 @@ namespace AutoActivator.Services
                 ? paymentDate.Value.AddHours(12)
                 : now;
 
-            // Generation of a fictional structured communication
+
             string idStr = contractInternalId?.Trim() ?? "";
             string fakeCommu = $"820{(idStr.Length > 9 ? idStr.Substring(0, 9) : idStr)}99";
 
-            // The SQL query now uses dynamic parameters instead of hardcoded strings
+
             string query = @"
                 INSERT INTO LV.PRCTT0 (
                     C_STE, NO_CNT, C_MD_PMT, D_REF_PRM, NO_ORD_RCP, TSTAMP_CRT_RCT,
@@ -154,7 +147,7 @@ namespace AutoActivator.Services
                         command.Parameters.AddWithValue("@amount", amount);
                         command.Parameters.AddWithValue("@commu", fakeCommu);
 
-                        // Assignment of simulation parameters (formerly hardcoded)
+                        // Assignment of simulation parameters
                         command.Parameters.AddWithValue("@nom_cp", simulatedName);
                         command.Parameters.AddWithValue("@adr_1", simulatedAddress1);
                         command.Parameters.AddWithValue("@adr_2", simulatedAddress2);

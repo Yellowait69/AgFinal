@@ -8,9 +8,9 @@ namespace AutoActivator.Sql
         public static readonly ReadOnlyDictionary<string, string> Queries =
             new ReadOnlyDictionary<string, string>(new Dictionary<string, string>
         {
-            // ==========================================
+
             // RECUPERATION DES CLES (LISA & ELIA)
-            // ==========================================
+
 
             { "GET_INTERNAL_ID", @"
                 SELECT TOP 1 NO_CNT
@@ -31,9 +31,9 @@ namespace AutoActivator.Sql
                 WHERE IT5UCONAIDN = @EliaId"
             },
 
-            // ==========================================
+
             // DONNEES LISA (CONTRAT ET AVENANTS)
-            // ==========================================
+
 
             { "LV.PCONT0", "SELECT * FROM [LV].[LV5P02TPCONT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
             { "LV.ELIAT0", "SELECT * FROM LV.ELIAT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
@@ -58,13 +58,13 @@ namespace AutoActivator.Sql
 
             { "LV.XRSTT0", "SELECT * FROM LV.XRSTT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
 
-            // Nouvelles tables LISA ajoutées depuis le script 2
+
             { "LV.SPERT0", "SELECT * FROM LV.SPERT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
             { "LV.ADMDT0", "SELECT * FROM LV.ADMDT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
 
-            // ==========================================
+
             // DONNEES LISA (PLANS ET GARANTIES)
-            // ==========================================
+
 
             { "FJ1.TB5LPPL", @"
                 SELECT * FROM [FJ1].[TB5LPPL] WITH(NOLOCK)
@@ -80,9 +80,9 @@ namespace AutoActivator.Sql
 
             { "FJ1.TB5LGDR", "SELECT * FROM FJ1.TB5LGDR WITH(NOLOCK) WHERE IT5LGDRNCON = @InternalId" },
 
-            // ==========================================
+
             // DONNEES DEMANDE ELIA
-            // ==========================================
+
 
             { "FJ1.TB5HDMD", @"
                 SELECT * FROM FJ1.TB5HDMD WITH(NOLOCK)
@@ -93,13 +93,13 @@ namespace AutoActivator.Sql
             { "FJ1.TB5HDGD", "SELECT * FROM FJ1.TB5HDGD WITH(NOLOCK) WHERE IT5HDMDAIDN IN (SELECT value FROM STRING_SPLIT(@DemandIds, ','))" },
             { "FJ1.TB5HPRO", "SELECT * FROM FJ1.TB5HPRO WITH(NOLOCK) WHERE IT5HDMDAIDN IN (SELECT value FROM STRING_SPLIT(@DemandIds, ','))" },
 
-            // Nouvelles tables de demande ELIA ajoutées depuis le script 2
+
             { "FJ1.TB5HEPT", "SELECT * FROM FJ1.TB5HEPT WITH(NOLOCK) WHERE IT5HDMDAIDN IN (SELECT value FROM STRING_SPLIT(@DemandIds, ','))" },
             { "FJ1.TB5HDIC", "SELECT * FROM FJ1.TB5HDIC WITH(NOLOCK) WHERE IT5HDMDAIDN IN (SELECT value FROM STRING_SPLIT(@DemandIds, ','))" },
 
-            // ==========================================
+
             // DONNEES ELIA (CONTRAT)
-            // ==========================================
+
 
             { "FJ1.TB5HELT", "SELECT * FROM FJ1.TB5HELT WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
             { "FJ1.TB5UCON", "SELECT * FROM FJ1.TB5UCON WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
@@ -123,12 +123,12 @@ namespace AutoActivator.Sql
             { "FJ1.TB5UPRS", "SELECT * FROM FJ1.TB5UPRS WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
             { "FJ1.TB5UPMP", "SELECT * FROM FJ1.TB5UPMP WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
 
-            // Nouvelle table ELIA ajoutée depuis le script 2
+
             { "FJ1.TB5URPP", "SELECT * FROM FJ1.TB5URPP WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
 
-            // ==========================================
+
             // DONNEES FINANCIERES & FONDS
-            // ==========================================
+
 
             { "LV.PRIST0", "SELECT * FROM LV.PRIST0 WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY NO_AVT, D_ECH" },
             { "LV.PECHT0", "SELECT * FROM LV.PECHT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY NO_AVT, D_ECH, NO_ORD_QUITT" },
@@ -146,9 +146,9 @@ namespace AutoActivator.Sql
             { "LV.SFTS",     "SELECT * FROM [LV].[LV5S18TSFTST0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
             { "LV.PINCT0",   "SELECT * FROM [LV].[PINCT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
 
-            // ==========================================
+
             // DONNEES CLAUSES & RESERVES
-            // ==========================================
+
 
             { "LV.SCLST0", "SELECT * FROM [LV].[SCLST0] WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY NO_AVT, NO_ORD_CLS" },
             { "LV.SCLRT0", "SELECT * FROM [LV].[LV5S16TSCLRT0] WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
@@ -166,9 +166,9 @@ namespace AutoActivator.Sql
             { "LV.BPBAT0", "SELECT * FROM LV.BPBAT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
             { "LV.BPPAT0", "SELECT * FROM LV.BPPAT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId" },
 
-            // ==========================================
+
             // DONNEES MODIFICATION (LISA)
-            // ==========================================
+
 
             { "LV.MWBGT0", "SELECT * FROM LV.MWBGT0 WITH(NOLOCK) WHERE NO_CNT = @InternalId ORDER BY NO_PRJ, C_PROP" }
         });

@@ -10,15 +10,15 @@ namespace AutoActivator.Services
 {
     public static class Comparator
     {
-        // Limite pour éviter une saturation de la RAM (Out Of Memory) si les tables sont 100% différentes
+        // Limit to prevent RAM saturation (Out Of Memory) if tables are 100% different
         private const int MAX_DIFFS_TO_REPORT = 100;
 
         /// <summary>
-        /// Fonction centrale pour comparer deux jeux de données (DataTables).
+        /// Central function to compare two datasets (DataTables).
         /// </summary>
         public static (string Status, string Details) CompareDataTables(DataTable dfRef, DataTable dfNew, string tableName)
         {
-            // ÉTAPE 1 : Vérifications initiales de validité
+            // STEP 1: Initial validity checks
             if (dfRef == null || dfNew == null)
             {
                 return ("KO_NULL_DATA", $"One or both DataTables are null for table {tableName}.");
@@ -36,7 +36,7 @@ namespace AutoActivator.Services
 
             try
             {
-                // ÉTAPE 2 & 3 : Application des règles d'exclusion ET alignement du schéma
+                // STEPS 2 & 3: Apply exclusion rules AND align schema
                 var exclusions = Exclusions.GetExclusionsForTable(tableName) ?? new HashSet<string>();
 
                 var allColsRef = dfRef.Columns.Cast<DataColumn>().Select(c => c.ColumnName);
@@ -44,7 +44,7 @@ namespace AutoActivator.Services
 
                 var commonCols = allColsRef
                     .Intersect(allColsNew)
-                    .Except(exclusions, StringComparer.OrdinalIgnoreCase) // Case-insensitive pour plus de sécurité
+                    .Except(exclusions, StringComparer.OrdinalIgnoreCase) // Case-insensitive for added safety
                     .OrderBy(c => c)
                     .ToList();
 
@@ -53,18 +53,18 @@ namespace AutoActivator.Services
                     return ("KO_NO_COMMON_COLS", "No common columns found after applying exclusion filters.");
                 }
 
-                // OPTIMISATION : Au lieu de copier toute la table et de supprimer manuellement les colonnes,
-                // nous projetons uniquement les colonnes nécessaires directement dans de nouvelles tables.
+                // OPTIMIZATION: Instead of copying the whole table and manually removing columns,
+                // we project only the required columns directly into new tables.
                 string[] colsArray = commonCols.ToArray();
                 var df1 = new DataView(dfRef).ToTable(false, colsArray);
                 var df2 = new DataView(dfNew).ToTable(false, colsArray);
 
-                // ÉTAPE 4 : Normalisation et formatage des données
+                // STEP 4: Data normalization and formatting
                 NormalizeDataTable(df1, commonCols);
                 NormalizeDataTable(df2, commonCols);
 
-                // ÉTAPE 5 : Alignement des enregistrements (Tri)
-                // Utilisation de crochets [NomColonne] pour éviter les crashs si les noms de colonnes contiennent des espaces ou des caractères spéciaux
+                // STEP 5: Record alignment (Sorting)
+                // Using brackets [ColumnName] to prevent crashes if column names contain spaces or special characters
                 string sortExpression = string.Join(", ", commonCols.Select(c => $"[{c}]"));
 
                 try
@@ -80,7 +80,7 @@ namespace AutoActivator.Services
                     Console.WriteLine($"[WARNING] Technical sort failed on table {tableName}. Proceeding without sort. Reason: {e.Message}");
                 }
 
-                // ÉTAPE 6 : Comparaison finale
+                // STEP 6: Final comparison
                 if (df1.Rows.Count != df2.Rows.Count)
                 {
                     return ("KO_ROW_COUNT", $"Discrepancy in data volume: Source = {df1.Rows.Count} rows vs Target = {df2.Rows.Count} rows.");
@@ -95,11 +95,11 @@ namespace AutoActivator.Services
         }
 
         /// <summary>
-        /// Nettoie et normalise les données pour éviter les faux positifs (espaces, décimales, valeurs nulles).
+        /// Cleans and normalizes data to prevent false positives (spaces, decimals, null values).
         /// </summary>
         private static void NormalizeDataTable(DataTable dt, List<string> columns)
         {
-            // Suspendre les événements de données (boost massif de performances pour les boucles modifiant une DataTable)
+            // Suspend data events (massive performance boost for loops modifying a DataTable)
             dt.BeginLoadData();
 
             foreach (DataRow row in dt.Rows)
@@ -116,20 +116,21 @@ namespace AutoActivator.Services
 
                     string value = cellValue.ToString().Trim();
 
-                    // Traitement des NaN textuels ou None (Insensible à la casse)
+                    // Handle textual "NaN" or "None" (Case-insensitive)
                     if (string.Equals(value, "nan", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(value, "none", StringComparison.OrdinalIgnoreCase))
                     {
                         row[col] = string.Empty;
                     }
-                    // PARSING ROBUSTE : NumberStyles.Any et CultureInfo.InvariantCulture
+                    // ROBUST PARSING: Use NumberStyles.Any and CultureInfo.InvariantCulture
                     else if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out double floatValue))
                     {
+                        // Round to 4 decimal places for consistent comparison
                         row[col] = Math.Round(floatValue, 4).ToString(CultureInfo.InvariantCulture);
                     }
                     else
                     {
-                        // Assigner uniquement si la valeur a réellement changé (économise des allocations mémoire)
+                        // Assign only if the value has actually changed (saves memory allocations)
                         if (!string.Equals(cellValue.ToString(), value, StringComparison.Ordinal))
                         {
                             row[col] = value;
@@ -138,13 +139,13 @@ namespace AutoActivator.Services
                 }
             }
 
-            // Reprendre les événements de données
+            // Resume data events
             dt.EndLoadData();
             dt.AcceptChanges();
         }
 
         /// <summary>
-        /// Compare cellule par cellule et génère un rapport.
+        /// Compares cell by cell and generates a report.
         /// </summary>
         private static (string Status, string Details) GenerateDiffReport(DataTable df1, DataTable df2, List<string> commonCols)
         {
@@ -161,7 +162,7 @@ namespace AutoActivator.Services
                     string val1 = df1.Rows[i][j]?.ToString() ?? string.Empty;
                     string val2 = df2.Rows[i][j]?.ToString() ?? string.Empty;
 
-                    // Comparaison stricte de chaînes ordinales (la plus rapide et précise après normalisation)
+                    // Strict ordinal string comparison (fastest and most accurate after normalization)
                     if (!string.Equals(val1, val2, StringComparison.Ordinal))
                     {
                         rowHasDiff = true;
@@ -176,7 +177,7 @@ namespace AutoActivator.Services
                     diffReport.Append(rowDiffs.ToString());
                     diffReport.AppendLine();
 
-                    // Limite de sécurité pour éviter de consommer des gigaoctets de RAM
+                    // Security limit to avoid consuming gigabytes of RAM
                     if (diffCount >= MAX_DIFFS_TO_REPORT)
                     {
                         diffReport.AppendLine($"\n[WARNING] Maximum number of reportable differences ({MAX_DIFFS_TO_REPORT}) reached. Truncating report...");

@@ -9,12 +9,12 @@ using AutoActivator.Services;
 
 namespace AutoActivator.Gui
 {
-    // Le mot-clé "partial" relie ce code au MainWindow principal
+
     public partial class MainWindow : Window
     {
-        // =========================================================================
+
         // SINGLE EXTRACTION TAB LOGIC
-        // =========================================================================
+
         private async void BtnRunSingle_Click(object sender, RoutedEventArgs e)
         {
             string contractD = TxtSingleD?.Text.Trim();
@@ -27,7 +27,6 @@ namespace AutoActivator.Gui
                 return;
             }
 
-            // CORRECTION ICI : Utilisation de IProgress au lieu de var
             IProgress<ExtractionItem> progress = new Progress<ExtractionItem>(item => ExtractionHistory.Add(item));
 
             await RunProcessAsync(async () =>
@@ -58,7 +57,6 @@ namespace AutoActivator.Gui
                 ContractId = contract,
                 InternalId = result.InternalId,
                 Product = env,
-                // MISE À JOUR : Utilisation de la prime récupérée par le service d'extraction
                 Premium = string.IsNullOrWhiteSpace(result.Premium) ? "0" : result.Premium,
                 Ucon = result.UconId,
                 Hdmd = result.DemandId,
@@ -68,9 +66,9 @@ namespace AutoActivator.Gui
             });
         }
 
-        // =========================================================================
+
         // BATCH EXTRACTION TAB LOGIC
-        // =========================================================================
+
         private void BtnBrowseD_Click(object sender, RoutedEventArgs e) => TxtBatchD.Text = OpenCsvDialog();
         private void BtnBrowseQ_Click(object sender, RoutedEventArgs e) => TxtBatchQ.Text = OpenCsvDialog();
 
@@ -80,7 +78,7 @@ namespace AutoActivator.Gui
             {
                 Filter = "CSV Files|*.csv",
                 Title = "Select a CSV file containing contracts",
-                // NOUVEAU : Force l'ouverture dans le dossier des fichiers d'entrée
+
                 InitialDirectory = Path.GetFullPath(Settings.InputDir)
             };
             return openFileDialog.ShowDialog() == true ? openFileDialog.FileName : string.Empty;
@@ -100,7 +98,7 @@ namespace AutoActivator.Gui
 
             var batchService = new BatchExtractionService(_extractionService);
 
-            // CORRECTION ICI : Utilisation de IProgress au lieu de var
+
             IProgress<BatchProgressInfo> progress = new Progress<BatchProgressInfo>(info =>
             {
                 ExtractionHistory.Add(new ExtractionItem

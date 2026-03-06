@@ -12,9 +12,9 @@ namespace AutoActivator.Gui
 {
     public partial class MainWindow : Window
     {
-        // =========================================================================
+
         // COMPARISON MODULE LOGIC
-        // =========================================================================
+
 
         private void BtnBrowseBase_Click(object sender, RoutedEventArgs e)
         {
@@ -69,14 +69,14 @@ namespace AutoActivator.Gui
                 var orchestrator = new ComparisonOrchestrator();
                 try
                 {
-                    // 1. Lancer la comparaison
+                    //  Lancer la comparaison
                     var report = orchestrator.RunFullComparison(baseFile, targetFile);
 
-                    // 2. Générer le texte du rapport
+                    //  Générer le texte du rapport
                     string reportContent = GenerateReportText(report);
 
-                    // 3. Créer un nom de fichier avec un ID unique
-                    // GetFileIds renvoie [Env, Size, Signature]. La signature est l'index 2.
+                    //  Créer un nom de fichier avec un ID unique
+
                     string[] fileIds = orchestrator.GetFileIds(baseFile);
                     string uniqueId = fileIds.Length >= 3 ? fileIds[2] : "UnknownID";
                     string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
@@ -85,13 +85,13 @@ namespace AutoActivator.Gui
                     string reportFileName = $"ComparisonReport_{uniqueId}_{timestamp}.txt";
                     string reportFilePath = Path.Combine(Settings.OutputDir, reportFileName);
 
-                    // 4. Sauvegarder le rapport sur le disque
+                    //  Sauvegarder le rapport sur le disque
                     File.WriteAllText(reportFilePath, reportContent, Encoding.UTF8);
 
-                    // 5. Permettre à l'UI d'ouvrir le dossier (comme dans l'onglet Extraction)
+                    //  Permettre à l'UI d'ouvrir le dossier
                     _lastGeneratedPath = Settings.OutputDir;
 
-                    // 6. Afficher à l'écran avec le chemin d'accès
+                    //  Afficher à l'écran avec le chemin d'accès
                     Application.Current.Dispatcher.Invoke(() =>
                     {
                         TxtComparisonResults.Text = reportContent;
@@ -108,9 +108,7 @@ namespace AutoActivator.Gui
             BtnRunComparison.IsEnabled = true;
         }
 
-        /// <summary>
-        /// Transforme l'objet ComparisonReport en texte formaté pour l'affichage et la sauvegarde.
-        /// </summary>
+
         private string GenerateReportText(ComparisonReport report)
         {
             var sb = new StringBuilder();
@@ -151,14 +149,7 @@ namespace AutoActivator.Gui
             return sb.ToString();
         }
 
-        // =========================================================================
-        // LINK / OPEN FOLDER LOGIC (Si vous avez un bouton dédié dans le XAML)
-        // =========================================================================
 
-        /// <summary>
-        /// Liez ceci à un bouton "Ouvrir le dossier" ou "Voir le rapport" dans votre interface XAML
-        /// Exemple : <Button Content="Ouvrir le dossier" Click="BtnOpenFolder_Click" />
-        /// </summary>
         private void BtnOpenFolder_Click(object sender, RoutedEventArgs e)
         {
             if (!string.IsNullOrEmpty(_lastGeneratedPath) && Directory.Exists(_lastGeneratedPath))

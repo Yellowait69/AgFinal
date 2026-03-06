@@ -150,8 +150,6 @@ namespace AutoActivator.Services
                             if (match.Success) jobNum = "J" + match.Groups[1].Value;
                             if (line.Contains("Job ready for execution")) isReady = true;
 
-                            // MOUCHARD 1 : On ajoute toutes les lignes retournées par le serveur
-                            // au lieu de ne filtrer que "JCL parsing error"
                             errorMsg.AppendLine(line);
                         }
                         if (isReady) return (true, jobNum, null);
@@ -175,6 +173,17 @@ namespace AutoActivator.Services
                 using (var reader = new StreamReader(response.GetResponseStream()))
                 {
                     string responseBody = await reader.ReadToEndAsync();
+
+                    // DÉBUT DU MOUCHARD API (Pour lire les erreurs U3505 etc)
+                    try
+                    {
+                        string debugFilePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"DEBUG_API_{jobNum}.txt");
+                        // On ajoute le texte dans le fichier à chaque vérification pour voir l'évolution
+                        System.IO.File.AppendAllText(debugFilePath, "\n--- NOUVELLE VERIFICATION ---\n" + responseBody);
+                    }
+                    catch { /* On ignore si l'écriture échoue pour ne pas bloquer l'appli */ }
+                    // FIN DU MOUCHARD API
+
                     JObject doc = JObject.Parse(responseBody);
 
                     string GetValueCI(string key) =>
@@ -182,7 +191,6 @@ namespace AutoActivator.Services
 
                     string status = GetValueCI("JobStatus") ?? "Unknown";
 
-                    // La clé "JobCOND" a été identifiée grâce au débuggage précédent !
                     string returnCode = GetValueCI("JobCOND")
                                      ?? GetValueCI("JobRetCode")
                                      ?? GetValueCI("MaxCC")
@@ -198,6 +206,72 @@ namespace AutoActivator.Services
                 return ("Unknown", $"Erreur de lecture: {ex.Message}");
             }
         }
+
+        // TÉLÉCHARGEMENT DU RAPPORT MÉTIER
+        public async Task<string> GetJobBusinessReportAsync(string jobNum, CancellationToken cancellationToken)
+        {
+            string url = $"{_nodeUrl}jobview/{jobNum}";
+            var request = CreateRequest(url, "GET", url);
+
+            try
+            {
+                using (cancellationToken.Register(() => request.Abort()))
+                using (var response = (HttpWebResponse)await request.GetResponseAsync())
+                using (var reader = new StreamReader(response.GetResponseStream()))
+                {
+                    string responseBody = await reader.ReadToEndAsync();
+                    JObject doc = JObject.Parse(responseBody);
+
+                    string ddEntityName = null;
+                    string targetDdName = "";
+
+                    if (doc.TryGetValue("JobDDs", out JToken ddsToken))
+                    {
+                        // On cherche le journal de log métier COBOL (BERPCTLO) en priorité
+                        var dd = ddsToken.FirstOrDefault(d => d["DDName"]?.ToString() == "BERPCTLO");
+                        if (dd == null)
+                            dd = ddsToken.FirstOrDefault(d => d["DDName"]?.ToString() == "SYSOUT");
+
+                        if (dd != null)
+                        {
+                            ddEntityName = dd["DDEntityName"]?.ToString();
+                            targetDdName = dd["DDName"]?.ToString();
+                        }
+                    }
+
+                    if (string.IsNullOrEmpty(ddEntityName)) return "Aucun fichier de rapport métier trouvé (BERPCTLO ou SYSOUT).";
+
+                    // On interroge l'endpoint du Mainframe pour lire le fichier Spool (log)
+                    string spoolUrl = $"{_nodeUrl}spool/{ddEntityName}";
+                    var spoolReq = CreateRequest(spoolUrl, "GET", spoolUrl);
+
+                    try
+                    {
+                        using (var spoolResp = (HttpWebResponse)await spoolReq.GetResponseAsync())
+                        using (var spoolReader = new StreamReader(spoolResp.GetResponseStream()))
+                        {
+                            return $"--- RAPPORT METIER ({targetDdName}) DU JOB {jobNum} ---\n\n" + await spoolReader.ReadToEndAsync();
+                        }
+                    }
+                    catch
+                    {
+
+                        string ddviewUrl = $"{_nodeUrl}ddview/{ddEntityName}";
+                        var ddviewReq = CreateRequest(ddviewUrl, "GET", ddviewUrl);
+                        using (var ddviewResp = (HttpWebResponse)await ddviewReq.GetResponseAsync())
+                        using (var ddviewReader = new StreamReader(ddviewResp.GetResponseStream()))
+                        {
+                            return $"--- RAPPORT METIER ({targetDdName}) DU JOB {jobNum} ---\n\n" + await ddviewReader.ReadToEndAsync();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return $"Impossible de télécharger le rapport depuis le Mainframe : {ex.Message}";
+            }
+        }
+
 
         private async Task<bool> TestConnectionAsync(string nodeUrl, CancellationToken cancellationToken)
         {

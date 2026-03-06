@@ -37,8 +37,8 @@ namespace AutoActivator.Config
             // SET TO "no" TO FORCE THE USE OF UID AND PWD BELOW
             public const string TrustedConnection = "yes";
 
-            // Les identifiants sont maintenant stockés en mémoire pour la session en cours
-            // Uid a une valeur par défaut, Pwd est vide au démarrage.
+            // Credentials are now stored in memory for the current session.
+            // Uid has a default value, Pwd is empty at startup.
             public static string Uid { get; set; } = "XA3894";
             public static string Pwd { get; set; } = string.Empty;
 
@@ -49,13 +49,13 @@ namespace AutoActivator.Config
             /// <returns>The formatted SQL connection string</returns>
             public static string GetConnectionString(string envSuffix)
             {
-                // Récupère la lettre de l'environnement (D ou Q) en fonction du suffixe
+                // Retrieves the environment letter (D or Q) based on the suffix
                 string envLetter = string.IsNullOrEmpty(envSuffix) ? "D" : envSuffix.Substring(0, 1).ToUpper();
 
-                // Détermine dynamiquement le nom du serveur
+                // Dynamically determines the server name
                 string server = $"SQLMFDB{envLetter}01";
 
-                // Concatène le préfixe de la base avec l'environnement demandé (D000 ou Q000)
+                // Concatenates the database prefix with the requested environment (D000 or Q000)
                 string database = $"FJ0AGDB_{envSuffix}";
 
                 return TrustedConnection.Equals("yes", StringComparison.OrdinalIgnoreCase)

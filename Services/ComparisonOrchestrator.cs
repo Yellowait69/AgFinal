@@ -69,7 +69,7 @@ namespace AutoActivator.Services
             foreach (var tableName in tablesToCompare)
             {
                 // Déduction automatique de la section (LISA ou ELIA) selon le préfixe de la table
-                // "LV." correspond généralement à LISA et "FJ1." à ELIA dans votre structure
+                // "LV." correspond généralement à LISA et "FJ1." à ELIA
                 string tableType = tableName.StartsWith("LV.") ? "LISA" : (tableName.StartsWith("FJ1.") ? "ELIA" : "COMBINED");
 
                 // Comparaison de la table extraite depuis les deux fichiers globaux
@@ -108,7 +108,7 @@ namespace AutoActivator.Services
 
             if (Status != "OK" && Status != "OK_EMPTY")
             {
-                // Approximation : Compte le nombre de lignes remontées avec des erreurs depuis "Details"
+                //  Compte le nombre de lignes remontées avec des erreurs depuis "Details"
                 if (!string.IsNullOrEmpty(Details))
                 {
                     // Compte le nombre d'occurrences de "Row #" dans le rapport pour savoir combien de lignes ont échoué

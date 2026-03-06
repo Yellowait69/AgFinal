@@ -43,7 +43,7 @@ namespace AutoActivator.Services
             var sbElia = new StringBuilder();
 
             string eliaUconId = "Not found", eliaDemandId = "Not found", internalIdString = "Not found";
-            string premiumAmount = "0"; // NOUVEAU : Initialisation de la prime
+            string premiumAmount = "0";
 
             #region SECTION LISA
             if (dtLisa.Rows.Count > 0)
@@ -68,7 +68,7 @@ namespace AutoActivator.Services
             {
                 eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"]?.ToString()?.Trim() ?? "Not found";
 
-                // --- NOUVEAU : Récupération spécifique de la prime (Premium) ---
+                // Récupération spécifique de la prime (Premium) ---
                 if (SqlQueries.Queries.ContainsKey("FJ1.TB5UPRP"))
                 {
                     try
@@ -81,7 +81,7 @@ namespace AutoActivator.Services
                     }
                     catch { /* Ignore l'erreur silencieusement et garde "0" */ }
                 }
-                // ---------------------------------------------------------------
+
 
                 var dtDemand = db.GetData(SqlQueries.Queries["GET_ELIA_DEMAND_IDS"], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
 
@@ -104,16 +104,16 @@ namespace AutoActivator.Services
             else sbElia.AppendLine("### ELIA SECTION : NO DATA FOUND ###");
             #endregion
 
-            // --- NOUVELLE LOGIQUE DE NOMMAGE (SINGLE -> Uniq) ---
+
             if (saveIndividualFile)
             {
                 Directory.CreateDirectory(Settings.OutputDir);
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
-                // Get uppercase letter of the environment (e.g., "D" for "D000")
+                // Get uppercase letter of the environment ( "D" for "D000")
                 char envLetter = !string.IsNullOrEmpty(envSuffix) ? char.ToUpper(envSuffix[0]) : 'U';
 
-                // Nouveau nom : un seul fichier combiné
+                //  un seul fichier combiné
                 string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_Uniq_{cleanedContract}_{timestamp}.csv");
 
                 string lisaHeader = $"================================================================================\n=== SECTION LISA (INTERNAL ID: {internalIdString} | ENV: {envSuffix}) ===\n================================================================================\n";
@@ -132,11 +132,11 @@ namespace AutoActivator.Services
                 StatusMessage = $"Extraction saved | ID: {internalIdString}",
                 InternalId = internalIdString, UconId = eliaUconId, DemandId = eliaDemandId,
                 LisaContent = sbLisa.ToString(), EliaContent = sbElia.ToString(),
-                Premium = premiumAmount // NOUVEAU : On passe la prime au résultat
+                Premium = premiumAmount
             };
         }
 
-        // The method now takes 'DatabaseManager db' as a parameter to use the right environment
+
         private void ExtractAndAppendTables(DatabaseManager db, IEnumerable<string> tables, string parameterName, object parameterValue, StringBuilder sb)
         {
             foreach (var table in tables)

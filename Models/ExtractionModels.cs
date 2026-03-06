@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace AutoActivator.Models
 {
     // ==========================================
-    // MODÈLES POUR L'EXTRACTION
+    // EXTRACTION MODELS
     // ==========================================
 
     public class ExtractionResult
@@ -16,7 +16,7 @@ namespace AutoActivator.Models
         public string LisaContent { get; set; }
         public string EliaContent { get; set; }
 
-        // NOUVEAU : Propriété pour transporter la prime extraite depuis ELIA
+        // NEW: Property to carry the premium extracted from ELIA
         public string Premium { get; set; }
     }
 
@@ -32,7 +32,7 @@ namespace AutoActivator.Models
     }
 
     // ==========================================
-    // MODÈLES POUR L'INTERFACE GRAPHIQUE (GUI)
+    // GRAPHICAL USER INTERFACE (GUI) MODELS
     // ==========================================
 
     public class ExtractionItem
@@ -49,28 +49,28 @@ namespace AutoActivator.Models
     }
 
     // ==========================================
-    // MODÈLES POUR LA COMPARAISON
+    // COMPARISON MODELS
     // ==========================================
 
     public class ComparisonReport
     {
         /// <summary>
-        /// Pourcentage global de réussite (Lignes correctes / Total des lignes analysées)
+        /// Overall success percentage (Correct rows / Total analyzed rows).
         /// </summary>
         public double GlobalSuccessPercentage { get; set; }
 
         /// <summary>
-        /// Nombre total de lignes lues et comparées tous fichiers confondus
+        /// Total number of rows read and compared across all files.
         /// </summary>
         public int TotalRowsCompared { get; set; }
 
         /// <summary>
-        /// Nombre total de lignes contenant au moins une erreur de comparaison
+        /// Total number of rows containing at least one comparison error.
         /// </summary>
         public int TotalDifferencesFound { get; set; }
 
         /// <summary>
-        /// Liste détaillée des résultats fichier par fichier, table par table
+        /// Detailed list of results file by file, table by table.
         /// </summary>
         public List<FileComparisonResult> FileResults { get; set; } = new List<FileComparisonResult>();
     }
@@ -78,37 +78,37 @@ namespace AutoActivator.Models
     public class FileComparisonResult
     {
         /// <summary>
-        /// Indique si c'est une comparaison "ELIA" ou "LISA"
+        /// Indicates whether it is an "ELIA" or "LISA" comparison.
         /// </summary>
         public string FileType { get; set; }
 
         /// <summary>
-        /// Nom du premier fichier comparé (le fichier de référence/base)
+        /// Name of the first file compared (the reference/base file).
         /// </summary>
         public string BaseFileName { get; set; }
 
         /// <summary>
-        /// Nom du second fichier comparé (le fichier cible)
+        /// Name of the second file compared (the target file).
         /// </summary>
         public string TargetFileName { get; set; }
 
         /// <summary>
-        /// Nom de la table SQL/CSV actuellement comparée
+        /// Name of the SQL/CSV table currently being compared.
         /// </summary>
         public string TableName { get; set; }
 
         /// <summary>
-        /// Statut renvoyé par le Comparator ("OK", "OK_EMPTY", "KO", "KO_ROW_COUNT", etc.)
+        /// Status returned by the Comparator ("OK", "OK_EMPTY", "KO", "KO_ROW_COUNT", etc.).
         /// </summary>
         public string Status { get; set; }
 
         /// <summary>
-        /// Le rapport détaillé brut renvoyé par le Comparator (Ligne X, Attribut Y : Source vs Target)
+        /// The raw detailed report returned by the Comparator (Row X, Attribute Y: Source vs Target).
         /// </summary>
         public string ErrorDetails { get; set; }
 
         /// <summary>
-        /// Raccourci booléen pour savoir si la comparaison de ce fichier précis est un succès total
+        /// Boolean shortcut to determine if the comparison of this specific file is a complete success.
         /// </summary>
         public bool IsMatch => Status == "OK" || Status == "OK_EMPTY";
     }

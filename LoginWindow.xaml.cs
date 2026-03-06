@@ -14,10 +14,10 @@ namespace AutoActivator.Gui
         {
             InitializeComponent();
 
-            // 1. On pré-remplit le nom d'utilisateur avec la session Windows actuelle
+            //  On pré-remplit le nom d'utilisateur avec la session Windows actuelle
             TxtUsername.Text = GetWindowsUsername();
 
-            // 2. On met directement le curseur dans le champ mot de passe pour faire gagner du temps
+            //  On met directement le curseur dans le champ mot de passe pour faire gagner du temps
             TxtPassword.Focus();
         }
 
@@ -32,7 +32,7 @@ namespace AutoActivator.Gui
             }
             catch
             {
-                // En cas d'échec (ex: hors domaine), on regarde si on a une ancienne valeur sauvée, sinon on laisse vide
+
                 return Settings.DbConfig.Uid ?? "";
             }
         }
@@ -48,11 +48,11 @@ namespace AutoActivator.Gui
                 return;
             }
 
-            // Désactiver le bouton et indiquer le chargement
+
             BtnLogin.IsEnabled = false;
             BtnLogin.Content = "Connexion en cours...";
 
-            // STOCKAGE EN MÉMOIRE : Très important pour la suite (JCL MFFTP, etc.)
+
             Settings.DbConfig.Uid = username;
             Settings.DbConfig.Pwd = password;
 
@@ -68,34 +68,34 @@ namespace AutoActivator.Gui
                     username,
                     password,
                     envToTest,
-                    progressMsg => Console.WriteLine($"[Login] {progressMsg}"), // Suivi optionnel
+                    progressMsg => Console.WriteLine($"[Login] {progressMsg}"),
                     CancellationToken.None
                 );
 
                 if (isLogged)
                 {
-                    // Si c'est OK, on ouvre la fenêtre principale (outil d'extraction/activation)
+
                     MainWindow mainWindow = new MainWindow();
                     mainWindow.Show();
 
-                    // On ferme cette fenêtre de login
+
                     this.Close();
                 }
             }
             catch (UnauthorizedAccessException)
             {
-                // GESTION ANTI-BAN : L'API a renvoyé une erreur 401 ou 403 (Mot de passe faux)
+
                 MessageBox.Show("Identifiant ou mot de passe incorrect.\nAccès refusé par le serveur Micro Focus.", "Erreur d'authentification", MessageBoxButton.OK, MessageBoxImage.Error);
 
                 TxtPassword.Clear();
                 TxtPassword.Focus();
 
-                // Par sécurité, on efface le mauvais mot de passe de la mémoire
+
                 Settings.DbConfig.Pwd = "";
             }
             catch (Exception ex)
             {
-                // Gestion des autres erreurs (Serveur éteint, VPN coupé, Timeout...)
+
                 MessageBox.Show($"Impossible de se connecter au serveur Micro Focus :\n{ex.Message}\n\nVérifiez que votre VPN est bien activé.", "Erreur réseau", MessageBoxButton.OK, MessageBoxImage.Error);
 
                 TxtPassword.Clear();
@@ -104,7 +104,7 @@ namespace AutoActivator.Gui
             }
             finally
             {
-                // Quoi qu'il arrive (erreur ou non), si la fenêtre ne s'est pas fermée, on réactive le bouton
+
                 BtnLogin.IsEnabled = true;
                 BtnLogin.Content = "Se connecter";
             }

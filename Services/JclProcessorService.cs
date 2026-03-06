@@ -36,9 +36,9 @@ namespace AutoActivator.Services
             _jclDirectory = jclDirectory;
         }
 
-        // =========================================================================
-        // PARTIE 1 : TRAITEMENT DES FICHIERS JCL CLASSIQUES (CLONE LVCHAINTOOL)
-        // =========================================================================
+
+        // TRAITEMENT DES FICHIERS JCL CLASSIQUES
+
 
         public async Task<string> GetPreparedJclAsync(string jobName, Dictionary<string, string> variables, int count)
         {
@@ -55,7 +55,7 @@ namespace AutoActivator.Services
                 rawContent = await reader.ReadToEndAsync();
             }
 
-            // Exécution STRICTEMENT identique à l'ancien code avec les corrections
+
             string correctedContent = DoCorrections(rawContent);
             return ApplyVariables(cleanJobName, correctedContent, variables, count);
         }
@@ -64,16 +64,15 @@ namespace AutoActivator.Services
         {
             StringBuilder output = new StringBuilder();
 
-            // 1. Nettoyage initial et coupure à 72 caractères
+            //  Nettoyage initial et coupure à 72 caractères
             foreach (string line in content.Replace("\r", "").Split('\n'))
             {
-                // CORRECTIF 1 : Ignorer totalement les lignes de commentaires JCL.
-                // Cela empêche les commentaires ("//* CKPTID=LAST,") de casser les continuations.
+
                 if (line.StartsWith("//*")) continue;
 
                 string processedLine = line;
 
-                // CORRECTIF 2 : Ajouter l'espace manquant pour les conditions IF (ex: "RC<5" devient "RC < 5")
+                //  Ajouter l'espace manquant pour les conditions IF (ex: "RC<5" devient "RC < 5")
                 if (processedLine.Contains(" IF ") && processedLine.Contains("RC<"))
                 {
                     processedLine = processedLine.Replace("RC<", "RC < ");
@@ -86,7 +85,7 @@ namespace AutoActivator.Services
                     output.AppendLine(processedLine);
             }
 
-            // 2. Suppression sécurisée de la JobCard existante
+            //  Suppression sécurisée de la JobCard existante
             StringBuilder output2 = new StringBuilder();
             List<string> lines = output.ToString().Replace("\r", "").Split('\n').ToList();
 
@@ -95,7 +94,7 @@ namespace AutoActivator.Services
 
             foreach (string line in lines)
             {
-                // On détecte la JobCard même si elle n'est pas sur la première ligne
+
                 if (!jobCardFound && line.ToUpper().Contains(" JOB "))
                 {
                     existingJobcard = true;
@@ -105,12 +104,12 @@ namespace AutoActivator.Services
                 if (!existingJobcard)
                     output2.AppendLine(line);
 
-                // Si la ligne ne se termine pas par une virgule, c'est la fin de la JobCard
+
                 if (existingJobcard && !line.Trim().EndsWith(","))
                     existingJobcard = false;
             }
 
-            // cut off newline(s) at the end
+
             return output2.ToString().TrimEnd(new char[] { '\n', '\r' });
         }
 
@@ -118,7 +117,7 @@ namespace AutoActivator.Services
         {
             List<string> jclLines = content.Replace("\r", "").Split('\n').ToList();
 
-            // Logique de LvChainTool : Injection de la variable JOBNAM si elle n'existe pas
+
             Dictionary<string, string> localVars = new Dictionary<string, string>(vars);
             if (!localVars.ContainsKey("JOBNAM"))
             {
@@ -134,7 +133,7 @@ namespace AutoActivator.Services
             string env = localVars.ContainsKey("ENVIMS") ? localVars["ENVIMS"] : "D";
             string jobClass = localVars.ContainsKey("CLASS") ? localVars["CLASS"] : "A";
 
-            // On conserve Environment.UserName tel quel comme vous l'avez demandé
+
             string username = localVars.ContainsKey("USERNAME") ? localVars["USERNAME"] : Environment.UserName;
 
             string schenv = "IM7T";
@@ -145,7 +144,7 @@ namespace AutoActivator.Services
 
             string jobcard = "//";
 
-            // Reproduction de la logique de nommage de job EXACTE de l'ancien outil
+
             if (localVars.ContainsKey("JOBNAM") && !string.IsNullOrEmpty(localVars["JOBNAM"]))
             {
                  jobcard += localVars["JOBNAM"].Trim().ToUpper();
@@ -168,7 +167,7 @@ namespace AutoActivator.Services
                 tempContent = ApplyVarsCore(content2, localVars);
             }
 
-            // temporary fix for +'s
+
             StringBuilder content3 = new StringBuilder();
             foreach (string line in content2.Replace("\r", "").Split('\n'))
             {
@@ -198,7 +197,7 @@ namespace AutoActivator.Services
                 else if (value.StartsWith("'") && value.EndsWith("'") && value.Length >= 3)
                 {
                     value = value.Substring(1, value.Length - 2);
-                    // unescaping single quotes
+
                     if (value.Contains("''")) value = value.Replace("''", "'");
                 }
                 value = value.Replace("$", "$$");
@@ -224,9 +223,9 @@ namespace AutoActivator.Services
             return temp;
         }
 
-        // =========================================================================
-        // PARTIE 2 : UTILITAIRES D'ANALYSE (INSPIRÉ DE LVCHAINTOOL)
-        // =========================================================================
+
+        // UTILITAIRES D'ANALYSE (INSPIRÉ DE LVCHAINTOOL)
+
 
         public List<string> FindDSNs(string jclContent)
         {

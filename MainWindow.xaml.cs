@@ -18,8 +18,6 @@ namespace AutoActivator.Gui
     {
         private string _lastGeneratedPath = "";
         private readonly ExtractionService _extractionService;
-
-        // AJOUT : Jeton d'annulation pour arrêter la séquence d'activation à tout moment
         private CancellationTokenSource _cts;
 
         public ObservableCollection<ExtractionItem> ExtractionHistory { get; set; } = new ObservableCollection<ExtractionItem>();
@@ -50,9 +48,6 @@ namespace AutoActivator.Gui
             }
         }
 
-        // =========================================================================
-        // NAVIGATION MENU LOGIC
-        // =========================================================================
         private void BtnExtraction_Click(object sender, RoutedEventArgs e)
         {
             if (GridExtraction != null) GridExtraction.Visibility = Visibility.Visible;
@@ -74,13 +69,8 @@ namespace AutoActivator.Gui
             if (GridActivation != null) GridActivation.Visibility = Visibility.Collapsed;
         }
 
-        // =========================================================================
-        // ACTIVATION MODULE LOGIC
-        // =========================================================================
-
         private async void BtnRunActivation_Click(object sender, RoutedEventArgs e)
         {
-            // Initialisation du jeton d'annulation avant de lancer le process
             _cts = new CancellationTokenSource();
 
             await RunProcessAsync(async () =>
@@ -90,7 +80,6 @@ namespace AutoActivator.Gui
                 string envValue = "D";
                 string contract = "", cus = "", amount = "", bucp = "";
 
-                // Récupération sécurisée des valeurs depuis l'interface graphique (Thread UI)
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     if (CmbEnvironment.SelectedItem is System.Windows.Controls.ComboBoxItem selectedItem)
@@ -100,14 +89,10 @@ namespace AutoActivator.Gui
 
                     contract = TxtActContract.Text.Trim();
                     cus = TxtActCus.Text.Trim();
-
-                    // AJOUT CRITIQUE : Formatage strict pour le Mainframe (ajoute des zéros devant)
-                    // (ex: "150.50" devient "0000150.50" pour correspondre aux longueurs attendues par COBOL)
                     amount = TxtActAmount.Text.Trim().PadLeft(10, '0');
                     bucp = TxtActBucp.Text.Trim().PadLeft(5, '0');
                 });
 
-                // --- UTILISATION DES IDENTIFIANTS DEPUIS LES SETTINGS ---
                 string username = Settings.DbConfig.Uid;
                 string password = Settings.DbConfig.Pwd;
 
@@ -116,16 +101,22 @@ namespace AutoActivator.Gui
                     throw new Exception("Les identifiants (Uid/Pwd) ne sont pas configurés. Veuillez vous reconnecter.");
                 }
 
-                // --- DÉTERMINATION DES PRÉFIXES MAINFRAME SELON L'ENVIRONNEMENT ---
-                string q2 = "Q2T"; // Par défaut pour D
+                string q2 = "Q2T";
+                string fastCtrl = "10T.DB.CA.FIB.FASTCTRL";
 
                 switch (envValue)
                 {
-                    case "D": q2 = "Q2T"; break;
-                    case "Q": q2 = "Q2C"; break;
+                    case "D":
+                        q2 = "Q2T";
+                        fastCtrl = "I0T.DB.CA.FIB.FASTCTRL";
+                        break;
+
+                    case "Q":
+                        q2 = "Q2C";
+                        fastCtrl = "I10.DB.CA.FIB.FASTCTRL";
+                        break;
                 }
 
-                // 1. Définition des variables générales
                 var generalVariables = new Dictionary<string, string>
                 {
                     { "ENVIMS", envValue },
@@ -137,24 +128,20 @@ namespace AutoActivator.Gui
                     { "CLASS", "A" },
                     { "CNTBEG", contract },
                     { "CNTEND", contract },
-
-                    // --- VARIABLES DÉJÀ PRÉSENTES ---
                     { "MMDD", DateTime.Now.ToString("MMdd") },
                     { "CYMD", DateTime.Now.ToString("yyyyMMdd") },
                     { "STE", "A" },
                     { "Q2", q2 },
-
-                    // --- AJOUT DES NOUVELLES VARIABLES POUR LVPG22U ---
-                    { "CM", "*" },
+                    { "CM.", "     " },
                     { "DRUN", DateTime.Now.ToString("yyyyMMdd") },
                     { "NREMB", "20" },
-                    { "CONTR-EX", "" },
-                    { "CONTR-RE", "" },
-                    { "CONTR-UN", "" },
-                    { "NJJART72", "5" }
+                    { "CONTR-EX", "Y" },
+                    { "CONTR-RE", "Y" },
+                    { "CONTR-UN", "Y" },
+                    { "NJJART72", "5" },
+                    { "FASTCTRL", fastCtrl }
                 };
 
-                // 2. Définition des variables spécifiques à ADDPRCT
                 var addprctVariables = new Dictionary<string, string>
                 {
                     { "CMDPMT", "6" },
@@ -163,7 +150,6 @@ namespace AutoActivator.Gui
                     { "USERNAME", username }
                 };
 
-                // 3. Initialisation du dossier contenant les JCLs
                 string jclFolder = @"\\Jafile02\elia\11 - Technical Architecture\11 - IS Tooling\01 - Tools\LVCHAIN\JCL";
 
                 if (!Directory.Exists(jclFolder))
@@ -171,10 +157,8 @@ namespace AutoActivator.Gui
                     throw new Exception($"Impossible d'accéder au dossier réseau contenant les JCLs :\n{jclFolder}\nVérifiez votre connexion au réseau de l'entreprise ou vos droits d'accès.");
                 }
 
-                // 4. Instanciation de l'orchestrateur
                 var activationOrchestrator = new ActivationOrchestrator(jclFolder);
 
-                // 5. Exécution de la séquence AVEC le jeton d'annulation
                 await activationOrchestrator.RunActivationSequenceAsync(
                     generalVariables,
                     addprctVariables,
@@ -182,10 +166,9 @@ namespace AutoActivator.Gui
                     password,
                     message =>
                     {
-                        // Cette fonction est appelée depuis le service pour mettre à jour l'interface
                         Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = message);
                     },
-                    _cts.Token // Passage du token pour pouvoir annuler
+                    _cts.Token
                 );
 
                 Application.Current.Dispatcher.Invoke(() =>
@@ -196,32 +179,26 @@ namespace AutoActivator.Gui
             });
         }
 
-        // AJOUT : Événement pour intercepter le clic sur le bouton "Cancel"
         private void BtnCancelActivation_Click(object sender, RoutedEventArgs e)
         {
             if (_cts != null && !_cts.IsCancellationRequested)
             {
-                _cts.Cancel(); // Envoie le signal d'annulation
+                _cts.Cancel();
                 TxtStatus.Text = "Annulation en cours... La séquence va s'arrêter.";
                 TxtStatus.Foreground = System.Windows.Media.Brushes.DarkOrange;
             }
         }
 
-        // =========================================================================
-        // UTILITY METHODS
-        // =========================================================================
         private async Task RunProcessAsync(Func<Task> action)
         {
             PrgLoading.Visibility = Visibility.Visible;
             LnkFile.Visibility = Visibility.Collapsed;
 
-            // Désactiver les boutons pour éviter les doubles clics
             if (BtnRunSingle != null) BtnRunSingle.IsEnabled = false;
             if (BtnRunBatch != null) BtnRunBatch.IsEnabled = false;
             if (BtnRunActivation != null) BtnRunActivation.IsEnabled = false;
             if (BtnRunComparison != null) BtnRunComparison.IsEnabled = false;
 
-            // AJOUT : Activer le bouton d'annulation pendant l'exécution
             if (BtnCancelActivation != null) BtnCancelActivation.IsEnabled = true;
 
             TxtStatus.Foreground = System.Windows.Media.Brushes.Blue;
@@ -234,7 +211,6 @@ namespace AutoActivator.Gui
             }
             catch (OperationCanceledException)
             {
-                // AJOUT : Interception de l'annulation par l'utilisateur
                 TxtStatus.Text = "Opération annulée par l'utilisateur.";
                 TxtStatus.Foreground = System.Windows.Media.Brushes.DarkOrange;
             }
@@ -248,19 +224,17 @@ namespace AutoActivator.Gui
             {
                 PrgLoading.Visibility = Visibility.Collapsed;
 
-                // Réactiver les boutons normaux
                 if (BtnRunSingle != null) BtnRunSingle.IsEnabled = true;
                 if (BtnRunBatch != null) BtnRunBatch.IsEnabled = true;
                 if (BtnRunActivation != null) BtnRunActivation.IsEnabled = true;
 
-                // AJOUT : Désactiver le bouton d'annulation car l'opération est finie
                 if (BtnCancelActivation != null) BtnCancelActivation.IsEnabled = false;
 
-                // Le bouton de comparaison dépend des champs de texte
                 if (BtnRunComparison != null)
                 {
-                    BtnRunComparison.IsEnabled = !string.IsNullOrWhiteSpace(TxtBaseFile?.Text) &&
-                                                 !string.IsNullOrWhiteSpace(TxtTargetFile?.Text);
+                    BtnRunComparison.IsEnabled =
+                        !string.IsNullOrWhiteSpace(TxtBaseFile?.Text) &&
+                        !string.IsNullOrWhiteSpace(TxtTargetFile?.Text);
                 }
             }
         }
@@ -269,8 +243,10 @@ namespace AutoActivator.Gui
         {
             try
             {
-                if (Directory.Exists(_lastGeneratedPath)) Process.Start("explorer.exe", _lastGeneratedPath);
-                else if (File.Exists(_lastGeneratedPath)) Process.Start("explorer.exe", $"/select,\"{_lastGeneratedPath}\"");
+                if (Directory.Exists(_lastGeneratedPath))
+                    Process.Start("explorer.exe", _lastGeneratedPath);
+                else if (File.Exists(_lastGeneratedPath))
+                    Process.Start("explorer.exe", $"/select,\"{_lastGeneratedPath}\"");
             }
             catch (Exception ex)
             {

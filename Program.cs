@@ -59,9 +59,9 @@ namespace AutoActivator
             Console.ReadKey();
         }
 
-        // =========================================================================
+
         // 1. EXTRACTION
-        // =========================================================================
+
         private static void RunTestExtraction()
         {
             Console.WriteLine("\n--- Starting Extraction ---");
@@ -88,9 +88,9 @@ namespace AutoActivator
             }
         }
 
-        // =========================================================================
-        // 2. ACTIVATION
-        // =========================================================================
+
+        // ACTIVATION
+
         private static void RunActivation()
         {
             Console.WriteLine("\n--- Starting Activation Script ---");
@@ -98,11 +98,11 @@ namespace AutoActivator
             string envSuffix = Console.ReadLine() ?? "D000";
             if (string.IsNullOrWhiteSpace(envSuffix)) envSuffix = "D000";
 
-            // CORRECTION DE L'ERREUR ICI : On passe bien l'environnement au DatabaseManager
+
             var db = new DatabaseManager(envSuffix);
             if (!db.TestConnection()) return;
 
-            // Simulation: Replace with your actual list if needed
+
             var contratsSources = new List<string> { "182-2728195-31" };
 
             foreach (var oldContractExt in contratsSources)
@@ -114,7 +114,7 @@ namespace AutoActivator
                 if (dtId.Rows.Count > 0)
                 {
                     long idIntSource = Convert.ToInt64(dtId.Rows[0]["NO_CNT"]);
-                    // Snapshot logic...
+
                     Console.WriteLine($"   [OK] Contract identified for activation.");
                 }
                 else
@@ -124,19 +124,19 @@ namespace AutoActivator
             }
         }
 
-        // =========================================================================
+
         // 3. COMPARISON
-        // =========================================================================
+
         private static void RunComparison()
         {
             Console.WriteLine("\n--- Starting Comparator ---");
             Console.Write("Path to Base File (e.g., ExtractionLISA_...): ");
-            string baseFile = Console.ReadLine()?.Trim('\"'); // Trim des guillemets si glissé-déposé
+            string baseFile = Console.ReadLine()?.Trim('\"');
 
             Console.Write("Path to Target File (e.g., snapshot/ExtractionLISA_...): ");
             string targetFile = Console.ReadLine()?.Trim('\"');
 
-            // Suppression de la demande du nom de la table, on compare tout le fichier maintenant.
+
 
             if (!File.Exists(baseFile) || !File.Exists(targetFile))
             {
@@ -147,7 +147,7 @@ namespace AutoActivator
             var orchestrator = new ComparisonOrchestrator();
             try
             {
-                // Appel mis à jour avec 2 arguments uniquement
+
                 var report = orchestrator.RunFullComparison(baseFile, targetFile);
 
                 Console.WriteLine($"\n=== COMPARISON REPORT ===");

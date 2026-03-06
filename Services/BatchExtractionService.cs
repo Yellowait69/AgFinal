@@ -23,27 +23,27 @@ namespace AutoActivator.Services
             if (!File.Exists(filePath))
                 throw new FileNotFoundException("The specified CSV file could not be found.", filePath);
 
-            // Remplacement des deux StringBuilder par un seul
+            // Replacing the two StringBuilders with a single one
             StringBuilder globalCombined = new StringBuilder();
 
             List<string> processedTestIds = new List<string>();
 
-            // LECTURE LIGNE PAR LIGNE AVEC STREAMREADER (Résout le problème de RAM)
+            // LINE-BY-LINE READING WITH STREAMREADER (Resolves RAM issue)
             using (var reader = new StreamReader(filePath, Encoding.UTF8))
             {
                 string headerLine = reader.ReadLine();
 
-                // Nettoyage du BOM (Byte Order Mark) éventuel en début de fichier
+                // Cleaning up any potential BOM (Byte Order Mark) at the beginning of the file
                 if (headerLine != null && headerLine.StartsWith("\uFEFF"))
                     headerLine = headerLine.Substring(1);
 
                 if (string.IsNullOrWhiteSpace(headerLine))
                     throw new Exception("The CSV file is empty or contains only the header.");
 
-                // Détection automatique du séparateur le plus fréquent dans l'en-tête
+                // Automatic detection of the most frequent delimiter in the header
                 char delimiter = headerLine.Count(c => c == ';') > headerLine.Count(c => c == ',') ? ';' : ',';
 
-                // Parsing de l'en-tête avec la nouvelle fonction robuste
+                // Parsing the header with the new robust function
                 var headers = ParseCsvLine(headerLine, delimiter);
                 int contractIndex = 0, premiumIndex = -1, productIndex = -1, testIdIndex = -1;
 
@@ -59,17 +59,17 @@ namespace AutoActivator.Services
                 }
 
                 string line;
-                // Lecture du reste du fichier, ligne par ligne
+                // Reading the rest of the file, line by line
                 while ((line = reader.ReadLine()) != null)
                 {
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
-                    // Utilisation du parseur intelligent au lieu d'un simple .Split()
+                    // Using the smart parser instead of a simple .Split()
                     var columns = ParseCsvLine(line, delimiter);
 
                     if (columns.Count > contractIndex)
                     {
-                        // Le parseur retire déjà les guillemets, on garde Replace("=", "") au cas où Excel injecte ="valeur"
+                        // The parser already removes quotes, we keep Replace("=", "") just in case Excel injects ="value"
                         string contractNumber = columns[contractIndex].Replace("=", "").Trim();
                         string premiumAmount = (premiumIndex != -1 && columns.Count > premiumIndex) ? columns[premiumIndex].Replace("=", "").Trim() : "0";
                         string productValue = (productIndex != -1 && columns.Count > productIndex) ? columns[productIndex].Replace("=", "").Trim() : "N/A";
@@ -86,7 +86,7 @@ namespace AutoActivator.Services
                                 // Passing the environment parameter down to the ExtractionService
                                 ExtractionResult result = _extractionService.PerformExtraction(contractNumber, env, false);
 
-                                // Si on a des données, on les ajoute au StringBuilder combiné
+                                // If we have data, we add it to the combined StringBuilder
                                 if (!string.IsNullOrWhiteSpace(result.LisaContent) || !string.IsNullOrWhiteSpace(result.EliaContent))
                                 {
                                     globalCombined.AppendLine(new string('=', 80));
@@ -95,13 +95,13 @@ namespace AutoActivator.Services
 
                                     if (!string.IsNullOrWhiteSpace(result.LisaContent))
                                     {
-                                        globalCombined.AppendLine($"--- SECTION LISA ---");
+                                        globalCombined.AppendLine($"--- LISA SECTION ---");
                                         globalCombined.Append(result.LisaContent).AppendLine();
                                     }
 
                                     if (!string.IsNullOrWhiteSpace(result.EliaContent))
                                     {
-                                        globalCombined.AppendLine($"--- SECTION ELIA (UCON: {result.UconId}) ---");
+                                        globalCombined.AppendLine($"--- ELIA SECTION (UCON: {result.UconId}) ---");
                                         globalCombined.Append(result.EliaContent).AppendLine();
                                     }
                                 }
@@ -136,7 +136,7 @@ namespace AutoActivator.Services
                         }
                     }
                 }
-            } // Fin du using : le fichier est fermé proprement ici
+            }
 
             // --- SMART NAMING LOGIC ---
             string fileSignature = "NoContract";
@@ -175,7 +175,7 @@ namespace AutoActivator.Services
         }
 
         /// <summary>
-        /// Parseur CSV natif et robuste gérant les séparateurs présents à l'intérieur des guillemets.
+        /// Robust native CSV parser handling delimiters present inside quotes.
         /// </summary>
         private List<string> ParseCsvLine(string line, char delimiter)
         {
@@ -189,31 +189,28 @@ namespace AutoActivator.Services
 
                 if (c == '"')
                 {
-                    // Si on tombe sur un double guillemet à l'intérieur de guillemets, c'est un guillemet échappé ("")
+                    // If we encounter a double quote inside quotes, it's an escaped quote ("")
                     if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
                     {
                         currentField.Append('"');
-                        i++; // On saute le 2ème guillemet
+                        i++; // We skip the 2nd quote
                     }
                     else
                     {
-                        // On entre ou on sort des guillemets
                         inQuotes = !inQuotes;
                     }
                 }
                 else if (c == delimiter && !inQuotes)
                 {
-                    // Séparateur valide (hors guillemets) -> on sauvegarde la colonne
                     result.Add(currentField.ToString());
                     currentField.Clear();
                 }
                 else
                 {
-                    // Caractère classique (ou séparateur ignoré car entre guillemets)
                     currentField.Append(c);
                 }
             }
-            // Ajout de la toute dernière colonne
+
             result.Add(currentField.ToString());
 
             return result;
