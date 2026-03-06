@@ -112,20 +112,19 @@ namespace AutoActivator.Gui
                     case "D":
                         q2 = "Q2T";
                         fastCtrl = "I0T.DB.CA.FIB.FASTCTRL";
-                        envImsValue = "T"; // Map D to T
+                        envImsValue = "T";
                         break;
 
                     case "Q":
                         q2 = "Q2C";
                         fastCtrl = "I10.DB.CA.FIB.FASTCTRL";
-                        envImsValue = "C"; // Map Q to C
+                        envImsValue = "C";
                         break;
                 }
 
                 var generalVariables = new Dictionary<string, string>
                 {
-                    { "ENVIMS", envValue },
-                    { "ENVIMSTC", envImsValue },
+                    { "ENVIMS", envImsValue },
                     { "CUS", cus },
                     { "YYMMDD", DateTime.Now.ToString("yyMMdd") },
                     { "YYYY", DateTime.Now.ToString("yyyy") },
