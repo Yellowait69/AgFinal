@@ -104,7 +104,7 @@ namespace AutoActivator.Gui
                 string q2 = "Q2T";
                 string fastCtrl = "10T.DB.CA.FIB.FASTCTRL";
 
-                // Variable dédiée pour mapper l'environnement IMS
+
                 string envImsValue = "T";
 
                 switch (envValue)
@@ -124,7 +124,8 @@ namespace AutoActivator.Gui
 
                 var generalVariables = new Dictionary<string, string>
                 {
-                    { "ENVIMS", envImsValue }, // Utilisation de la variable mappée
+                    { "ENVIMS", envValue },
+                    { "ENVIMSTC", envImsValue },
                     { "CUS", cus },
                     { "YYMMDD", DateTime.Now.ToString("yyMMdd") },
                     { "YYYY", DateTime.Now.ToString("yyyy") },
