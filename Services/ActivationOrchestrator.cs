@@ -169,8 +169,9 @@ namespace AutoActivator.Services
                         {
                             string reportPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"REPORT_{jobName}.txt");
                             System.IO.File.WriteAllText(reportPath, reportContent);
-                            System.Diagnostics.Process.Start("notepad.exe", reportPath);
-                            onProgress($" Report for {jobName} opened !");
+
+                            // Ouverture du bloc-note (mouchard) retirée ici
+                            onProgress($" Report for {jobName} downloaded successfully !");
                         }
                         catch { }
                     }
