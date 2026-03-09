@@ -37,7 +37,7 @@ namespace AutoActivator.Gui
         }
 
         /// <summary>
-        /// Formate le numéro de contrat : supprime les tirets. Si longueur == 12, on retire le 1er et les 2 derniers.
+        /// Formate le numéro de contrat pour le JCL : si longueur == 12, on retire le 1er et les 2 derniers.
         /// Exemple : "123-4567899-10" -> "123456789910" -> "234567899"
         /// </summary>
         private string FormatContractNumber(string rawContract)
@@ -60,7 +60,11 @@ namespace AutoActivator.Gui
                 try
                 {
                     var db = new DatabaseManager(envSuffix);
-                    var dtElia = db.GetData(SqlQueries.Queries["GET_ELIA_ID"], new Dictionary<string, object> { { "@ContractNumber", contract } });
+
+                    // On nettoie le contrat (sans tirets) pour la recherche en DB
+                    string dbContract = contract.Replace("-", "").Replace(" ", "").Trim();
+
+                    var dtElia = db.GetData(SqlQueries.Queries["GET_ELIA_ID"], new Dictionary<string, object> { { "@ContractNumber", dbContract } });
 
                     if (dtElia.Rows.Count > 0)
                     {
@@ -105,9 +109,13 @@ namespace AutoActivator.Gui
                 if (string.IsNullOrEmpty(rawContract)) throw new Exception("Veuillez entrer un numéro de contrat.");
 
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Recherche de la prime en base de données...");
+
+                // On passe le contrat brut, la méthode FetchPremiumAsync se charge de le nettoyer pour la DB
                 string amount = await FetchPremiumAsync(rawContract, envValue + "000");
 
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Préparation de l'activation...");
+
+                // On formate pour le Mainframe (9 chiffres)
                 string formattedContract = FormatContractNumber(rawContract);
 
                 StringBuilder report = new StringBuilder();
@@ -246,7 +254,23 @@ namespace AutoActivator.Gui
             string fastCtrl = envValue == "D" ? "I0T.DB.CA.FIB.FASTCTRL" : "I10.DB.CA.FIB.FASTCTRL";
             string envImsValue = envValue == "D" ? "T" : "C";
 
-            // Formatage de la prime
+            // 1. Formatage ROBUSTE de la prime (Retire les virgules/points, ex: 12500.00 -> 1250000)
+            if (decimal.TryParse(amount.Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out decimal parsedAmount))
+            {
+                amount = Math.Round(parsedAmount * 100).ToString("0");
+            }
+            else
+            {
+                amount = "0";
+            }
+
+            // 2. Sécurité : On empêche l'activation si le montant est vide/nul
+            if (amount == "0" || amount == "0000000000")
+            {
+                throw new Exception("Montant (Premium) introuvable ou égal à 0€. L'activation a été annulée car elle ne produirait aucun effet. Vérifiez le contrat (12 chiffres nécessaires pour la DB).");
+            }
+
+            // 3. Formatage pour JCL (ajout des zéros devant)
             string paddedAmount = amount.PadLeft(10, '0');
             string paddedBucp = bucp.PadLeft(5, '0');
 
