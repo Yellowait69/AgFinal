@@ -52,6 +52,7 @@ namespace AutoActivator.Gui
 
         /// <summary>
         /// Interroge directement la DB pour récupérer la prime liée au contrat.
+        /// Identique à la logique de l'ExtractionService : On garde les tirets pour la requête SQL !
         /// </summary>
         private async Task<string> FetchPremiumAsync(string contract, string envSuffix)
         {
@@ -61,8 +62,8 @@ namespace AutoActivator.Gui
                 {
                     var db = new DatabaseManager(envSuffix);
 
-                    // On nettoie le contrat (sans tirets) pour la recherche en DB
-                    string dbContract = contract.Replace("-", "").Replace(" ", "").Trim();
+                    // On nettoie les espaces invisibles (comme dans l'Extraction) mais on GARDE LES TIRETS !
+                    string dbContract = contract.Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
 
                     var dtElia = db.GetData(SqlQueries.Queries["GET_ELIA_ID"], new Dictionary<string, object> { { "@ContractNumber", dbContract } });
 
@@ -110,12 +111,12 @@ namespace AutoActivator.Gui
 
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Recherche de la prime en base de données...");
 
-                // On passe le contrat brut, la méthode FetchPremiumAsync se charge de le nettoyer pour la DB
+                // On passe le contrat brut (AVEC TIRETS), la base de données pourra le trouver !
                 string amount = await FetchPremiumAsync(rawContract, envValue + "000");
 
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Préparation de l'activation...");
 
-                // On formate pour le Mainframe (9 chiffres)
+                // Une fois la prime trouvée, on formate le contrat pour le Mainframe (9 chiffres)
                 string formattedContract = FormatContractNumber(rawContract);
 
                 StringBuilder report = new StringBuilder();
@@ -267,7 +268,7 @@ namespace AutoActivator.Gui
             // 2. Sécurité : On empêche l'activation si le montant est vide/nul
             if (amount == "0" || amount == "0000000000")
             {
-                throw new Exception("Montant (Premium) introuvable ou égal à 0€. L'activation a été annulée car elle ne produirait aucun effet. Vérifiez le contrat (12 chiffres nécessaires pour la DB).");
+                throw new Exception("Montant (Premium) introuvable ou égal à 0€. L'activation a été annulée car elle ne produirait aucun effet. Vérifiez le contrat (12 chiffres/tirets nécessaires pour la DB).");
             }
 
             // 3. Formatage pour JCL (ajout des zéros devant)
