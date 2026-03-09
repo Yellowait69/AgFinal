@@ -22,7 +22,7 @@ namespace AutoActivator.Services
             {
                 onProgress("=== START OF ACTIVATION SEQUENCE ===");
 
-                // Utilisation de "ENV" (qui vaut D, Q, A, ou P) pour le serveur API
+                // CORRECTION ICI : On utilise "ENV" (qui vaut D, Q, A, ou P) pour le serveur API
                 string currentEnv = generalVariables.ContainsKey("ENV") ? generalVariables["ENV"] : "D";
 
                 onProgress($"Connecting to MicroFocus server ({currentEnv}000)...");
@@ -62,24 +62,21 @@ namespace AutoActivator.Services
         {
             onProgress($"\nPreparing job {jobName}...");
 
-            // CORRECTION 1: Création d'une copie locale des variables pour ne pas polluer le dictionnaire global
-            var localVariables = new Dictionary<string, string>(variables);
-
             // 1. Addition of the implicit JOBNAM variable required by the JCL scripts
-            localVariables["JOBNAM"] = jobName;
+            variables["JOBNAM"] = jobName;
 
             // Injecting the AP variable based on the current job
             if (jobName == "LVPP06U" || jobName == "LVPG22U")
             {
-                localVariables["AP"] = "LV";
+                variables["AP"] = "LV";
             }
             else if (jobName == "LI1J04D0" || jobName == "LI1J04D2")
             {
-                localVariables["AP"] = "LI";
+                variables["AP"] = "LI";
             }
 
-            // 2. Prepare the JCL via the dedicated service (en utilisant localVariables)
-            string readyContent = await _jclProcessor.GetPreparedJclAsync(jobName, localVariables, count);
+            // 2. Prepare the JCL via the dedicated service
+            string readyContent = await _jclProcessor.GetPreparedJclAsync(jobName, variables, count);
 
             if (jobName == "LVPG22U")
             {
@@ -99,8 +96,8 @@ namespace AutoActivator.Services
                     readyContent = readyContent.Replace("$JOBNAME", subJobName);
                 }
 
-                string envLetter = localVariables.ContainsKey("ENVIMS") ? localVariables["ENVIMS"] : "T";
-                string notifyUser = localVariables.ContainsKey("USERNAME") ? localVariables["USERNAME"] : "XA3894";
+                string envLetter = variables.ContainsKey("ENVIMS") ? variables["ENVIMS"] : "T";
+                string notifyUser = variables.ContainsKey("USERNAME") ? variables["USERNAME"] : "XA3894";
 
                 string dataMarker = "DLM=##";
                 int dataIndex = readyContent.IndexOf(dataMarker);
@@ -136,7 +133,6 @@ namespace AutoActivator.Services
             // 4. Active waiting (Polling) with return code verification
             int[] sleepDelays = { 1, 2, 3, 5, 8, 10, 15, 30, 30, 30, 30, 30, 45, 60 };
             bool finished = false;
-            string finalReturnCode = "UNKNOWN"; // CORRECTION 2: Pour garder le vrai RC pour l'affichage final
 
             for (int i = 0; i < sleepDelays.Length; i++)
             {
@@ -158,8 +154,6 @@ namespace AutoActivator.Services
                     string cleanRC = ReturnCode.TrimStart('0');
                     if (string.IsNullOrEmpty(cleanRC)) cleanRC = "0";
 
-                    finalReturnCode = cleanRC; // Sauvegarde du vrai RC nettoyé
-
                     // Verification of the business return code (accepting 0 or 4)
                     if (cleanRC != "0" && cleanRC != "4")
                     {
@@ -175,13 +169,10 @@ namespace AutoActivator.Services
                         {
                             string reportPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"REPORT_{jobName}.txt");
                             System.IO.File.WriteAllText(reportPath, reportContent);
-                            onProgress($" Report for {jobName} downloaded successfully at {reportPath}");
+                            System.Diagnostics.Process.Start("notepad.exe", reportPath);
+                            onProgress($" Report for {jobName} opened !");
                         }
-                        catch (Exception ex)
-                        {
-                            // CORRECTION 3: On ne masque plus l'erreur d'écriture, on l'affiche au moins dans les logs
-                            onProgress($"[WARNING] Failed to save the report to disk: {ex.Message}");
-                        }
+                        catch { }
                     }
 
                     finished = true;
@@ -191,8 +182,7 @@ namespace AutoActivator.Services
 
             if (!finished) throw new Exception($"Job {JobNum} ({jobName}) exceeded the timeout. Please check manually in ESCWA.");
 
-            // CORRECTION 2: On affiche finalReturnCode au lieu de JobNum
-            onProgress($" Job {jobName} completed successfully (RC: {finalReturnCode}) !");
+            onProgress($" Job {jobName} completed successfully (RC: {JobNum}) !");
         }
     }
 }
