@@ -37,22 +37,18 @@ namespace AutoActivator.Gui
         }
 
         /// <summary>
-        /// Formate le numéro de contrat pour le JCL : si longueur == 12, on retire le 1er et les 2 derniers.
-        /// Exemple : "123-4567899-10" -> "123456789910" -> "234567899"
+        /// Formate le numéro de contrat pour le JCL (12 chiffres).
+        /// On retire simplement les tirets.
+        /// Exemple : "182-2765642-36" -> "182276564236"
         /// </summary>
         private string FormatContractNumber(string rawContract)
         {
-            string cleaned = rawContract.Replace("-", "").Replace(" ", "").Trim();
-            if (cleaned.Length == 12)
-            {
-                return cleaned.Substring(1, 9);
-            }
-            return cleaned;
+            return rawContract.Replace("-", "").Replace(" ", "").Trim();
         }
 
         /// <summary>
         /// Interroge directement la DB pour récupérer la prime liée au contrat.
-        /// Identique à la logique de l'ExtractionService : On garde les tirets pour la requête SQL !
+        /// La recherche se fait avec les tirets pour que la DB trouve l'UCON ID.
         /// </summary>
         private async Task<string> FetchPremiumAsync(string contract, string envSuffix)
         {
@@ -62,7 +58,7 @@ namespace AutoActivator.Gui
                 {
                     var db = new DatabaseManager(envSuffix);
 
-                    // On nettoie les espaces invisibles (comme dans l'Extraction) mais on GARDE LES TIRETS !
+                    // On nettoie les espaces invisibles mais on GARDE LES TIRETS pour la DB !
                     string dbContract = contract.Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
 
                     var dtElia = db.GetData(SqlQueries.Queries["GET_ELIA_ID"], new Dictionary<string, object> { { "@ContractNumber", dbContract } });
@@ -111,12 +107,10 @@ namespace AutoActivator.Gui
 
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Recherche de la prime en base de données...");
 
-                // On passe le contrat brut (AVEC TIRETS), la base de données pourra le trouver !
                 string amount = await FetchPremiumAsync(rawContract, envValue + "000");
 
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Préparation de l'activation...");
 
-                // Une fois la prime trouvée, on formate le contrat pour le Mainframe (9 chiffres)
                 string formattedContract = FormatContractNumber(rawContract);
 
                 StringBuilder report = new StringBuilder();
@@ -126,11 +120,11 @@ namespace AutoActivator.Gui
                 try
                 {
                     await ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, _cts.Token);
-                    report.AppendLine($"Contrat Original: {rawContract} | Contrat Modifié: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: SUCCÈS");
+                    report.AppendLine($"Contrat Original: {rawContract} | Contrat Modifié (12 ch.): {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: SUCCÈS");
                 }
                 catch (Exception ex)
                 {
-                    report.AppendLine($"Contrat Original: {rawContract} | Contrat Modifié: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: ÉCHEC ({ex.Message})");
+                    report.AppendLine($"Contrat Original: {rawContract} | Contrat Modifié (12 ch.): {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: ÉCHEC ({ex.Message})");
                     throw; // On relance l'erreur pour l'afficher à l'utilisateur
                 }
                 finally
@@ -209,6 +203,8 @@ namespace AutoActivator.Gui
                         if (columns.Count <= contractIdx) continue;
 
                         string rawContract = columns[contractIdx].Replace("=", "").Trim();
+                        // Pour le batch on recupere la valeur mais on va qd meme l'écraser par celle de la db si on veut pour etre consistant
+                        // mais ici j'ai laissé la recuperation CSV car c'etait votre demande initiale.
                         string amount = (premiumIdx != -1 && columns.Count > premiumIdx) ? columns[premiumIdx].Replace("=", "").Trim() : "0";
                         if (string.IsNullOrEmpty(rawContract)) continue;
 
@@ -219,16 +215,13 @@ namespace AutoActivator.Gui
                         try
                         {
                             await ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, _cts.Token);
-                            // Rapport avec toutes les données demandées (Succès)
                             report.AppendLine($"[SUCCÈS] Contrat: {rawContract} -> {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount}");
                             successCount++;
                         }
                         catch (Exception ex)
                         {
-                            // Rapport avec toutes les données demandées (Échec)
                             report.AppendLine($"[ÉCHEC]  Contrat: {rawContract} -> {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Erreur: {ex.Message}");
                             errorCount++;
-                            // On "avale" l'erreur pour continuer la boucle sur le contrat suivant
                         }
                     }
                 }
@@ -255,25 +248,16 @@ namespace AutoActivator.Gui
             string fastCtrl = envValue == "D" ? "I0T.DB.CA.FIB.FASTCTRL" : "I10.DB.CA.FIB.FASTCTRL";
             string envImsValue = envValue == "D" ? "T" : "C";
 
-            // 1. Formatage ROBUSTE de la prime (Retire les virgules/points, ex: 12500.00 -> 1250000)
-            if (decimal.TryParse(amount.Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out decimal parsedAmount))
+            // Sécurité : On empêche l'activation si le montant est vide ou nul
+            if (string.IsNullOrWhiteSpace(amount) || amount == "0" || amount == "0.0" || amount == "0.00")
             {
-                amount = Math.Round(parsedAmount * 100).ToString("0");
-            }
-            else
-            {
-                amount = "0";
+                throw new Exception("Montant (Premium) introuvable ou égal à 0€. L'activation a été annulée car elle ne produirait aucun effet. Vérifiez le contrat.");
             }
 
-            // 2. Sécurité : On empêche l'activation si le montant est vide/nul
-            if (amount == "0" || amount == "0000000000")
-            {
-                throw new Exception("Montant (Premium) introuvable ou égal à 0€. L'activation a été annulée car elle ne produirait aucun effet. Vérifiez le contrat (12 chiffres/tirets nécessaires pour la DB).");
-            }
-
-            // 3. Formatage pour JCL (ajout des zéros devant)
-            string paddedAmount = amount.PadLeft(10, '0');
-            string paddedBucp = bucp.PadLeft(5, '0');
+            // CORRECTION DU FORMATAGE : On fait un PadLeft simple comme dans l'ancien code.
+            // Pas de parsing decimal pour eviter de modifier la donnee.
+            string paddedAmount = amount.Trim().PadLeft(10, '0');
+            string paddedBucp = bucp.Trim().PadLeft(5, '0');
 
             var generalVariables = new Dictionary<string, string>
             {
