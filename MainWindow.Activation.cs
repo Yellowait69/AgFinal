@@ -188,12 +188,12 @@ namespace AutoActivator.Gui
                     char delimiter = headerLine.Count(c => c == ';') > headerLine.Count(c => c == ',') ? ';' : ',';
                     var headers = ParseCsvLine(headerLine, delimiter);
 
-                    int contractIdx = -1, premiumIdx = -1;
+                    int contractIdx = -1;
+                    // L'index de prime (premiumIdx) n'est plus utile puisqu'on va interroger la base de données
                     for (int i = 0; i < headers.Count; i++)
                     {
                         string h = headers[i].Trim().ToLower();
                         if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa")) contractIdx = i;
-                        if (h.Contains("premium") || h.Contains("prime") || h.Contains("amount")) premiumIdx = i;
                     }
 
                     if (contractIdx == -1) throw new Exception("Colonne de contrat introuvable dans le CSV.");
@@ -208,9 +208,13 @@ namespace AutoActivator.Gui
                         var columns = ParseCsvLine(line, delimiter);
                         if (columns.Count <= contractIdx) continue;
 
-                        string rawContract = columns[contractIdx].Replace("=", "").Trim();
-                        string amount = (premiumIdx != -1 && columns.Count > premiumIdx) ? columns[premiumIdx].Replace("=", "").Trim() : "0";
+                        // CORRECTION 1 : Nettoyage complet des caractères invisibles (insécables, etc)
+                        string rawContract = columns[contractIdx].Replace("=", "").Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
                         if (string.IsNullOrEmpty(rawContract)) continue;
+
+                        // CORRECTION 2 : Appel à la base de données pour récupérer le montant exact
+                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Batch en cours: Recherche prime pour {rawContract} (Ligne {rowNum})...");
+                        string amount = await FetchPremiumAsync(rawContract, envValue + "000");
 
                         string formattedContract = FormatContractNumber(rawContract);
 
