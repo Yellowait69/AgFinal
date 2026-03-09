@@ -52,7 +52,7 @@ namespace AutoActivator.Gui
 
         /// <summary>
         /// Interroge directement la DB pour récupérer la prime liée au contrat.
-        /// La recherche se fait avec les tirets pour que la DB trouve l'UCON ID.
+        /// (Conservé uniquement si besoin futur, n'est plus appelé dans l'activation unitaire)
         /// </summary>
         private async Task<string> FetchPremiumAsync(string contract, string envSuffix)
         {
@@ -92,6 +92,7 @@ namespace AutoActivator.Gui
             await RunProcessAsync(async () =>
             {
                 string rawContract = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8";
+                string amount = "0";
                 string username = Settings.DbConfig.Uid;
                 string password = Settings.DbConfig.Pwd;
 
@@ -101,6 +102,10 @@ namespace AutoActivator.Gui
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     rawContract = TxtActContract.Text.Trim();
+
+                    // On récupère le montant tapé par l'utilisateur (comme dans l'ancien code)
+                    amount = TxtActAmount?.Text?.Trim() ?? "0";
+
                     if (CmbActEnv.SelectedItem is System.Windows.Controls.ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
                     cus = TxtActCus.Text.Trim();
                     // CORRECTION : Utilisation de Tag au lieu de Content
@@ -110,9 +115,8 @@ namespace AutoActivator.Gui
 
                 if (string.IsNullOrEmpty(rawContract)) throw new Exception("Veuillez entrer un numéro de contrat.");
 
-                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Recherche de la prime en base de données...");
-
-                string amount = await FetchPremiumAsync(rawContract, envValue + "000");
+                // Vérification optionnelle avant de lancer toute la machine
+                if (string.IsNullOrEmpty(amount) || amount == "0") throw new Exception("Veuillez saisir un montant (Amount) valide pour l'activation.");
 
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Préparation de l'activation...");
 
@@ -127,11 +131,11 @@ namespace AutoActivator.Gui
                 {
                     // CORRECTION : On passe rawContract au lieu de formattedContract
                     await ExecuteActivationSequenceAsync(rawContract, amount, envValue, cus, bucp, cmdpmt, username, password, _cts.Token);
-                    report.AppendLine($"Contrat: {rawContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: SUCCÈS");
+                    report.AppendLine($"Contrat: {rawContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount (Saisi): {amount} | Statut: SUCCÈS");
                 }
                 catch (Exception ex)
                 {
-                    report.AppendLine($"Contrat: {rawContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: ÉCHEC ({ex.Message})");
+                    report.AppendLine($"Contrat: {rawContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount (Saisi): {amount} | Statut: ÉCHEC ({ex.Message})");
                     throw; // On relance l'erreur pour l'afficher à l'utilisateur
                 }
                 finally
@@ -211,6 +215,7 @@ namespace AutoActivator.Gui
                         if (columns.Count <= contractIdx) continue;
 
                         string rawContract = columns[contractIdx].Replace("=", "").Trim();
+                        // Le batch continue de lire le montant depuis le CSV
                         string amount = (premiumIdx != -1 && columns.Count > premiumIdx) ? columns[premiumIdx].Replace("=", "").Trim() : "0";
                         if (string.IsNullOrEmpty(rawContract)) continue;
 
@@ -261,7 +266,7 @@ namespace AutoActivator.Gui
             // Sécurité : On empêche l'activation si le montant est vide ou nul
             if (string.IsNullOrWhiteSpace(amount) || amount == "0" || amount == "0.0" || amount == "0.00" || amount == "0000000000")
             {
-                throw new Exception("Montant (Premium) introuvable ou égal à 0€. L'activation a été annulée car elle ne produirait aucun effet. Vérifiez le contrat.");
+                throw new Exception("Montant (Amount) introuvable ou égal à 0. L'activation a été annulée car elle ne produirait aucun effet. Vérifiez votre saisie.");
             }
 
             // CORRECTION DU FORMATAGE : On fait un PadLeft simple comme dans l'ancien code.
