@@ -37,8 +37,8 @@ namespace AutoActivator.Gui
         }
 
         /// <summary>
-        /// Formate le numéro de contrat pour un usage d'affichage ou nom de fichier.
-        /// (Attention : ne pas utiliser cette valeur pour le JCL, le Mainframe a besoin du format complet)
+        /// Formate le numéro de contrat pour le JCL : si longueur == 12, on retire le 1er et les 2 derniers.
+        /// Exemple : "123-4567899-10" -> "123456789910" -> "234567899"
         /// </summary>
         private string FormatContractNumber(string rawContract)
         {
@@ -52,7 +52,7 @@ namespace AutoActivator.Gui
 
         /// <summary>
         /// Interroge directement la DB pour récupérer la prime liée au contrat.
-        /// (Conservé uniquement si besoin futur, n'est plus appelé dans l'activation unitaire)
+        /// Identique à la logique de l'ExtractionService : On garde les tirets pour la requête SQL !
         /// </summary>
         private async Task<string> FetchPremiumAsync(string contract, string envSuffix)
         {
@@ -62,7 +62,7 @@ namespace AutoActivator.Gui
                 {
                     var db = new DatabaseManager(envSuffix);
 
-                    // On nettoie les espaces invisibles mais on GARDE LES TIRETS pour la DB !
+                    // On nettoie les espaces invisibles (comme dans l'Extraction) mais on GARDE LES TIRETS !
                     string dbContract = contract.Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
 
                     var dtElia = db.GetData(SqlQueries.Queries["GET_ELIA_ID"], new Dictionary<string, object> { { "@ContractNumber", dbContract } });
@@ -92,7 +92,6 @@ namespace AutoActivator.Gui
             await RunProcessAsync(async () =>
             {
                 string rawContract = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8";
-                string amount = "0";
                 string username = Settings.DbConfig.Uid;
                 string password = Settings.DbConfig.Pwd;
 
@@ -102,25 +101,22 @@ namespace AutoActivator.Gui
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     rawContract = TxtActContract.Text.Trim();
-
-                    // On récupère le montant tapé par l'utilisateur (comme dans l'ancien code)
-                    amount = TxtActAmount?.Text?.Trim() ?? "0";
-
                     if (CmbActEnv.SelectedItem is System.Windows.Controls.ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
                     cus = TxtActCus.Text.Trim();
-                    // CORRECTION : Utilisation de Tag au lieu de Content
-                    if (CmbActBucp.SelectedItem is System.Windows.Controls.ComboBoxItem bItem) bucp = bItem.Tag?.ToString() ?? "382";
-                    if (CmbActCmdpmt.SelectedItem is System.Windows.Controls.ComboBoxItem cItem) cmdpmt = cItem.Tag?.ToString() ?? "8";
+                    if (CmbActBucp.SelectedItem is System.Windows.Controls.ComboBoxItem bItem) bucp = bItem.Content?.ToString() ?? "382";
+                    if (CmbActCmdpmt.SelectedItem is System.Windows.Controls.ComboBoxItem cItem) cmdpmt = cItem.Content?.ToString() ?? "8";
                 });
 
                 if (string.IsNullOrEmpty(rawContract)) throw new Exception("Veuillez entrer un numéro de contrat.");
 
-                // Vérification optionnelle avant de lancer toute la machine
-                if (string.IsNullOrEmpty(amount) || amount == "0") throw new Exception("Veuillez saisir un montant (Amount) valide pour l'activation.");
+                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Recherche de la prime en base de données...");
+
+                // On passe le contrat brut (AVEC TIRETS), la base de données pourra le trouver !
+                string amount = await FetchPremiumAsync(rawContract, envValue + "000");
 
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Préparation de l'activation...");
 
-                // Formate en 9 chiffres uniquement pour le nom de fichier/logs
+                // Une fois la prime trouvée, on formate le contrat pour le Mainframe (9 chiffres)
                 string formattedContract = FormatContractNumber(rawContract);
 
                 StringBuilder report = new StringBuilder();
@@ -129,13 +125,12 @@ namespace AutoActivator.Gui
 
                 try
                 {
-                    // CORRECTION : On passe rawContract au lieu de formattedContract
-                    await ExecuteActivationSequenceAsync(rawContract, amount, envValue, cus, bucp, cmdpmt, username, password, _cts.Token);
-                    report.AppendLine($"Contrat: {rawContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount (Saisi): {amount} | Statut: SUCCÈS");
+                    await ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, _cts.Token);
+                    report.AppendLine($"Contrat Original: {rawContract} | Contrat Modifié: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: SUCCÈS");
                 }
                 catch (Exception ex)
                 {
-                    report.AppendLine($"Contrat: {rawContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount (Saisi): {amount} | Statut: ÉCHEC ({ex.Message})");
+                    report.AppendLine($"Contrat Original: {rawContract} | Contrat Modifié: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: ÉCHEC ({ex.Message})");
                     throw; // On relance l'erreur pour l'afficher à l'utilisateur
                 }
                 finally
@@ -171,9 +166,8 @@ namespace AutoActivator.Gui
                     csvPath = TxtBatchActCsv.Text.Trim();
                     if (CmbActEnv.SelectedItem is System.Windows.Controls.ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
                     cus = TxtActCus.Text.Trim();
-                    // CORRECTION : Utilisation de Tag au lieu de Content
-                    if (CmbActBucp.SelectedItem is System.Windows.Controls.ComboBoxItem bItem) bucp = bItem.Tag?.ToString() ?? "382";
-                    if (CmbActCmdpmt.SelectedItem is System.Windows.Controls.ComboBoxItem cItem) cmdpmt = cItem.Tag?.ToString() ?? "8";
+                    if (CmbActBucp.SelectedItem is System.Windows.Controls.ComboBoxItem bItem) bucp = bItem.Content?.ToString() ?? "382";
+                    if (CmbActCmdpmt.SelectedItem is System.Windows.Controls.ComboBoxItem cItem) cmdpmt = cItem.Content?.ToString() ?? "8";
                 });
 
                 if (string.IsNullOrEmpty(csvPath) || !File.Exists(csvPath)) throw new Exception("Veuillez sélectionner un fichier CSV valide.");
@@ -215,25 +209,26 @@ namespace AutoActivator.Gui
                         if (columns.Count <= contractIdx) continue;
 
                         string rawContract = columns[contractIdx].Replace("=", "").Trim();
-                        // Le batch continue de lire le montant depuis le CSV
                         string amount = (premiumIdx != -1 && columns.Count > premiumIdx) ? columns[premiumIdx].Replace("=", "").Trim() : "0";
                         if (string.IsNullOrEmpty(rawContract)) continue;
 
                         string formattedContract = FormatContractNumber(rawContract);
 
-                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Batch en cours: Activation de {rawContract} (Ligne {rowNum++})...");
+                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Batch en cours: Activation de {formattedContract} (Ligne {rowNum++})...");
 
                         try
                         {
-                            // CORRECTION : On passe rawContract au lieu de formattedContract
-                            await ExecuteActivationSequenceAsync(rawContract, amount, envValue, cus, bucp, cmdpmt, username, password, _cts.Token);
-                            report.AppendLine($"[SUCCÈS] Contrat: {rawContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount}");
+                            await ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, _cts.Token);
+                            // Rapport avec toutes les données demandées (Succès)
+                            report.AppendLine($"[SUCCÈS] Contrat: {rawContract} -> {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount}");
                             successCount++;
                         }
                         catch (Exception ex)
                         {
-                            report.AppendLine($"[ÉCHEC]  Contrat: {rawContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Erreur: {ex.Message}");
+                            // Rapport avec toutes les données demandées (Échec)
+                            report.AppendLine($"[ÉCHEC]  Contrat: {rawContract} -> {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Erreur: {ex.Message}");
                             errorCount++;
+                            // On "avale" l'erreur pour continuer la boucle sur le contrat suivant
                         }
                     }
                 }
@@ -260,27 +255,32 @@ namespace AutoActivator.Gui
             string fastCtrl = envValue == "D" ? "I0T.DB.CA.FIB.FASTCTRL" : "I10.DB.CA.FIB.FASTCTRL";
             string envImsValue = envValue == "D" ? "T" : "C";
 
-            // Nettoyage de sécurité
-            amount = amount?.Trim() ?? "0";
-
-            // Sécurité : On empêche l'activation si le montant est vide ou nul
-            if (string.IsNullOrWhiteSpace(amount) || amount == "0" || amount == "0.0" || amount == "0.00" || amount == "0000000000")
+            // 1. Formatage ROBUSTE de la prime (Retire les virgules/points, ex: 12500.00 -> 1250000)
+            if (decimal.TryParse(amount.Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out decimal parsedAmount))
             {
-                throw new Exception("Montant (Amount) introuvable ou égal à 0. L'activation a été annulée car elle ne produirait aucun effet. Vérifiez votre saisie.");
+                amount = Math.Round(parsedAmount * 100).ToString("0");
+            }
+            else
+            {
+                amount = "0";
             }
 
-            // CORRECTION DU FORMATAGE : On fait un PadLeft simple comme dans l'ancien code.
+            // 2. Sécurité : On empêche l'activation si le montant est vide/nul
+            if (amount == "0" || amount == "0000000000")
+            {
+                throw new Exception("Montant (Premium) introuvable ou égal à 0€. L'activation a été annulée car elle ne produirait aucun effet. Vérifiez le contrat (12 chiffres/tirets nécessaires pour la DB).");
+            }
+
+            // 3. Formatage pour JCL (ajout des zéros devant)
             string paddedAmount = amount.PadLeft(10, '0');
-            string paddedBucp = bucp.Trim().PadLeft(5, '0');
+            string paddedBucp = bucp.PadLeft(5, '0');
 
             var generalVariables = new Dictionary<string, string>
             {
                 { "ENV", envValue }, { "ENVIMS", envImsValue }, { "CUS", cus },
                 { "YYMMDD", DateTime.Now.ToString("yyMMdd") }, { "YYYY", DateTime.Now.ToString("yyyy") },
                 { "MM", DateTime.Now.ToString("MM") }, { "DD", DateTime.Now.ToString("dd") },
-                { "CLASS", "A" },
-                { "CNTBEG", contract }, // Sera bien le contrat brut avec les tirets
-                { "CNTEND", contract }, // Sera bien le contrat brut avec les tirets
+                { "CLASS", "A" }, { "CNTBEG", contract }, { "CNTEND", contract },
                 { "MMDD", DateTime.Now.ToString("MMdd") }, { "CYMD", DateTime.Now.ToString("yyyyMMdd") },
                 { "STE", "A" }, { "Q2", q2 }, { "CM.", "     " },
                 { "DRUN", DateTime.Now.ToString("yyyyMMdd") }, { "NREMB", "20" },
@@ -290,10 +290,8 @@ namespace AutoActivator.Gui
 
             var addprctVariables = new Dictionary<string, string>
             {
-                { "CMDPMT", cmdpmt },
-                { "AMOUNT", paddedAmount },
-                { "BUCP", paddedBucp },
-                { "USERNAME", username }
+                { "CMDPMT", cmdpmt }, { "AMOUNT", paddedAmount },
+                { "BUCP", paddedBucp }, { "USERNAME", username }
             };
 
             string jclFolder = @"\\Jafile02\elia\11 - Technical Architecture\11 - IS Tooling\01 - Tools\LVCHAIN\JCL";
