@@ -37,13 +37,18 @@ namespace AutoActivator.Gui
         }
 
         /// <summary>
-        /// Formate le numéro de contrat pour le JCL (12 chiffres).
-        /// On retire simplement les tirets.
-        /// Exemple : "182-2765642-36" -> "182276564236"
+        /// Formate le numéro de contrat pour le JCL (9 chiffres).
+        /// On retire les tirets. Si longueur == 12, on retire le 1er et les 2 derniers.
+        /// Exemple : "182-2765642-36" -> "182276564236" -> "822765642"
         /// </summary>
         private string FormatContractNumber(string rawContract)
         {
-            return rawContract.Replace("-", "").Replace(" ", "").Trim();
+            string cleaned = rawContract.Replace("-", "").Replace(" ", "").Trim();
+            if (cleaned.Length == 12)
+            {
+                return cleaned.Substring(1, 9);
+            }
+            return cleaned;
         }
 
         /// <summary>
@@ -111,6 +116,7 @@ namespace AutoActivator.Gui
 
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Préparation de l'activation...");
 
+                // Formate en 9 chiffres (sans tirets, -1er, -2derniers)
                 string formattedContract = FormatContractNumber(rawContract);
 
                 StringBuilder report = new StringBuilder();
@@ -120,11 +126,11 @@ namespace AutoActivator.Gui
                 try
                 {
                     await ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, _cts.Token);
-                    report.AppendLine($"Contrat Original: {rawContract} | Contrat Modifié (12 ch.): {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: SUCCÈS");
+                    report.AppendLine($"Contrat Original: {rawContract} | Contrat Modifié (9 ch.): {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: SUCCÈS");
                 }
                 catch (Exception ex)
                 {
-                    report.AppendLine($"Contrat Original: {rawContract} | Contrat Modifié (12 ch.): {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: ÉCHEC ({ex.Message})");
+                    report.AppendLine($"Contrat Original: {rawContract} | Contrat Modifié (9 ch.): {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: ÉCHEC ({ex.Message})");
                     throw; // On relance l'erreur pour l'afficher à l'utilisateur
                 }
                 finally
@@ -208,6 +214,7 @@ namespace AutoActivator.Gui
                         string amount = (premiumIdx != -1 && columns.Count > premiumIdx) ? columns[premiumIdx].Replace("=", "").Trim() : "0";
                         if (string.IsNullOrEmpty(rawContract)) continue;
 
+                        // Formate en 9 chiffres
                         string formattedContract = FormatContractNumber(rawContract);
 
                         Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Batch en cours: Activation de {formattedContract} (Ligne {rowNum++})...");
