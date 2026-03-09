@@ -210,12 +210,14 @@ namespace AutoActivator.Gui
                         try
                         {
                             await ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, _cts.Token);
-                            report.AppendLine($"[SUCCÈS] Contrat original: {rawContract} | Contrat modifié: {formattedContract} | Montant: {amount}");
+                            // Rapport avec toutes les données demandées (Succès)
+                            report.AppendLine($"[SUCCÈS] Contrat: {rawContract} -> {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount}");
                             successCount++;
                         }
                         catch (Exception ex)
                         {
-                            report.AppendLine($"[ÉCHEC] Contrat original: {rawContract} | Contrat modifié: {formattedContract} | Montant: {amount} | Erreur: {ex.Message}");
+                            // Rapport avec toutes les données demandées (Échec)
+                            report.AppendLine($"[ÉCHEC]  Contrat: {rawContract} -> {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Erreur: {ex.Message}");
                             errorCount++;
                             // On "avale" l'erreur pour continuer la boucle sur le contrat suivant
                         }
