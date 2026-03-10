@@ -37,10 +37,10 @@ namespace AutoActivator.Gui
         }
 
         /// <summary>
-        /// Formate le numéro de contrat pour le JCL : si longueur == 12, on retire le 1er et les 2 derniers.
+        /// Formate le numéro de contrat pour le JCL (Activation) : si longueur == 12, on retire le 1er et les 2 derniers.
         /// Exemple : "123-4567899-10" -> "123456789910" -> "234567899"
         /// </summary>
-        private string FormatContractNumber(string rawContract)
+        private string FormatContractForJcl(string rawContract)
         {
             string cleaned = rawContract.Replace("-", "").Replace(" ", "").Trim();
             if (cleaned.Length == 12)
@@ -117,7 +117,7 @@ namespace AutoActivator.Gui
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Préparation de l'activation...");
 
                 // Une fois la prime trouvée, on formate le contrat pour le Mainframe (9 chiffres)
-                string formattedContract = FormatContractNumber(rawContract);
+                string formattedContract = FormatContractForJcl(rawContract);
 
                 StringBuilder report = new StringBuilder();
                 report.AppendLine("=== RAPPORT D'ACTIVATION UNITAIRE ===");
@@ -216,7 +216,8 @@ namespace AutoActivator.Gui
                         Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Batch en cours: Recherche prime pour {rawContract} (Ligne {rowNum})...");
                         string amount = await FetchPremiumAsync(rawContract, envValue + "000");
 
-                        string formattedContract = FormatContractNumber(rawContract);
+                        // Appel de la méthode renommée pour éviter les conflits
+                        string formattedContract = FormatContractForJcl(rawContract);
 
                         Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Batch en cours: Activation de {formattedContract} (Ligne {rowNum++})...");
 
