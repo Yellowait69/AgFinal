@@ -115,8 +115,8 @@
 
                                 <StackPanel Margin="0,0,0,15" Orientation="Horizontal">
                                     <TextBlock Text="Input Type:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                    <RadioButton x:Name="RbBatchSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand"/>
-                                    <RadioButton x:Name="RbBatchSearchDemand" Content="Demand ID" VerticalAlignment="Center" Cursor="Hand"/>
+                                    <RadioButton x:Name="RbBatchSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="BatchInputType_Checked"/>
+                                    <RadioButton x:Name="RbBatchSearchDemand" Content="Demand ID" VerticalAlignment="Center" Cursor="Hand" Checked="BatchInputType_Checked"/>
                                 </StackPanel>
 
                                 <TextBlock Text="Environment D000 (CSV File):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>

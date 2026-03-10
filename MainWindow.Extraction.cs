@@ -47,6 +47,21 @@ namespace AutoActivator.Gui
             }
         }
 
+        // NOUVEAU : Méthode pour vider les champs du Batch Extraction lors du changement de type de recherche
+        private void BatchInputType_Checked(object sender, RoutedEventArgs e)
+        {
+            // On s'assure que les éléments visuels sont bien initialisés avant de vider le texte
+            if (TxtBatchD != null)
+            {
+                TxtBatchD.Text = string.Empty;
+            }
+
+            if (TxtBatchQ != null)
+            {
+                TxtBatchQ.Text = string.Empty;
+            }
+        }
+
         private async void BtnRunSingle_Click(object sender, RoutedEventArgs e)
         {
             string valueD = TxtSingleD?.Text.Trim();

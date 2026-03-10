@@ -29,7 +29,7 @@ namespace AutoActivator.Services
             {
                 string line;
                 char delimiter = ';';
-                int contractIndex = -1, premiumIndex = -1, testIdIndex = -1;
+                int contractIndex = -1, testIdIndex = -1; // premiumIndex a été supprimé
                 bool headerFound = false;
 
                 // --- 1. RECHERCHE INTELLIGENTE DE L'EN-TÊTE ---
@@ -52,7 +52,7 @@ namespace AutoActivator.Services
 
                         // On vérifie si la colonne contient nos mots clés (value, demand, contract...)
                         if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa") || h.Contains("value") || h.Contains("demand")) contractIndex = i;
-                        if (h.Contains("premium") || h.Contains("prime")) premiumIndex = i;
+                        // La recherche de la colonne "premium" a été supprimée ici
                         if (h.Contains("test") || h.Contains("id test") || h.Contains("idtest")) testIdIndex = i;
                     }
 
@@ -79,7 +79,7 @@ namespace AutoActivator.Services
                     {
                         // On nettoie les éventuels caractères parasites (comme les guillemets ou le =)
                         string contractNumber = columns[contractIndex].Replace("=", "").Replace("\"", "").Trim();
-                        string premiumAmount = (premiumIndex != -1 && columns.Count > premiumIndex) ? columns[premiumIndex].Replace("=", "").Trim() : "0";
+                        // La lecture de premiumAmount depuis le CSV a été supprimée ici
 
                         string testId = (testIdIndex != -1 && columns.Count > testIdIndex)
                             ? columns[testIdIndex].Replace("=", "").Trim()
@@ -124,7 +124,8 @@ namespace AutoActivator.Services
                                     ContractId = displayContract,
                                     InternalId = result.InternalId,
                                     Product = env, // On affiche bien D000 ou Q000
-                                    Premium = premiumAmount,
+                                    // NOUVEAU: On va chercher la prime TOUJOURS dans le résultat SQL (result.Premium)
+                                    Premium = string.IsNullOrWhiteSpace(result.Premium) ? "0" : result.Premium,
                                     UconId = result.UconId,
                                     DemandId = result.DemandId,
                                     Status = "OK"
@@ -137,7 +138,7 @@ namespace AutoActivator.Services
                                     ContractId = $"{contractNumber} (FAILED)",
                                     InternalId = "Error",
                                     Product = env, // On affiche l'environnement même en cas d'erreur
-                                    Premium = premiumAmount,
+                                    Premium = "0", // 0 par défaut en cas d'erreur
                                     UconId = "Error",
                                     DemandId = "Error",
                                     Status = ex.Message.ToLower().Contains("not found") ? "Not found in DB" : "SQL Error"
