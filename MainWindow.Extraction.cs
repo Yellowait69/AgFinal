@@ -129,6 +129,9 @@ namespace AutoActivator.Gui
             string fileD = TxtBatchD?.Text.Trim();
             string fileQ = TxtBatchQ?.Text.Trim();
 
+            // NOUVEAU : Vérification de la méthode de recherche pour le batch (Contract vs Demand ID)
+            bool isDemandId = RbBatchSearchDemand.IsChecked == true;
+
             if (string.IsNullOrEmpty(fileD) && string.IsNullOrEmpty(fileQ))
             {
                 TxtStatus.Text = "Please select at least one CSV file.";
@@ -142,7 +145,7 @@ namespace AutoActivator.Gui
             {
                 ExtractionHistory.Add(new ExtractionItem
                 {
-                    // Formatage du numéro de contrat pour le mode batch également
+                    // Info.ContractId contiendra le VRAI numéro de contrat formaté si on a cherché par Demand ID
                     ContractId = FormatContractForDisplay(info.ContractId),
                     InternalId = info.InternalId,
                     Product = info.Product,
@@ -160,13 +163,15 @@ namespace AutoActivator.Gui
                 if (!string.IsNullOrEmpty(fileD))
                 {
                     Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch Extracting Environment D000...");
-                    await Task.Run(() => batchService.PerformBatchExtraction(fileD, "D000", progress.Report));
+                    // NOUVEAU : on passe isDemandId à la méthode
+                    await Task.Run(() => batchService.PerformBatchExtraction(fileD, "D000", progress.Report, isDemandId));
                 }
 
                 if (!string.IsNullOrEmpty(fileQ))
                 {
                     Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch Extracting Environment Q000...");
-                    await Task.Run(() => batchService.PerformBatchExtraction(fileQ, "Q000", progress.Report));
+                    // NOUVEAU : on passe isDemandId à la méthode
+                    await Task.Run(() => batchService.PerformBatchExtraction(fileQ, "Q000", progress.Report, isDemandId));
                 }
 
                 _lastGeneratedPath = Settings.OutputDir;

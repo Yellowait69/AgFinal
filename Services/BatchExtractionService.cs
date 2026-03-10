@@ -18,7 +18,8 @@ namespace AutoActivator.Services
         }
 
         // The method takes 'env' (e.g., "D000" or "Q000") to target the correct database
-        public void PerformBatchExtraction(string filePath, string env, Action<BatchProgressInfo> onProgressUpdate)
+        // NOUVEAU : Ajout du paramètre isDemandId (par défaut à false pour rétrocompatibilité)
+        public void PerformBatchExtraction(string filePath, string env, Action<BatchProgressInfo> onProgressUpdate, bool isDemandId = false)
         {
             if (!File.Exists(filePath))
                 throw new FileNotFoundException("The specified CSV file could not be found.", filePath);
@@ -50,7 +51,10 @@ namespace AutoActivator.Services
                 for (int i = 0; i < headers.Count; i++)
                 {
                     string h = headers[i].Trim().ToLower();
-                    if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa")) contractIndex = i;
+
+                    // NOUVEAU : On ajoute "value" et "demand" pour détecter la colonne contenant le Demand ID
+                    if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa") || h.Contains("value") || h.Contains("demand")) contractIndex = i;
+
                     if (h.Contains("premium") || h.Contains("prime")) premiumIndex = i;
                     if (h.Contains("product") || h.Contains("produit")) productIndex = i;
 
@@ -70,6 +74,7 @@ namespace AutoActivator.Services
                     if (columns.Count > contractIndex)
                     {
                         // The parser already removes quotes, we keep Replace("=", "") just in case Excel injects ="value"
+                        // Note : 'contractNumber' contiendra le Demand ID si isDemandId est vrai
                         string contractNumber = columns[contractIndex].Replace("=", "").Trim();
                         string premiumAmount = (premiumIndex != -1 && columns.Count > premiumIndex) ? columns[premiumIndex].Replace("=", "").Trim() : "0";
                         string productValue = (productIndex != -1 && columns.Count > productIndex) ? columns[productIndex].Replace("=", "").Trim() : "N/A";
@@ -84,13 +89,19 @@ namespace AutoActivator.Services
                             try
                             {
                                 // Passing the environment parameter down to the ExtractionService
-                                ExtractionResult result = _extractionService.PerformExtraction(contractNumber, env, false);
+                                // NOUVEAU : On transmet le booléen isDemandId au service d'extraction
+                                ExtractionResult result = _extractionService.PerformExtraction(contractNumber, env, false, isDemandId);
+
+                                // NOUVEAU : Si c'était un Demand ID, on récupère le vrai numéro de contrat
+                                string displayContract = isDemandId && !string.IsNullOrEmpty(result.ContractReference)
+                                    ? result.ContractReference
+                                    : contractNumber;
 
                                 // If we have data, we add it to the combined StringBuilder
                                 if (!string.IsNullOrWhiteSpace(result.LisaContent) || !string.IsNullOrWhiteSpace(result.EliaContent))
                                 {
                                     globalCombined.AppendLine(new string('=', 80));
-                                    globalCombined.AppendLine($"### GLOBAL CONTRACT REPORT: {contractNumber} | TEST ID: {testId} | ENV: {env} ###");
+                                    globalCombined.AppendLine($"### GLOBAL CONTRACT REPORT: {displayContract} | TEST ID: {testId} | ENV: {env} ###");
                                     globalCombined.AppendLine(new string('=', 80));
 
                                     if (!string.IsNullOrWhiteSpace(result.LisaContent))
@@ -111,7 +122,7 @@ namespace AutoActivator.Services
 
                                 onProgressUpdate?.Invoke(new BatchProgressInfo
                                 {
-                                    ContractId = contractNumber,
+                                    ContractId = displayContract, // On affiche le vrai numéro formaté dans l'historique
                                     InternalId = result.InternalId,
                                     Product = productValue,
                                     Premium = premiumAmount,
