@@ -143,6 +143,9 @@ namespace AutoActivator.Services
 
             return new ExtractionResult
             {
+                // NOUVEAU: on renvoie le Contract Extended trouvé à l'interface
+                ContractReference = cleanedContract,
+
                 // We return the output directory so the UI can open the folder containing both files
                 FilePath = Settings.OutputDir,
                 StatusMessage = $"Extraction saved | ID: {internalIdString}",

@@ -13,6 +13,24 @@ namespace AutoActivator.Gui
     public partial class MainWindow : Window
     {
 
+        // METHODE UTILITAIRE POUR FORMATER LE NUMERO DE CONTRAT SELON LE FORMAT LISA (ex: 582-2765645-78)
+        private string FormatContractNumber(string contract)
+        {
+            if (string.IsNullOrWhiteSpace(contract)) return contract;
+
+            // On nettoie les éventuels tirets ou espaces déjà présents
+            string clean = contract.Replace("-", "").Replace(" ", "");
+
+            // Si c'est un numéro standard à 12 chiffres, on le formate en XXX-XXXXXXX-XX
+            if (clean.Length == 12)
+            {
+                return $"{clean.Substring(0, 3)}-{clean.Substring(3, 7)}-{clean.Substring(10, 2)}";
+            }
+
+            // Sinon (ex: Demand ID plus long ou format non standard), on le retourne tel quel
+            return contract;
+        }
+
         // SINGLE EXTRACTION TAB LOGIC
 
         private async void BtnRunSingle_Click(object sender, RoutedEventArgs e)
@@ -20,7 +38,7 @@ namespace AutoActivator.Gui
             string valueD = TxtSingleD?.Text.Trim();
             string valueQ = TxtSingleQ?.Text.Trim();
 
-            // NOUVEAU : On regarde si la recherche se fait par Demand ID via le bouton radio de l'interface
+            // On regarde si la recherche se fait par Demand ID via le bouton radio de l'interface
             bool isDemandId = RbSearchDemand.IsChecked == true;
 
             if (string.IsNullOrEmpty(valueD) && string.IsNullOrEmpty(valueQ))
@@ -56,10 +74,12 @@ namespace AutoActivator.Gui
             ExtractionResult result = _extractionService.PerformExtraction(targetValue, env, true, isDemandId);
             _lastGeneratedPath = Settings.OutputDir;
 
+            // On utilise result.ContractReference qui contient le Contract Extended (ex: 582-2735865-77) renvoyé par le service
+            string displayContract = isDemandId ? $"[DMD] {FormatContractNumber(result.ContractReference)}" : FormatContractNumber(targetValue);
+
             progress.Report(new ExtractionItem
             {
-                // Ajout d'un tag visuel [DMD] dans l'historique si c'est une recherche par Demand ID
-                ContractId = isDemandId ? $"[DMD] {targetValue}" : targetValue,
+                ContractId = displayContract,
                 InternalId = result.InternalId,
                 Product = env,
                 Premium = string.IsNullOrWhiteSpace(result.Premium) ? "0" : result.Premium,
@@ -103,14 +123,20 @@ namespace AutoActivator.Gui
 
             var batchService = new BatchExtractionService(_extractionService);
 
-
             IProgress<BatchProgressInfo> progress = new Progress<BatchProgressInfo>(info =>
             {
                 ExtractionHistory.Add(new ExtractionItem
                 {
-                    ContractId = info.ContractId, InternalId = info.InternalId, Product = info.Product,
-                    Premium = info.Premium, Ucon = info.UconId, Hdmd = info.DemandId,
-                    Time = DateTime.Now.ToString("HH:mm:ss"), Test = info.Status, FilePath = string.Empty
+                    // Formatage du numéro de contrat pour le mode batch également
+                    ContractId = FormatContractNumber(info.ContractId),
+                    InternalId = info.InternalId,
+                    Product = info.Product,
+                    Premium = info.Premium,
+                    Ucon = info.UconId,
+                    Hdmd = info.DemandId,
+                    Time = DateTime.Now.ToString("HH:mm:ss"),
+                    Test = info.Status,
+                    FilePath = string.Empty
                 });
             });
 

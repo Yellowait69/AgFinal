@@ -18,6 +18,9 @@ namespace AutoActivator.Models
 
         // NEW: Property to carry the premium extracted from ELIA
         public string Premium { get; set; }
+
+        // NEW: Property to carry the real contract number (Contract Extended) resolved from Demand ID
+        public string ContractReference { get; set; }
     }
 
     public class BatchProgressInfo
