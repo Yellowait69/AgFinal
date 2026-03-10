@@ -17,82 +17,79 @@ namespace AutoActivator.Services
             _extractionService = extractionService;
         }
 
-        // The method takes 'env' (e.g., "D000" or "Q000") to target the correct database
-        // Ajout du paramètre isDemandId (par défaut à false pour rétrocompatibilité)
         public void PerformBatchExtraction(string filePath, string env, Action<BatchProgressInfo> onProgressUpdate, bool isDemandId = false)
         {
             if (!File.Exists(filePath))
                 throw new FileNotFoundException("The specified CSV file could not be found.", filePath);
 
-            // Replacing the two StringBuilders with a single one
             StringBuilder globalCombined = new StringBuilder();
-
             List<string> processedTestIds = new List<string>();
 
-            // LINE-BY-LINE READING WITH STREAMREADER (Resolves RAM issue)
             using (var reader = new StreamReader(filePath, Encoding.UTF8))
             {
-                string headerLine = reader.ReadLine();
-
-                // Cleaning up any potential BOM (Byte Order Mark) at the beginning of the file
-                if (headerLine != null && headerLine.StartsWith("\uFEFF"))
-                    headerLine = headerLine.Substring(1);
-
-                // --- NOUVEAU : Ignorer la première ligne si c'est le titre du fichier (ex: "Contract in Q000") ---
-                if (headerLine != null && headerLine.TrimStart().StartsWith("Contract in", StringComparison.OrdinalIgnoreCase))
-                {
-                    headerLine = reader.ReadLine(); // On passe à la ligne 2 qui contient les vrais en-têtes (INFO; KEY; VALUE; ...)
-                }
-
-                if (string.IsNullOrWhiteSpace(headerLine))
-                    throw new Exception("The CSV file is empty or contains only the header.");
-
-                // Automatic detection of the most frequent delimiter in the header
-                char delimiter = headerLine.Count(c => c == ';') > headerLine.Count(c => c == ',') ? ';' : ',';
-
-                // Parsing the header with the new robust function
-                var headers = ParseCsvLine(headerLine, delimiter);
-                int contractIndex = 0, premiumIndex = -1, testIdIndex = -1;
-
-                for (int i = 0; i < headers.Count; i++)
-                {
-                    string h = headers[i].Trim().ToLower();
-
-                    // On ajoute "value" et "demand" pour détecter la colonne contenant le Demand ID
-                    if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa") || h.Contains("value") || h.Contains("demand")) contractIndex = i;
-
-                    if (h.Contains("premium") || h.Contains("prime")) premiumIndex = i;
-
-                    // Detection of "id test" or "test" column
-                    if (h.Contains("test") || h.Contains("id test") || h.Contains("idtest")) testIdIndex = i;
-                }
-
                 string line;
-                // Reading the rest of the file, line by line
+                char delimiter = ';';
+                int contractIndex = -1, premiumIndex = -1, testIdIndex = -1;
+                bool headerFound = false;
+
+                // --- 1. RECHERCHE INTELLIGENTE DE L'EN-TÊTE ---
+                // Le programme scanne chaque ligne jusqu'à trouver la vraie ligne d'en-têtes
+                while ((line = reader.ReadLine()) != null)
+                {
+                    if (line.StartsWith("\uFEFF")) line = line.Substring(1); // Nettoyage BOM
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+
+                    // Si c'est la ligne de titre parasite générée par votre export, on l'ignore de force !
+                    if (line.Replace("\"", "").TrimStart().StartsWith("Contract in", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    delimiter = line.Count(c => c == ';') > line.Count(c => c == ',') ? ';' : ',';
+                    var cols = ParseCsvLine(line, delimiter);
+
+                    for (int i = 0; i < cols.Count; i++)
+                    {
+                        string h = cols[i].Trim().ToLower();
+
+                        // On vérifie si la colonne contient nos mots clés (value, demand, contract...)
+                        if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa") || h.Contains("value") || h.Contains("demand")) contractIndex = i;
+                        if (h.Contains("premium") || h.Contains("prime")) premiumIndex = i;
+                        if (h.Contains("test") || h.Contains("id test") || h.Contains("idtest")) testIdIndex = i;
+                    }
+
+                    // Si on a trouvé la colonne d'identifiant principal, c'est qu'on a le vrai en-tête ! On arrête la recherche.
+                    if (contractIndex != -1)
+                    {
+                        headerFound = true;
+                        break;
+                    }
+                }
+
+                if (!headerFound)
+                    throw new Exception("Impossible de trouver la colonne 'Value', 'Demand' ou 'Contract' dans le fichier CSV.");
+
+                // --- 2. LECTURE DES DONNÉES ---
+                // Maintenant qu'on connait la bonne colonne, on lit le reste du fichier (les vraies données)
                 while ((line = reader.ReadLine()) != null)
                 {
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
-                    // Using the smart parser instead of a simple .Split()
                     var columns = ParseCsvLine(line, delimiter);
 
                     if (columns.Count > contractIndex)
                     {
-                        // The parser already removes quotes, we keep Replace("=", "") just in case Excel injects ="value"
-                        // Note : 'contractNumber' contiendra le Demand ID si isDemandId est vrai
-                        string contractNumber = columns[contractIndex].Replace("=", "").Trim();
+                        // On nettoie les éventuels caractères parasites (comme les guillemets ou le =)
+                        string contractNumber = columns[contractIndex].Replace("=", "").Replace("\"", "").Trim();
                         string premiumAmount = (premiumIndex != -1 && columns.Count > premiumIndex) ? columns[premiumIndex].Replace("=", "").Trim() : "0";
 
-                        // Get Test ID (fallback to contract number if no test column is found)
                         string testId = (testIdIndex != -1 && columns.Count > testIdIndex)
                             ? columns[testIdIndex].Replace("=", "").Trim()
                             : contractNumber;
 
+                        // Si la case contient bien un numéro (et pas juste du vide), on lance l'extraction
                         if (!string.IsNullOrEmpty(contractNumber))
                         {
                             try
                             {
-                                // Passing the environment parameter down to the ExtractionService
                                 // On transmet le booléen isDemandId au service d'extraction
                                 ExtractionResult result = _extractionService.PerformExtraction(contractNumber, env, false, isDemandId);
 
@@ -101,7 +98,6 @@ namespace AutoActivator.Services
                                     ? result.ContractReference
                                     : contractNumber;
 
-                                // If we have data, we add it to the combined StringBuilder
                                 if (!string.IsNullOrWhiteSpace(result.LisaContent) || !string.IsNullOrWhiteSpace(result.EliaContent))
                                 {
                                     globalCombined.AppendLine(new string('=', 80));
@@ -121,14 +117,13 @@ namespace AutoActivator.Services
                                     }
                                 }
 
-                                // Keep track of the successfully processed Test IDs
                                 processedTestIds.Add(testId);
 
                                 onProgressUpdate?.Invoke(new BatchProgressInfo
                                 {
-                                    ContractId = displayContract, // On affiche le vrai numéro formaté dans l'historique
+                                    ContractId = displayContract,
                                     InternalId = result.InternalId,
-                                    Product = env, // CORRECTION : Affiche explicitement "D000" ou "Q000" au lieu d'une colonne de CSV
+                                    Product = env, // On affiche bien D000 ou Q000
                                     Premium = premiumAmount,
                                     UconId = result.UconId,
                                     DemandId = result.DemandId,
@@ -141,7 +136,7 @@ namespace AutoActivator.Services
                                 {
                                     ContractId = $"{contractNumber} (FAILED)",
                                     InternalId = "Error",
-                                    Product = env, // CORRECTION : Affiche l'environnement même en cas d'erreur
+                                    Product = env, // On affiche l'environnement même en cas d'erreur
                                     Premium = premiumAmount,
                                     UconId = "Error",
                                     DemandId = "Error",
@@ -153,45 +148,30 @@ namespace AutoActivator.Services
                 }
             }
 
-            // --- SMART NAMING LOGIC ---
+            // --- 3. SAUVEGARDE DU RAPPORT GLOBAL ---
             string fileSignature = "NoContract";
-            string sizeTag = "Big"; // Default to "Big" for a CSV extraction
+            string sizeTag = "Big";
 
             if (processedTestIds.Count > 0)
             {
-                // Take the first 3 Test IDs and remove spaces to keep the filename compact
                 var firstThree = processedTestIds.Take(3).Select(c => c.Replace(" ", ""));
                 fileSignature = string.Join("_", firstThree);
 
                 if (processedTestIds.Count > 3)
-                {
                     fileSignature += $"_#{processedTestIds.Count - 3}other";
-                }
                 else if (processedTestIds.Count == 1)
-                {
-                    // If the CSV resulted in only 1 valid contract, switch to "Uniq"
                     sizeTag = "Uniq";
-                }
             }
 
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             Directory.CreateDirectory(Settings.OutputDir);
 
-            // Get the first uppercase letter of the environment (e.g., "D" for "D000")
             char envLetter = !string.IsNullOrEmpty(env) ? char.ToUpper(env[0]) : 'U';
-
-            // Generate the single combined output file
             string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_{sizeTag}_{fileSignature}_{timestamp}.csv");
 
-            File.WriteAllText(
-                combinedPath,
-                globalCombined.Length > 0 ? globalCombined.ToString() : "NO CONTRACT FOUND.",
-                Encoding.UTF8);
+            File.WriteAllText(combinedPath, globalCombined.Length > 0 ? globalCombined.ToString() : "NO CONTRACT FOUND.", Encoding.UTF8);
         }
 
-        /// <summary>
-        /// Robust native CSV parser handling delimiters present inside quotes.
-        /// </summary>
         private List<string> ParseCsvLine(string line, char delimiter)
         {
             var result = new List<string>();
@@ -204,11 +184,10 @@ namespace AutoActivator.Services
 
                 if (c == '"')
                 {
-                    // If we encounter a double quote inside quotes, it's an escaped quote ("")
                     if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
                     {
                         currentField.Append('"');
-                        i++; // We skip the 2nd quote
+                        i++;
                     }
                     else
                     {
@@ -227,7 +206,6 @@ namespace AutoActivator.Services
             }
 
             result.Add(currentField.ToString());
-
             return result;
         }
     }
