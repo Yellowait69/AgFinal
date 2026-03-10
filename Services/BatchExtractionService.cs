@@ -25,7 +25,9 @@ namespace AutoActivator.Services
             StringBuilder globalCombined = new StringBuilder();
             List<string> processedTestIds = new List<string>();
 
-            using (var reader = new StreamReader(filePath, Encoding.UTF8))
+            // NOUVEAU : Ouverture avec FileShare.ReadWrite pour permettre la lecture même si le fichier est ouvert dans Excel
+            using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var reader = new StreamReader(fs, Encoding.UTF8))
             {
                 string line;
                 char delimiter = ';';
@@ -170,7 +172,18 @@ namespace AutoActivator.Services
             char envLetter = !string.IsNullOrEmpty(env) ? char.ToUpper(env[0]) : 'U';
             string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_{sizeTag}_{fileSignature}_{timestamp}.csv");
 
-            File.WriteAllText(combinedPath, globalCombined.Length > 0 ? globalCombined.ToString() : "NO CONTRACT FOUND.", Encoding.UTF8);
+            // NOUVEAU : On gère l'erreur au cas où un rapport portant le même nom serait déjà ouvert dans Excel
+            string contentToWrite = globalCombined.Length > 0 ? globalCombined.ToString() : "NO CONTRACT FOUND.";
+            try
+            {
+                File.WriteAllText(combinedPath, contentToWrite, Encoding.UTF8);
+            }
+            catch (IOException)
+            {
+                // Si le fichier est bloqué, on ajoute un suffixe aléatoire pour forcer la sauvegarde sans crasher
+                string alternativePath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_{sizeTag}_{fileSignature}_{timestamp}_{Guid.NewGuid().ToString().Substring(0, 4)}.csv");
+                File.WriteAllText(alternativePath, contentToWrite, Encoding.UTF8);
+            }
         }
 
         private List<string> ParseCsvLine(string line, char delimiter)

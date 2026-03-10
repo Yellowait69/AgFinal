@@ -99,26 +99,45 @@ namespace AutoActivator.Gui
 
         private void PerformSingleExtraction(string targetValue, string env, IProgress<ExtractionItem> progress, bool isDemandId)
         {
-            // On passe "true" pour "saveIndividualFile" et isDemandId à la fin pour le service d'extraction
-            ExtractionResult result = _extractionService.PerformExtraction(targetValue, env, true, isDemandId);
-            _lastGeneratedPath = Settings.OutputDir;
-
-            // On utilise result.ContractReference qui contient le Contract Extended (ex: 582-2735865-77) renvoyé par le service
-            // Le préfixe [DMD] a été retiré, le numéro s'affiche proprement dans tous les cas.
-            string displayContract = isDemandId ? FormatContractForDisplay(result.ContractReference) : FormatContractForDisplay(targetValue);
-
-            progress.Report(new ExtractionItem
+            try
             {
-                ContractId = displayContract,
-                InternalId = result.InternalId,
-                Product = env,
-                Premium = string.IsNullOrWhiteSpace(result.Premium) ? "0" : result.Premium,
-                Ucon = result.UconId,
-                Hdmd = result.DemandId,
-                Time = DateTime.Now.ToString("HH:mm:ss"),
-                Test = "OK",
-                FilePath = result.FilePath
-            });
+                // On passe "true" pour "saveIndividualFile" et isDemandId à la fin pour le service d'extraction
+                ExtractionResult result = _extractionService.PerformExtraction(targetValue, env, true, isDemandId);
+                _lastGeneratedPath = Settings.OutputDir;
+
+                // On utilise result.ContractReference qui contient le Contract Extended (ex: 582-2735865-77) renvoyé par le service
+                // Le préfixe [DMD] a été retiré, le numéro s'affiche proprement dans tous les cas.
+                string displayContract = isDemandId ? FormatContractForDisplay(result.ContractReference) : FormatContractForDisplay(targetValue);
+
+                progress.Report(new ExtractionItem
+                {
+                    ContractId = displayContract,
+                    InternalId = result.InternalId,
+                    Product = env,
+                    Premium = string.IsNullOrWhiteSpace(result.Premium) ? "0" : result.Premium,
+                    Ucon = result.UconId,
+                    Hdmd = result.DemandId,
+                    Time = DateTime.Now.ToString("HH:mm:ss"),
+                    Test = "OK",
+                    FilePath = result.FilePath
+                });
+            }
+            catch (Exception ex)
+            {
+                // GESTION DE L'ERREUR : on n'interrompt pas l'application
+                progress.Report(new ExtractionItem
+                {
+                    ContractId = targetValue,
+                    InternalId = "Erreur",
+                    Product = env,
+                    Premium = "0",
+                    Ucon = "N/A",
+                    Hdmd = "N/A",
+                    Time = DateTime.Now.ToString("HH:mm:ss"),
+                    Test = ex.Message.Contains("No associated contract") ? "Non trouvé/Mauvais ID" : "Erreur SQL",
+                    FilePath = string.Empty
+                });
+            }
         }
 
 

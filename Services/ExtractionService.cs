@@ -138,7 +138,17 @@ namespace AutoActivator.Services
                 // Combinaison des deux sections
                 string combinedContent = lisaHeader + sbLisa.ToString() + "\n" + eliaHeader + sbElia.ToString();
 
-                File.WriteAllText(combinedPath, combinedContent, Encoding.UTF8);
+                // NOUVEAU : Bloc try...catch pour empêcher le crash si le fichier est déjà ouvert
+                try
+                {
+                    File.WriteAllText(combinedPath, combinedContent, Encoding.UTF8);
+                }
+                catch (IOException)
+                {
+                    // Si le fichier est bloqué (ex: ouvert dans Excel), on génère un nom alternatif
+                    string alternativePath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_Uniq_{cleanedContract}_{timestamp}_{Guid.NewGuid().ToString().Substring(0, 4)}.csv");
+                    File.WriteAllText(alternativePath, combinedContent, Encoding.UTF8);
+                }
             }
 
             return new ExtractionResult
