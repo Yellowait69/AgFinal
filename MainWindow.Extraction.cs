@@ -13,8 +13,8 @@ namespace AutoActivator.Gui
     public partial class MainWindow : Window
     {
 
-        // METHODE UTILITAIRE POUR FORMATER LE NUMERO DE CONTRAT SELON LE FORMAT LISA (ex: 582-2765645-78)
-        private string FormatContractNumber(string contract)
+        // RENOMMÉ : Formatage visuel pour l'interface de l'Extraction
+        private string FormatContractForDisplay(string contract)
         {
             if (string.IsNullOrWhiteSpace(contract)) return contract;
 
@@ -75,7 +75,8 @@ namespace AutoActivator.Gui
             _lastGeneratedPath = Settings.OutputDir;
 
             // On utilise result.ContractReference qui contient le Contract Extended (ex: 582-2735865-77) renvoyé par le service
-            string displayContract = isDemandId ? $"[DMD] {FormatContractNumber(result.ContractReference)}" : FormatContractNumber(targetValue);
+            // Le préfixe [DMD] a été retiré, le numéro s'affiche proprement dans tous les cas.
+            string displayContract = isDemandId ? FormatContractForDisplay(result.ContractReference) : FormatContractForDisplay(targetValue);
 
             progress.Report(new ExtractionItem
             {
@@ -128,7 +129,7 @@ namespace AutoActivator.Gui
                 ExtractionHistory.Add(new ExtractionItem
                 {
                     // Formatage du numéro de contrat pour le mode batch également
-                    ContractId = FormatContractNumber(info.ContractId),
+                    ContractId = FormatContractForDisplay(info.ContractId),
                     InternalId = info.InternalId,
                     Product = info.Product,
                     Premium = info.Premium,
