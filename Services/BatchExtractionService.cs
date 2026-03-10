@@ -18,7 +18,7 @@ namespace AutoActivator.Services
         }
 
         // The method takes 'env' (e.g., "D000" or "Q000") to target the correct database
-        // NOUVEAU : Ajout du paramètre isDemandId (par défaut à false pour rétrocompatibilité)
+        // Ajout du paramètre isDemandId (par défaut à false pour rétrocompatibilité)
         public void PerformBatchExtraction(string filePath, string env, Action<BatchProgressInfo> onProgressUpdate, bool isDemandId = false)
         {
             if (!File.Exists(filePath))
@@ -38,6 +38,12 @@ namespace AutoActivator.Services
                 if (headerLine != null && headerLine.StartsWith("\uFEFF"))
                     headerLine = headerLine.Substring(1);
 
+                // --- NOUVEAU : Ignorer la première ligne si c'est le titre du fichier (ex: "Contract in Q000") ---
+                if (headerLine != null && headerLine.TrimStart().StartsWith("Contract in", StringComparison.OrdinalIgnoreCase))
+                {
+                    headerLine = reader.ReadLine(); // On passe à la ligne 2 qui contient les vrais en-têtes (INFO; KEY; VALUE; ...)
+                }
+
                 if (string.IsNullOrWhiteSpace(headerLine))
                     throw new Exception("The CSV file is empty or contains only the header.");
 
@@ -46,17 +52,16 @@ namespace AutoActivator.Services
 
                 // Parsing the header with the new robust function
                 var headers = ParseCsvLine(headerLine, delimiter);
-                int contractIndex = 0, premiumIndex = -1, productIndex = -1, testIdIndex = -1;
+                int contractIndex = 0, premiumIndex = -1, testIdIndex = -1;
 
                 for (int i = 0; i < headers.Count; i++)
                 {
                     string h = headers[i].Trim().ToLower();
 
-                    // NOUVEAU : On ajoute "value" et "demand" pour détecter la colonne contenant le Demand ID
+                    // On ajoute "value" et "demand" pour détecter la colonne contenant le Demand ID
                     if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa") || h.Contains("value") || h.Contains("demand")) contractIndex = i;
 
                     if (h.Contains("premium") || h.Contains("prime")) premiumIndex = i;
-                    if (h.Contains("product") || h.Contains("produit")) productIndex = i;
 
                     // Detection of "id test" or "test" column
                     if (h.Contains("test") || h.Contains("id test") || h.Contains("idtest")) testIdIndex = i;
@@ -77,7 +82,6 @@ namespace AutoActivator.Services
                         // Note : 'contractNumber' contiendra le Demand ID si isDemandId est vrai
                         string contractNumber = columns[contractIndex].Replace("=", "").Trim();
                         string premiumAmount = (premiumIndex != -1 && columns.Count > premiumIndex) ? columns[premiumIndex].Replace("=", "").Trim() : "0";
-                        string productValue = (productIndex != -1 && columns.Count > productIndex) ? columns[productIndex].Replace("=", "").Trim() : "N/A";
 
                         // Get Test ID (fallback to contract number if no test column is found)
                         string testId = (testIdIndex != -1 && columns.Count > testIdIndex)
@@ -89,10 +93,10 @@ namespace AutoActivator.Services
                             try
                             {
                                 // Passing the environment parameter down to the ExtractionService
-                                // NOUVEAU : On transmet le booléen isDemandId au service d'extraction
+                                // On transmet le booléen isDemandId au service d'extraction
                                 ExtractionResult result = _extractionService.PerformExtraction(contractNumber, env, false, isDemandId);
 
-                                // NOUVEAU : Si c'était un Demand ID, on récupère le vrai numéro de contrat
+                                // Si c'était un Demand ID, on récupère le vrai numéro de contrat renvoyé par le service
                                 string displayContract = isDemandId && !string.IsNullOrEmpty(result.ContractReference)
                                     ? result.ContractReference
                                     : contractNumber;
@@ -124,7 +128,7 @@ namespace AutoActivator.Services
                                 {
                                     ContractId = displayContract, // On affiche le vrai numéro formaté dans l'historique
                                     InternalId = result.InternalId,
-                                    Product = productValue,
+                                    Product = env, // CORRECTION : Affiche explicitement "D000" ou "Q000" au lieu d'une colonne de CSV
                                     Premium = premiumAmount,
                                     UconId = result.UconId,
                                     DemandId = result.DemandId,
@@ -137,7 +141,7 @@ namespace AutoActivator.Services
                                 {
                                     ContractId = $"{contractNumber} (FAILED)",
                                     InternalId = "Error",
-                                    Product = productValue,
+                                    Product = env, // CORRECTION : Affiche l'environnement même en cas d'erreur
                                     Premium = premiumAmount,
                                     UconId = "Error",
                                     DemandId = "Error",
