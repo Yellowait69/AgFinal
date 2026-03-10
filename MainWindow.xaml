@@ -89,18 +89,12 @@
                     <TabItem Header="📄 Single Contract" FontSize="14" FontWeight="SemiBold">
                         <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,10,0,0">
                             <StackPanel>
-                                <TextBlock Text="Extract a specific contract or demand from one or both environments." Margin="0,0,0,15" Foreground="#7F8C8D"/>
+                                <TextBlock Text="Extract a specific contract from one or both environments." Margin="0,0,0,15" Foreground="#7F8C8D"/>
 
-                                <StackPanel Margin="0,0,0,15" Orientation="Horizontal">
-                                    <TextBlock Text="Input Type:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                    <RadioButton x:Name="RbSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="InputType_Checked"/>
-                                    <RadioButton x:Name="RbSearchDemand" Content="Demand ID" VerticalAlignment="Center" Cursor="Hand" Checked="InputType_Checked"/>
-                                </StackPanel>
-
-                                <TextBlock Text="Environment D000 (Value):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <TextBlock Text="Environment D000 (Contract Number):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
                                 <TextBox x:Name="TxtSingleD" Margin="0,0,0,15" Padding="8" FontSize="14" BorderBrush="#DCDDE1" ToolTip="Leave empty to skip D000"/>
 
-                                <TextBlock Text="Environment Q000 (Value):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <TextBlock Text="Environment Q000 (Contract Number):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
                                 <TextBox x:Name="TxtSingleQ" Margin="0,0,0,20" Padding="8" FontSize="14" BorderBrush="#DCDDE1" ToolTip="Leave empty to skip Q000"/>
 
                                 <Button x:Name="BtnRunSingle" Content="Run Single Extraction" Click="BtnRunSingle_Click" Style="{StaticResource ActionButtonStyle}" HorizontalAlignment="Right" Width="220"/>
