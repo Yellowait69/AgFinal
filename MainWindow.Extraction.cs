@@ -17,12 +17,15 @@ namespace AutoActivator.Gui
 
         private async void BtnRunSingle_Click(object sender, RoutedEventArgs e)
         {
-            string contractD = TxtSingleD?.Text.Trim();
-            string contractQ = TxtSingleQ?.Text.Trim();
+            string valueD = TxtSingleD?.Text.Trim();
+            string valueQ = TxtSingleQ?.Text.Trim();
 
-            if (string.IsNullOrEmpty(contractD) && string.IsNullOrEmpty(contractQ))
+            // NOUVEAU : On regarde si la recherche se fait par Demand ID via le bouton radio de l'interface
+            bool isDemandId = RbSearchDemand.IsChecked == true;
+
+            if (string.IsNullOrEmpty(valueD) && string.IsNullOrEmpty(valueQ))
             {
-                TxtStatus.Text = "Please enter at least one contract number (D000 or Q000).";
+                TxtStatus.Text = "Please enter at least one value (D000 or Q000).";
                 TxtStatus.Foreground = System.Windows.Media.Brushes.Orange;
                 return;
             }
@@ -31,30 +34,32 @@ namespace AutoActivator.Gui
 
             await RunProcessAsync(async () =>
             {
-                if (!string.IsNullOrEmpty(contractD))
+                if (!string.IsNullOrEmpty(valueD))
                 {
                     Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Extracting Environment D000...");
-                    await Task.Run(() => PerformSingleExtraction(contractD, "D000", progress));
+                    await Task.Run(() => PerformSingleExtraction(valueD, "D000", progress, isDemandId));
                 }
 
-                if (!string.IsNullOrEmpty(contractQ))
+                if (!string.IsNullOrEmpty(valueQ))
                 {
                     Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Extracting Environment Q000...");
-                    await Task.Run(() => PerformSingleExtraction(contractQ, "Q000", progress));
+                    await Task.Run(() => PerformSingleExtraction(valueQ, "Q000", progress, isDemandId));
                 }
 
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Single extraction completed successfully.");
             });
         }
 
-        private void PerformSingleExtraction(string contract, string env, IProgress<ExtractionItem> progress)
+        private void PerformSingleExtraction(string targetValue, string env, IProgress<ExtractionItem> progress, bool isDemandId)
         {
-            ExtractionResult result = _extractionService.PerformExtraction(contract, env, true);
+            // On passe "true" pour "saveIndividualFile" et isDemandId à la fin pour le service d'extraction
+            ExtractionResult result = _extractionService.PerformExtraction(targetValue, env, true, isDemandId);
             _lastGeneratedPath = Settings.OutputDir;
 
             progress.Report(new ExtractionItem
             {
-                ContractId = contract,
+                // Ajout d'un tag visuel [DMD] dans l'historique si c'est une recherche par Demand ID
+                ContractId = isDemandId ? $"[DMD] {targetValue}" : targetValue,
                 InternalId = result.InternalId,
                 Product = env,
                 Premium = string.IsNullOrWhiteSpace(result.Premium) ? "0" : result.Premium,

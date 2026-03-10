@@ -18,10 +18,10 @@ namespace AutoActivator.Services
             // to support switching between D000 and Q000 dynamically.
         }
 
-        public ExtractionResult PerformExtraction(string targetContract, string envSuffix, bool saveIndividualFile = true)
+        public ExtractionResult PerformExtraction(string targetContract, string envSuffix, bool saveIndividualFile = true, bool isDemandId = false)
         {
             if (string.IsNullOrWhiteSpace(targetContract))
-                throw new ArgumentException("The contract number is empty.");
+                throw new ArgumentException("The input value is empty.");
 
             string cleanedContract = targetContract.Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
 
@@ -30,6 +30,22 @@ namespace AutoActivator.Services
 
             if (!db.TestConnection())
                 throw new Exception($"Unable to establish SQL connection to environment {envSuffix}.");
+
+            // NOUVEAU : Résolution du Demand ID en Numéro de contrat
+            if (isDemandId)
+            {
+                var dtDemand = db.GetData(SqlQueries.Queries["GET_CONTRACT_BY_DEMAND"], new Dictionary<string, object> { { "@DemandId", cleanedContract } });
+
+                if (dtDemand.Rows.Count > 0 && dtDemand.Rows[0]["IT5UCONLREFEXN"] != DBNull.Value)
+                {
+                    // On remplace cleanedContract par le numéro de contrat réel trouvé
+                    cleanedContract = dtDemand.Rows[0]["IT5UCONLREFEXN"].ToString().Trim();
+                }
+                else
+                {
+                    throw new Exception($"No associated contract found for Demand ID {cleanedContract} in environment {envSuffix}.");
+                }
+            }
 
             var parameters = new Dictionary<string, object> { { "@ContractNumber", cleanedContract } };
 

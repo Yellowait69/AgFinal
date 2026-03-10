@@ -31,6 +31,17 @@ namespace AutoActivator.Sql
                 WHERE IT5UCONAIDN = @EliaId"
             },
 
+            // NOUVELLE REQUÊTE BASEE SUR CELLE DE VOTRE COLLEGUE
+            { "GET_CONTRACT_BY_DEMAND", @"
+                SELECT TOP 1 u.IT5UCONLREFEXN
+                FROM FJ1.TB5UCON u WITH(NOLOCK)
+                WHERE u.IT5UCONAIDN IN (
+                    SELECT h.IT5UCONAIDN
+                    FROM FJ1.TB5HELT h WITH(NOLOCK)
+                    WHERE h.IT5HDMDAIDN = @DemandId
+                )"
+            },
+
 
             // DONNEES LISA (CONTRAT ET AVENANTS)
 
