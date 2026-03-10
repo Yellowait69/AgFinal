@@ -22,7 +22,7 @@ namespace AutoActivator.Services
             {
                 onProgress("=== START OF ACTIVATION SEQUENCE ===");
 
-                // Utilisation de "ENV" (qui vaut D, Q, A, ou P) pour le serveur API
+                // CORRECTION ICI : On utilise "ENV" (qui vaut D, Q, A, ou P) pour le serveur API
                 string currentEnv = generalVariables.ContainsKey("ENV") ? generalVariables["ENV"] : "D";
 
                 onProgress($"Connecting to MicroFocus server ({currentEnv}000)...");
@@ -37,7 +37,7 @@ namespace AutoActivator.Services
 
                 int jobCounter = 1;
 
-                // Soumission séquentielle des 5 Jobs critiques
+                // Sequential submission of the 5 critical Jobs
                 await ProcessSubmitAndWaitAsync("ADDPRCT", addprctVars, jobCounter++, onProgress, cancellationToken);
                 await ProcessSubmitAndWaitAsync("LVPP06U", generalVariables, jobCounter++, onProgress, cancellationToken);
                 await ProcessSubmitAndWaitAsync("LVPG22U", generalVariables, jobCounter++, onProgress, cancellationToken);
@@ -62,10 +62,10 @@ namespace AutoActivator.Services
         {
             onProgress($"\nPreparing job {jobName}...");
 
-            // 1. Ajout de la variable implicite JOBNAM requise par les scripts JCL
+            // 1. Addition of the implicit JOBNAM variable required by the JCL scripts
             variables["JOBNAM"] = jobName;
 
-            // Injection de la variable AP basée sur le job en cours
+            // Injecting the AP variable based on the current job
             if (jobName == "LVPP06U" || jobName == "LVPG22U")
             {
                 variables["AP"] = "LV";
@@ -75,7 +75,7 @@ namespace AutoActivator.Services
                 variables["AP"] = "LI";
             }
 
-            // 2. Préparation du JCL via le service dédié
+            // 2. Prepare the JCL via the dedicated service
             string readyContent = await _jclProcessor.GetPreparedJclAsync(jobName, variables, count);
 
             if (jobName == "LVPG22U")
@@ -87,7 +87,6 @@ namespace AutoActivator.Services
                 }
             }
 
-            // --- CORRECTION : Désencapsulation du vrai Job métier pour contrer l'Internal Reader ---
             if (jobName == "LI1J04D0" || jobName == "LI1J04D2")
             {
                 string subJobName = (jobName == "LI1J04D0") ? "LI1J04D1" : "LI1J04D3";
@@ -108,29 +107,11 @@ namespace AutoActivator.Services
                     int endOfLineIndex = readyContent.IndexOf('\n', dataIndex);
                     if (endOfLineIndex != -1)
                     {
-                        // Extraction du contenu du sous-job caché après le DLM=##
-                        string innerJcl = readyContent.Substring(endOfLineIndex + 1);
-
-                        // Nettoyage du délimiteur final (##) à la fin du fichier
-                        int dlmEndIndex = innerJcl.LastIndexOf("##");
-                        if (dlmEndIndex != -1)
-                        {
-                            innerJcl = innerJcl.Substring(0, dlmEndIndex);
-                        }
-
-                        // Création de la nouvelle carte JOB
                         string jobCardToInject = $"//{subJobName} JOB CLASS=A,SCHENV=IM7{envLetter},NOTIFY={notifyUser}\r\n";
-
-                        // Remplacement complet du JCL lanceur par le JCL métier
-                        readyContent = jobCardToInject + innerJcl;
-
-                        // Modification vitale : on indique au reste du code qu'on traque désormais le sous-job
-                        onProgress($"[INFO] JCL unwrapped: Direct submission of {subJobName} instead of {jobName}");
-                        jobName = subJobName;
+                        readyContent = readyContent.Insert(endOfLineIndex + 1, jobCardToInject);
                     }
                 }
             }
-            // -------------------------------------------------------------------------------------
 
             try
             {
@@ -143,13 +124,13 @@ namespace AutoActivator.Services
                 onProgress($"[DEBUG] Unable to save the JCL trace file: {ex.Message}");
             }
 
-            // 3. Soumission via l'API Micro Focus
+            // 3. Submit via the Micro Focus API
             var (Success, JobNum, Error) = await _apiService.SubmitJobAsync(readyContent, cancellationToken);
             if (!Success) throw new Exception($"Failed to submit {jobName}. Error:\n{Error}");
 
             onProgress($"Job {jobName} submitted (JOBNUM: {JobNum}). Waiting for results...");
 
-            // 4. Attente active (Polling) avec vérification du code retour
+            // 4. Active waiting (Polling) with return code verification
             int[] sleepDelays = { 1, 2, 3, 5, 8, 10, 15, 30, 30, 30, 30, 30, 45, 60 };
             bool finished = false;
 
@@ -157,30 +138,29 @@ namespace AutoActivator.Services
             {
                 await Task.Delay(sleepDelays[i] * 1000, cancellationToken);
 
-                // Récupération du statut ET du ReturnCode
+                // Retrieval of Status AND ReturnCode
                 var (Status, ReturnCode) = await _apiService.CheckJobStatusAsync(JobNum, cancellationToken);
 
-                // Cas 1 : Crash système (JCL Error ou ABEND)
+                // Case 1: System crash (JCL Error or ABEND)
                 if (Status == "JCLError" || Status == "Abend")
                 {
                     throw new Exception($"System crash for job {jobName}. Status: {Status} (Code: {ReturnCode}). SEQUENCE STOPPED.");
                 }
 
-                // Cas 2 : Exécution terminée
+                // Case 2: Execution completed
                 if (Status == "Complete")
                 {
-                    // Nettoyage des zéros inutiles
+                    // Cleaning leading zeros ("0000" becomes "0", "0008" becomes "8")
                     string cleanRC = ReturnCode.TrimStart('0');
                     if (string.IsNullOrEmpty(cleanRC)) cleanRC = "0";
 
-                    // Vérification du code retour métier (accepte 0 ou 4)
+                    // Verification of the business return code (accepting 0 or 4)
                     if (cleanRC != "0" && cleanRC != "4")
                     {
                         throw new Exception($"Job {jobName} ended with a business error (Return code: {ReturnCode}). SEQUENCE STOPPED to protect data integrity.");
                     }
 
-                    // Attention : On écoute maintenant 'LI1J04D1' au lieu de 'LI1J04D0' pour l'ouverture du rapport
-                    if (jobName == "ADDPRCT" || jobName == "LVPG22U" || jobName == "LI1J04D1")
+                    if (jobName == "ADDPRCT" || jobName == "LVPG22U" || jobName == "LI1J04D0")
                     {
                         onProgress($"[INFO] Downloading business report for {jobName}...");
                         string reportContent = await _apiService.GetJobBusinessReportAsync(JobNum, cancellationToken);

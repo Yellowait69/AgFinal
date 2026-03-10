@@ -33,6 +33,20 @@ namespace AutoActivator.Gui
 
         // SINGLE EXTRACTION TAB LOGIC
 
+        private void InputType_Checked(object sender, RoutedEventArgs e)
+        {
+            // On s'assure que les éléments visuels sont bien initialisés avant de vider le texte
+            if (TxtSingleD != null)
+            {
+                TxtSingleD.Text = string.Empty;
+            }
+
+            if (TxtSingleQ != null)
+            {
+                TxtSingleQ.Text = string.Empty;
+            }
+        }
+
         private async void BtnRunSingle_Click(object sender, RoutedEventArgs e)
         {
             string valueD = TxtSingleD?.Text.Trim();

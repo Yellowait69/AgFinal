@@ -93,8 +93,8 @@
 
                                 <StackPanel Margin="0,0,0,15" Orientation="Horizontal">
                                     <TextBlock Text="Input Type:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                    <RadioButton x:Name="RbSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand"/>
-                                    <RadioButton x:Name="RbSearchDemand" Content="Demand ID" VerticalAlignment="Center" Cursor="Hand"/>
+                                    <RadioButton x:Name="RbSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="InputType_Checked"/>
+                                    <RadioButton x:Name="RbSearchDemand" Content="Demand ID" VerticalAlignment="Center" Cursor="Hand" Checked="InputType_Checked"/>
                                 </StackPanel>
 
                                 <TextBlock Text="Environment D000 (Value):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
