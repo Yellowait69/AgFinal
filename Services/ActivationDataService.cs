@@ -73,20 +73,25 @@ namespace AutoActivator.Services
             string fastCtrl = envValue == "D" ? "I0T.DB.CA.FIB.FASTCTRL" : "I10.DB.CA.FIB.FASTCTRL";
             string envImsValue = envValue == "D" ? "T" : "C";
 
+            // CORRECTION : Formatage explicite avec un point et 2 décimales
             if (decimal.TryParse(amount.Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out decimal parsedAmount))
             {
-                amount = Math.Round(parsedAmount * 100).ToString("0");
+                // Force le format avec 2 décimales et un point ("0.00")
+                // Exemple : 2500 devient "2500.00", 2500,5 devient "2500.50"
+                amount = parsedAmount.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
             }
             else
             {
-                amount = "0";
+                amount = "0.00";
             }
 
-            if (amount == "0" || amount == "0000000000")
+            if (amount == "0.00" || amount == "0")
             {
                 throw new Exception("Montant (Premium) introuvable ou égal à 0€. L'activation a été annulée car elle ne produirait aucun effet. Vérifiez le contrat (12 chiffres/tirets nécessaires pour la DB).");
             }
 
+            // Remplit avec des zéros à gauche pour atteindre 10 caractères
+            // Exemple : "2500.00" devient "0002500.00"
             string paddedAmount = amount.PadLeft(10, '0');
             string paddedBucp = bucp.PadLeft(5, '0');
 
