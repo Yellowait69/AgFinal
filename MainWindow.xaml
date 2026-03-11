@@ -230,7 +230,7 @@
 
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="Environment:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
-                                <ComboBox x:Name="CmbActEnv" Margin="0,0,0,15" Padding="6" FontSize="14" BorderBrush="#DCDDE1" SelectedIndex="0">
+                                <ComboBox x:Name="CmbActEnv" Margin="0,0,0,15" Padding="6" FontSize="14" BorderBrush="#DCDDE1" SelectedIndex="0" SelectionChanged="CmbActEnv_SelectionChanged">
                                     <ComboBoxItem Content="D000 (D)" Tag="D"/>
                                     <ComboBoxItem Content="Q000 (Q)" Tag="Q"/>
                                 </ComboBox>
@@ -260,11 +260,19 @@
                 </Border>
 
                 <TabControl Grid.Row="2" Background="Transparent" BorderThickness="0" Margin="0,0,0,15">
+
                     <TabItem Header="📄 Single Activation" FontSize="14" FontWeight="SemiBold">
                         <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,10,0,0">
                             <StackPanel>
-                                <TextBlock Text="Provide the contract number. The system will auto-format it and fetch the premium amount from the database." Margin="0,0,0,15" Foreground="#7F8C8D" TextWrapping="Wrap"/>
-                                <TextBlock Text="Contract Number:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <TextBlock Text="Provide the contract number or Demand ID. The system will auto-format it and fetch the premium amount from the database." Margin="0,0,0,15" Foreground="#7F8C8D" TextWrapping="Wrap"/>
+
+                                <StackPanel Margin="0,0,0,15" Orientation="Horizontal">
+                                    <TextBlock Text="Input Type:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                    <RadioButton x:Name="RbActSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="ActInputType_Checked"/>
+                                    <RadioButton x:Name="RbActSearchDemand" Content="Demand ID" VerticalAlignment="Center" Cursor="Hand" Checked="ActInputType_Checked"/>
+                                </StackPanel>
+
+                                <TextBlock Text="Contract Number / Demand ID:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
                                 <TextBox x:Name="TxtActContract" Margin="0,0,0,25" Padding="8" FontSize="14" BorderBrush="#DCDDE1"/>
 
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -278,8 +286,15 @@
                     <TabItem Header="📁 Batch Activation (CSV)" FontSize="14" FontWeight="SemiBold">
                         <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,10,0,0">
                             <StackPanel>
-                                <TextBlock Text="Select a CSV file containing multiple contracts and premiums to activate them sequentially." Margin="0,0,0,15" Foreground="#7F8C8D" TextWrapping="Wrap"/>
-                                <TextBlock Text="CSV File path:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <TextBlock Text="Select a CSV or Excel file containing multiple contracts or demands to activate them sequentially." Margin="0,0,0,15" Foreground="#7F8C8D" TextWrapping="Wrap"/>
+
+                                <StackPanel Margin="0,0,0,15" Orientation="Horizontal">
+                                    <TextBlock Text="Input Type:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                    <RadioButton x:Name="RbBatchActSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="BatchActInputType_Checked"/>
+                                    <RadioButton x:Name="RbBatchActSearchDemand" Content="Demand ID" VerticalAlignment="Center" Cursor="Hand" Checked="BatchActInputType_Checked"/>
+                                </StackPanel>
+
+                                <TextBlock Text="Data File path (CSV/XLS):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
                                 <Grid Margin="0,0,0,25">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>

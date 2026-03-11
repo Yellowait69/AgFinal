@@ -1,30 +1,61 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using AutoActivator.Config;
 using AutoActivator.Services;
-using AutoActivator.Sql;
 
 namespace AutoActivator.Gui
 {
     public partial class MainWindow
     {
+        // Instanciation des services métier
+        private readonly ActivationDataService _activationDataService = new ActivationDataService();
+
+        // -- GESTION DE L'INTERFACE UTILISATEUR --
+
         private void BtnBrowseActCsv_Click(object sender, RoutedEventArgs e)
         {
             var openFileDialog = new Microsoft.Win32.OpenFileDialog
             {
-                Filter = "CSV Files|*.csv",
-                Title = "Select CSV file for batch activation",
+                Filter = "Data Files (*.csv;*.xls;*.xlsx)|*.csv;*.xls;*.xlsx|CSV Files (*.csv)|*.csv|Excel Files (*.xls;*.xlsx)|*.xls;*.xlsx",
+                Title = "Select file for batch activation",
                 InitialDirectory = Path.GetFullPath(Settings.InputDir)
             };
             if (openFileDialog.ShowDialog() == true) TxtBatchActCsv.Text = openFileDialog.FileName;
         }
+
+        private void ActInputType_Checked(object sender, RoutedEventArgs e)
+        {
+            if (TxtActContract != null) TxtActContract.Text = string.Empty;
+        }
+
+        private void UpdateBatchActCsvPath()
+        {
+            if (TxtBatchActCsv != null && RbBatchActSearchDemand != null)
+            {
+                if (RbBatchActSearchDemand.IsChecked == true)
+                {
+                    string envValue = CmbActEnv?.SelectedItem is ComboBoxItem eItem ? eItem.Tag?.ToString() ?? "D" : "D";
+
+                    if (envValue == "D")
+                        TxtBatchActCsv.Text = @"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_C01ComparisonsDB_URL_ELIA_LoginPage_D000.xls";
+                    else if (envValue == "Q")
+                        TxtBatchActCsv.Text = @"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_C01ComparisonsDB_URL_ELIA_LoginPage_Q000.xls";
+                }
+                else if (RbBatchActSearchContract != null && RbBatchActSearchContract.IsChecked == true)
+                {
+                    TxtBatchActCsv.Text = string.Empty;
+                }
+            }
+        }
+
+        private void BatchActInputType_Checked(object sender, RoutedEventArgs e) => UpdateBatchActCsvPath();
+        private void CmbActEnv_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchActCsvPath();
 
         private void BtnCancelActivation_Click(object sender, RoutedEventArgs e)
         {
@@ -36,88 +67,48 @@ namespace AutoActivator.Gui
             }
         }
 
-        /// <summary>
-        /// Formate le numéro de contrat pour le JCL (Activation) : si longueur == 12, on retire le 1er et les 2 derniers.
-        /// Exemple : "123-4567899-10" -> "123456789910" -> "234567899"
-        /// </summary>
-        private string FormatContractForJcl(string rawContract)
-        {
-            string cleaned = rawContract.Replace("-", "").Replace(" ", "").Trim();
-            if (cleaned.Length == 12)
-            {
-                return cleaned.Substring(1, 9);
-            }
-            return cleaned;
-        }
+        // -- EXECUTION : ACTIVATION UNITAIRE --
 
-        /// <summary>
-        /// Interroge directement la DB pour récupérer la prime liée au contrat.
-        /// Identique à la logique de l'ExtractionService : On garde les tirets pour la requête SQL !
-        /// </summary>
-        private async Task<string> FetchPremiumAsync(string contract, string envSuffix)
-        {
-            return await Task.Run(() =>
-            {
-                try
-                {
-                    var db = new DatabaseManager(envSuffix);
-
-                    // On nettoie les espaces invisibles (comme dans l'Extraction) mais on GARDE LES TIRETS !
-                    string dbContract = contract.Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
-
-                    var dtElia = db.GetData(SqlQueries.Queries["GET_ELIA_ID"], new Dictionary<string, object> { { "@ContractNumber", dbContract } });
-
-                    if (dtElia.Rows.Count > 0)
-                    {
-                        string eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"]?.ToString()?.Trim();
-                        if (!string.IsNullOrEmpty(eliaUconId) && SqlQueries.Queries.ContainsKey("FJ1.TB5UPRP"))
-                        {
-                            var dtPremium = db.GetData(SqlQueries.Queries["FJ1.TB5UPRP"], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
-                            if (dtPremium.Rows.Count > 0 && dtPremium.Columns.Contains("IT5UPRPUBRU"))
-                            {
-                                return dtPremium.Rows[0]["IT5UPRPUBRU"]?.ToString()?.Trim() ?? "0";
-                            }
-                        }
-                    }
-                }
-                catch { }
-                return "0";
-            });
-        }
-
-        // -- ACTIVATION UNITAIRE --
         private async void BtnRunSingleActivation_Click(object sender, RoutedEventArgs e)
         {
             _cts = new CancellationTokenSource();
             await RunProcessAsync(async () =>
             {
-                string rawContract = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8";
+                string rawInput = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8";
                 string username = Settings.DbConfig.Uid;
                 string password = Settings.DbConfig.Pwd;
+                bool isDemandId = false;
 
                 if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
                     throw new Exception("Les identifiants ne sont pas configurés. Veuillez vous reconnecter.");
 
                 Application.Current.Dispatcher.Invoke(() =>
                 {
-                    rawContract = TxtActContract.Text.Trim();
-                    if (CmbActEnv.SelectedItem is System.Windows.Controls.ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
+                    rawInput = TxtActContract.Text.Trim();
+                    isDemandId = RbActSearchDemand?.IsChecked == true;
+                    if (CmbActEnv.SelectedItem is ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
                     cus = TxtActCus.Text.Trim();
-                    if (CmbActBucp.SelectedItem is System.Windows.Controls.ComboBoxItem bItem) bucp = bItem.Content?.ToString() ?? "382";
-                    if (CmbActCmdpmt.SelectedItem is System.Windows.Controls.ComboBoxItem cItem) cmdpmt = cItem.Content?.ToString() ?? "8";
+                    if (CmbActBucp.SelectedItem is ComboBoxItem bItem) bucp = bItem.Content?.ToString() ?? "382";
+                    if (CmbActCmdpmt.SelectedItem is ComboBoxItem cItem) cmdpmt = cItem.Content?.ToString() ?? "8";
                 });
 
-                if (string.IsNullOrEmpty(rawContract)) throw new Exception("Veuillez entrer un numéro de contrat.");
+                if (string.IsNullOrEmpty(rawInput)) throw new Exception("Veuillez entrer une valeur de contrat ou de Demand ID.");
+
+                string resolvedContract = rawInput;
+
+                if (isDemandId)
+                {
+                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Recherche du contrat associé au Demand ID...");
+                    resolvedContract = await _activationDataService.GetContractFromDemandAsync(rawInput, envValue + "000");
+                    if (string.IsNullOrEmpty(resolvedContract))
+                        throw new Exception($"Impossible de trouver un contrat associé au Demand ID {rawInput} dans la base {envValue}000.");
+                }
 
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Recherche de la prime en base de données...");
-
-                // On passe le contrat brut (AVEC TIRETS), la base de données pourra le trouver !
-                string amount = await FetchPremiumAsync(rawContract, envValue + "000");
+                string amount = await _activationDataService.FetchPremiumAsync(resolvedContract, envValue + "000");
 
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Préparation de l'activation...");
-
-                // Une fois la prime trouvée, on formate le contrat pour le Mainframe (9 chiffres)
-                string formattedContract = FormatContractForJcl(rawContract);
+                string formattedContract = _activationDataService.FormatContractForJcl(resolvedContract);
 
                 StringBuilder report = new StringBuilder();
                 report.AppendLine("=== RAPPORT D'ACTIVATION UNITAIRE ===");
@@ -125,13 +116,14 @@ namespace AutoActivator.Gui
 
                 try
                 {
-                    await ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, _cts.Token);
-                    report.AppendLine($"Contrat Original: {rawContract} | Contrat Modifié: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: SUCCÈS");
+                    // L'UI Thread est mis à jour proprement via un delegate passé au service métier
+                    await _activationDataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, msg => Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = msg), _cts.Token);
+                    report.AppendLine($"Input Original: {rawInput} | Contrat Trouvé: {resolvedContract} | Contrat JCL: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: SUCCÈS");
                 }
                 catch (Exception ex)
                 {
-                    report.AppendLine($"Contrat Original: {rawContract} | Contrat Modifié: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: ÉCHEC ({ex.Message})");
-                    throw; // On relance l'erreur pour l'afficher à l'utilisateur
+                    report.AppendLine($"Input Original: {rawInput} | Contrat Trouvé: {resolvedContract} | Contrat JCL: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: ÉCHEC ({ex.Message})");
+                    throw;
                 }
                 finally
                 {
@@ -148,199 +140,57 @@ namespace AutoActivator.Gui
             });
         }
 
-        // -- ACTIVATION PAR LOT (CSV) --
+        // -- EXECUTION : ACTIVATION PAR LOT --
+
         private async void BtnRunBatchActivation_Click(object sender, RoutedEventArgs e)
         {
             _cts = new CancellationTokenSource();
             await RunProcessAsync(async () =>
             {
-                string csvPath = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8";
+                string filePath = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8";
                 string username = Settings.DbConfig.Uid;
                 string password = Settings.DbConfig.Pwd;
+                bool isDemandId = false;
 
                 if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
                     throw new Exception("Les identifiants ne sont pas configurés.");
 
                 Application.Current.Dispatcher.Invoke(() =>
                 {
-                    csvPath = TxtBatchActCsv.Text.Trim();
-                    if (CmbActEnv.SelectedItem is System.Windows.Controls.ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
+                    filePath = TxtBatchActCsv.Text.Trim();
+                    isDemandId = RbBatchActSearchDemand?.IsChecked == true;
+                    if (CmbActEnv.SelectedItem is ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
                     cus = TxtActCus.Text.Trim();
-                    if (CmbActBucp.SelectedItem is System.Windows.Controls.ComboBoxItem bItem) bucp = bItem.Content?.ToString() ?? "382";
-                    if (CmbActCmdpmt.SelectedItem is System.Windows.Controls.ComboBoxItem cItem) cmdpmt = cItem.Content?.ToString() ?? "8";
+                    if (CmbActBucp.SelectedItem is ComboBoxItem bItem) bucp = bItem.Content?.ToString() ?? "382";
+                    if (CmbActCmdpmt.SelectedItem is ComboBoxItem cItem) cmdpmt = cItem.Content?.ToString() ?? "8";
                 });
 
-                if (string.IsNullOrEmpty(csvPath) || !File.Exists(csvPath)) throw new Exception("Veuillez sélectionner un fichier CSV valide.");
+                if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) throw new Exception("Veuillez sélectionner un fichier valide.");
 
-                StringBuilder report = new StringBuilder();
-                report.AppendLine("=== RAPPORT D'ACTIVATION BATCH ===");
-                report.AppendLine($"Date de lancement: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-                report.AppendLine($"Configuration Globale -> Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt}\n");
-                report.AppendLine("---------------------------------------------------------------------------------------------------------");
-
-                int successCount = 0, errorCount = 0;
-
-                using (var reader = new StreamReader(csvPath, Encoding.UTF8))
+                // Utilisation de la méthode présente dans MainWindow.Extraction.cs
+                if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                 {
-                    string headerLine = reader.ReadLine();
-                    if (headerLine != null && headerLine.StartsWith("\uFEFF")) headerLine = headerLine.Substring(1);
-
-                    char delimiter = headerLine.Count(c => c == ';') > headerLine.Count(c => c == ',') ? ';' : ',';
-                    var headers = ParseCsvLine(headerLine, delimiter);
-
-                    int contractIdx = -1;
-                    // L'index de prime (premiumIdx) n'est plus utile puisqu'on va interroger la base de données
-                    for (int i = 0; i < headers.Count; i++)
-                    {
-                        string h = headers[i].Trim().ToLower();
-                        if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa")) contractIdx = i;
-                    }
-
-                    if (contractIdx == -1) throw new Exception("Colonne de contrat introuvable dans le CSV.");
-
-                    string line;
-                    int rowNum = 1;
-                    while ((line = reader.ReadLine()) != null)
-                    {
-                        if (string.IsNullOrWhiteSpace(line)) continue;
-                        if (_cts.Token.IsCancellationRequested) break;
-
-                        var columns = ParseCsvLine(line, delimiter);
-                        if (columns.Count <= contractIdx) continue;
-
-                        // CORRECTION 1 : Nettoyage complet des caractères invisibles (insécables, etc)
-                        string rawContract = columns[contractIdx].Replace("=", "").Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
-                        if (string.IsNullOrEmpty(rawContract)) continue;
-
-                        // CORRECTION 2 : Appel à la base de données pour récupérer le montant exact
-                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Batch en cours: Recherche prime pour {rawContract} (Ligne {rowNum})...");
-                        string amount = await FetchPremiumAsync(rawContract, envValue + "000");
-
-                        // Appel de la méthode renommée pour éviter les conflits
-                        string formattedContract = FormatContractForJcl(rawContract);
-
-                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Batch en cours: Activation de {formattedContract} (Ligne {rowNum++})...");
-
-                        try
-                        {
-                            await ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, _cts.Token);
-                            // Rapport avec toutes les données demandées (Succès)
-                            report.AppendLine($"[SUCCÈS] Contrat: {rawContract} -> {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount}");
-                            successCount++;
-                        }
-                        catch (Exception ex)
-                        {
-                            // Rapport avec toutes les données demandées (Échec)
-                            report.AppendLine($"[ÉCHEC]  Contrat: {rawContract} -> {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Erreur: {ex.Message}");
-                            errorCount++;
-                            // On "avale" l'erreur pour continuer la boucle sur le contrat suivant
-                        }
-                    }
+                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Conversion du fichier Excel réseau en CSV local...");
+                    filePath = await Task.Run(() => PrepareCsvFromExcel(filePath, envValue + "000"));
                 }
 
-                report.AppendLine("---------------------------------------------------------------------------------------------------------");
-                report.AppendLine($"FIN DU TRAITEMENT. Succès: {successCount} | Échecs: {errorCount}");
+                var batchService = new BatchActivationService(_activationDataService);
 
-                string path = Path.Combine(Settings.OutputDir, $"Activation_Batch_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
-                File.WriteAllText(path, report.ToString());
-                _lastGeneratedPath = path;
+                // L'UI Thread est mis à jour proprement via un delegate
+                var result = await batchService.RunBatchAsync(
+                    filePath, isDemandId, envValue, cus, bucp, cmdpmt, username, password, Settings.OutputDir,
+                    msg => Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = msg),
+                    _cts.Token
+                );
+
+                _lastGeneratedPath = result.reportPath;
 
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     if (PrgLoading != null) PrgLoading.Visibility = Visibility.Collapsed;
-                    MessageBox.Show($"Batch terminé.\nSuccès: {successCount} \nÉchecs: {errorCount}\n\nOuvrez le fichier de log pour les détails.", "Activation Batch", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show($"Batch terminé.\nSuccès: {result.successCount} \nÉchecs: {result.errorCount}\n\nOuvrez le fichier de log pour les détails.", "Activation Batch", MessageBoxButton.OK, MessageBoxImage.Information);
                 });
             });
-        }
-
-        // -- LOGIQUE CENTRALE D'ACTIVATION (Injecte les variables et lance JCLs) --
-        private async Task ExecuteActivationSequenceAsync(string contract, string amount, string envValue, string cus, string bucp, string cmdpmt, string username, string password, CancellationToken token)
-        {
-            string q2 = envValue == "D" ? "Q2T" : "Q2C";
-            string fastCtrl = envValue == "D" ? "I0T.DB.CA.FIB.FASTCTRL" : "I10.DB.CA.FIB.FASTCTRL";
-            string envImsValue = envValue == "D" ? "T" : "C";
-
-            // 1. Formatage ROBUSTE de la prime (Retire les virgules/points, ex: 12500.00 -> 1250000)
-            if (decimal.TryParse(amount.Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out decimal parsedAmount))
-            {
-                amount = Math.Round(parsedAmount * 100).ToString("0");
-            }
-            else
-            {
-                amount = "0";
-            }
-
-            // 2. Sécurité : On empêche l'activation si le montant est vide/nul
-            if (amount == "0" || amount == "0000000000")
-            {
-                throw new Exception("Montant (Premium) introuvable ou égal à 0€. L'activation a été annulée car elle ne produirait aucun effet. Vérifiez le contrat (12 chiffres/tirets nécessaires pour la DB).");
-            }
-
-            // 3. Formatage pour JCL (ajout des zéros devant)
-            string paddedAmount = amount.PadLeft(10, '0');
-            string paddedBucp = bucp.PadLeft(5, '0');
-
-            var generalVariables = new Dictionary<string, string>
-            {
-                { "ENV", envValue }, { "ENVIMS", envImsValue }, { "CUS", cus },
-                { "YYMMDD", DateTime.Now.ToString("yyMMdd") }, { "YYYY", DateTime.Now.ToString("yyyy") },
-                { "MM", DateTime.Now.ToString("MM") }, { "DD", DateTime.Now.ToString("dd") },
-                { "CLASS", "A" }, { "CNTBEG", contract }, { "CNTEND", contract },
-                { "MMDD", DateTime.Now.ToString("MMdd") }, { "CYMD", DateTime.Now.ToString("yyyyMMdd") },
-                { "STE", "A" }, { "Q2", q2 }, { "CM.", "     " },
-                { "DRUN", DateTime.Now.ToString("yyyyMMdd") }, { "NREMB", "20" },
-                { "CONTR-EX", "Y" }, { "CONTR-RE", "Y" }, { "CONTR-UN", "Y" },
-                { "NJJART72", "5" }, { "FASTCTRL", fastCtrl }
-            };
-
-            var addprctVariables = new Dictionary<string, string>
-            {
-                { "CMDPMT", cmdpmt }, { "AMOUNT", paddedAmount },
-                { "BUCP", paddedBucp }, { "USERNAME", username }
-            };
-
-            string jclFolder = @"\\Jafile02\elia\11 - Technical Architecture\11 - IS Tooling\01 - Tools\LVCHAIN\JCL";
-
-            if (!Directory.Exists(jclFolder))
-                throw new Exception($"Dossier réseau des JCL inaccessible: {jclFolder}");
-
-            var orchestrator = new ActivationOrchestrator(jclFolder);
-
-            await orchestrator.RunActivationSequenceAsync(
-                generalVariables, addprctVariables, username, password,
-                msg => Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = msg),
-                token
-            );
-        }
-
-        // -- PARSER CSV INTELLIGENT (Utilisé pour le batch) --
-        private List<string> ParseCsvLine(string line, char delimiter)
-        {
-            var result = new List<string>();
-            bool inQuotes = false;
-            var currentField = new StringBuilder();
-
-            for (int i = 0; i < line.Length; i++)
-            {
-                char c = line[i];
-                if (c == '"')
-                {
-                    if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
-                    {
-                        currentField.Append('"');
-                        i++;
-                    }
-                    else { inQuotes = !inQuotes; }
-                }
-                else if (c == delimiter && !inQuotes)
-                {
-                    result.Add(currentField.ToString());
-                    currentField.Clear();
-                }
-                else { currentField.Append(c); }
-            }
-            result.Add(currentField.ToString());
-            return result;
         }
     }
 }
