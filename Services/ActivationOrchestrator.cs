@@ -21,9 +21,7 @@ namespace AutoActivator.Services
             try
             {
                 onProgress("=== START OF ACTIVATION SEQUENCE ===");
-
-                // CORRECTION ICI : On utilise "ENV" (qui vaut D, Q, A, ou P) pour le serveur API
-                string currentEnv = generalVariables.ContainsKey("ENV") ? generalVariables["ENV"] : "D";
+                string currentEnv = generalVariables.ContainsKey("ENVIMS") ? generalVariables["ENVIMS"] : "D";
 
                 onProgress($"Connecting to MicroFocus server ({currentEnv}000)...");
                 bool isLogged = await _apiService.LogonAsync(username, password, currentEnv, onProgress, cancellationToken);
@@ -78,9 +76,6 @@ namespace AutoActivator.Services
             // 2. Prepare the JCL via the dedicated service
             string readyContent = await _jclProcessor.GetPreparedJclAsync(jobName, variables, count);
 
-            // CORRECTION : Ce bloc a été supprimé/commenté car il coupait le JCL LVPG22U
-            // et empêchait la véritable activation du contrat.
-            /*
             if (jobName == "LVPG22U")
             {
                 int icegenerIndex = readyContent.IndexOf("//ICEGENER IF");
@@ -89,7 +84,6 @@ namespace AutoActivator.Services
                     readyContent = readyContent.Substring(0, icegenerIndex);
                 }
             }
-            */
 
             if (jobName == "LI1J04D0" || jobName == "LI1J04D2")
             {
@@ -100,7 +94,7 @@ namespace AutoActivator.Services
                     readyContent = readyContent.Replace("$JOBNAME", subJobName);
                 }
 
-                string envLetter = variables.ContainsKey("ENVIMS") ? variables["ENVIMS"] : "T";
+                string envLetter = variables.ContainsKey("ENVIMS") ? variables["ENVIMS"] : "D";
                 string notifyUser = variables.ContainsKey("USERNAME") ? variables["USERNAME"] : "XA3894";
 
                 string dataMarker = "DLM=##";
@@ -158,18 +152,10 @@ namespace AutoActivator.Services
                     string cleanRC = ReturnCode.TrimStart('0');
                     if (string.IsNullOrEmpty(cleanRC)) cleanRC = "0";
 
-                    // CORRECTION : On n'accepte plus le Return Code 4 silencieusement.
-                    // Seul le code 0 confirme que le métier a bien été exécuté sans avertissement.
-                    if (cleanRC != "0")
+                    // Verification of the business return code (accepting 0 or 4)
+                    if (cleanRC != "0" && cleanRC != "4")
                     {
-                        if (cleanRC == "4")
-                        {
-                            throw new Exception($"Job {jobName} ended with a business warning (RC=4). The contract might not be fully activated. SEQUENCE STOPPED.");
-                        }
-                        else
-                        {
-                            throw new Exception($"Job {jobName} ended with a business error (Return code: {ReturnCode}). SEQUENCE STOPPED to protect data integrity.");
-                        }
+                        throw new Exception($"Job {jobName} ended with a business error (Return code: {ReturnCode}). SEQUENCE STOPPED to protect data integrity.");
                     }
 
                     if (jobName == "ADDPRCT" || jobName == "LVPG22U" || jobName == "LI1J04D0")
@@ -186,6 +172,7 @@ namespace AutoActivator.Services
                         }
                         catch { }
                     }
+
 
                     finished = true;
                     break;
