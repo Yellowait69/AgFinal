@@ -41,6 +41,8 @@ namespace AutoActivator.Services
                 await ProcessSubmitAndWaitAsync("ADDPRCT", addprctVars, jobCounter++, onProgress, cancellationToken);
                 await ProcessSubmitAndWaitAsync("LVPP06U", generalVariables, jobCounter++, onProgress, cancellationToken);
                 await ProcessSubmitAndWaitAsync("LVPG22U", generalVariables, jobCounter++, onProgress, cancellationToken);
+
+                // Exécution normale (sans désencapsulation) pour laisser le Mainframe gérer l'Internal Reader
                 await ProcessSubmitAndWaitAsync("LI1J04D0", generalVariables, jobCounter++, onProgress, cancellationToken);
                 await ProcessSubmitAndWaitAsync("LI1J04D2", generalVariables, jobCounter++, onProgress, cancellationToken);
 
@@ -87,50 +89,8 @@ namespace AutoActivator.Services
                 }
             }
 
-            // --- CORRECTION : Désencapsulation du vrai Job métier pour contrer l'Internal Reader ---
-            if (jobName == "LI1J04D0" || jobName == "LI1J04D2")
-            {
-                string subJobName = (jobName == "LI1J04D0") ? "LI1J04D1" : "LI1J04D3";
-
-                if (readyContent.Contains("$JOBNAME"))
-                {
-                    readyContent = readyContent.Replace("$JOBNAME", subJobName);
-                }
-
-                string envLetter = variables.ContainsKey("ENVIMS") ? variables["ENVIMS"] : "T";
-                string notifyUser = variables.ContainsKey("USERNAME") ? variables["USERNAME"] : "XA3894";
-
-                string dataMarker = "DLM=##";
-                int dataIndex = readyContent.IndexOf(dataMarker);
-
-                if (dataIndex != -1)
-                {
-                    int endOfLineIndex = readyContent.IndexOf('\n', dataIndex);
-                    if (endOfLineIndex != -1)
-                    {
-                        // Extraction du contenu du sous-job caché après le DLM=##
-                        string innerJcl = readyContent.Substring(endOfLineIndex + 1);
-
-                        // Nettoyage du délimiteur final (##) à la fin du fichier
-                        int dlmEndIndex = innerJcl.LastIndexOf("##");
-                        if (dlmEndIndex != -1)
-                        {
-                            innerJcl = innerJcl.Substring(0, dlmEndIndex);
-                        }
-
-                        // Création de la nouvelle carte JOB
-                        string jobCardToInject = $"//{subJobName} JOB CLASS=A,SCHENV=IM7{envLetter},NOTIFY={notifyUser}\r\n";
-
-                        // Remplacement complet du JCL lanceur par le JCL métier
-                        readyContent = jobCardToInject + innerJcl;
-
-                        // Modification vitale : on indique au reste du code qu'on traque désormais le sous-job
-                        onProgress($"[INFO] JCL unwrapped: Direct submission of {subJobName} instead of {jobName}");
-                        jobName = subJobName;
-                    }
-                }
-            }
-            // -------------------------------------------------------------------------------------
+            // --- LE BLOC DE DÉSENCAPSULATION POUR LI1J04D0 A ÉTÉ SUPPRIMÉ D'ICI ---
+            // Le JCL LI1J04D0 va maintenant tourner en entier avec toutes ses allocations.
 
             try
             {
@@ -152,6 +112,7 @@ namespace AutoActivator.Services
             // 4. Attente active (Polling) avec vérification du code retour
             int[] sleepDelays = { 1, 2, 3, 5, 8, 10, 15, 30, 30, 30, 30, 30, 45, 60 };
             bool finished = false;
+            string finalReturnCode = "";
 
             for (int i = 0; i < sleepDelays.Length; i++)
             {
@@ -172,6 +133,7 @@ namespace AutoActivator.Services
                     // Nettoyage des zéros inutiles
                     string cleanRC = ReturnCode.TrimStart('0');
                     if (string.IsNullOrEmpty(cleanRC)) cleanRC = "0";
+                    finalReturnCode = cleanRC;
 
                     // Vérification du code retour métier (accepte 0 ou 4)
                     if (cleanRC != "0" && cleanRC != "4")
@@ -179,8 +141,8 @@ namespace AutoActivator.Services
                         throw new Exception($"Job {jobName} ended with a business error (Return code: {ReturnCode}). SEQUENCE STOPPED to protect data integrity.");
                     }
 
-                    // Attention : On écoute maintenant 'LI1J04D1' au lieu de 'LI1J04D0' pour l'ouverture du rapport
-                    if (jobName == "ADDPRCT" || jobName == "LVPG22U" || jobName == "LI1J04D1")
+                    // On écoute le rapport de LI1J04D0 (et plus LI1J04D1)
+                    if (jobName == "ADDPRCT" || jobName == "LVPG22U" || jobName == "LI1J04D0")
                     {
                         onProgress($"[INFO] Downloading business report for {jobName}...");
                         string reportContent = await _apiService.GetJobBusinessReportAsync(JobNum, cancellationToken);
@@ -202,7 +164,7 @@ namespace AutoActivator.Services
 
             if (!finished) throw new Exception($"Job {JobNum} ({jobName}) exceeded the timeout. Please check manually in ESCWA.");
 
-            onProgress($" Job {jobName} completed successfully (RC: {JobNum}) !");
+            onProgress($" Job {jobName} completed successfully (RC: {finalReturnCode}) !");
         }
     }
 }
