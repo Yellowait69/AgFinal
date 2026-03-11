@@ -78,6 +78,9 @@ namespace AutoActivator.Services
             // 2. Prepare the JCL via the dedicated service
             string readyContent = await _jclProcessor.GetPreparedJclAsync(jobName, variables, count);
 
+            // CORRECTION : Ce bloc a été supprimé/commenté car il coupait le JCL LVPG22U
+            // et empêchait la véritable activation du contrat.
+            /*
             if (jobName == "LVPG22U")
             {
                 int icegenerIndex = readyContent.IndexOf("//ICEGENER IF");
@@ -86,6 +89,7 @@ namespace AutoActivator.Services
                     readyContent = readyContent.Substring(0, icegenerIndex);
                 }
             }
+            */
 
             if (jobName == "LI1J04D0" || jobName == "LI1J04D2")
             {
@@ -154,10 +158,18 @@ namespace AutoActivator.Services
                     string cleanRC = ReturnCode.TrimStart('0');
                     if (string.IsNullOrEmpty(cleanRC)) cleanRC = "0";
 
-                    // Verification of the business return code (accepting 0 or 4)
-                    if (cleanRC != "0" && cleanRC != "4")
+                    // CORRECTION : On n'accepte plus le Return Code 4 silencieusement.
+                    // Seul le code 0 confirme que le métier a bien été exécuté sans avertissement.
+                    if (cleanRC != "0")
                     {
-                        throw new Exception($"Job {jobName} ended with a business error (Return code: {ReturnCode}). SEQUENCE STOPPED to protect data integrity.");
+                        if (cleanRC == "4")
+                        {
+                            throw new Exception($"Job {jobName} ended with a business warning (RC=4). The contract might not be fully activated. SEQUENCE STOPPED.");
+                        }
+                        else
+                        {
+                            throw new Exception($"Job {jobName} ended with a business error (Return code: {ReturnCode}). SEQUENCE STOPPED to protect data integrity.");
+                        }
                     }
 
                     if (jobName == "ADDPRCT" || jobName == "LVPG22U" || jobName == "LI1J04D0")
