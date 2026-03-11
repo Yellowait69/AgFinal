@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using Microsoft.Win32;
@@ -15,8 +14,6 @@ namespace AutoActivator.Gui
 
     public partial class MainWindow : Window
     {
-        // NOUVEAU : Objet permettant de déclencher l'annulation des tâches en cours
-        private CancellationTokenSource _cancellationTokenSource;
 
         // RENOMMÉ : Formatage visuel pour l'interface de l'Extraction
         private string FormatContractForDisplay(string contract)
@@ -35,18 +32,6 @@ namespace AutoActivator.Gui
             // Sinon (ex: Demand ID plus long ou format non standard), on le retourne tel quel
             return contract;
         }
-
-        // NOUVEAU : L'événement de clic pour le bouton d'annulation (à relier dans votre XAML)
-        private void BtnCancelExtraction_Click(object sender, RoutedEventArgs e)
-        {
-            if (_cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested)
-            {
-                _cancellationTokenSource.Cancel();
-                TxtStatus.Text = "Annulation en cours... Veuillez patienter.";
-                TxtStatus.Foreground = System.Windows.Media.Brushes.Red;
-            }
-        }
-
 
         // SINGLE EXTRACTION TAB LOGIC
 
@@ -94,56 +79,30 @@ namespace AutoActivator.Gui
                 return;
             }
 
-            // NOUVEAU : Initialisation du jeton d'annulation
-            _cancellationTokenSource = new CancellationTokenSource();
-            CancellationToken token = _cancellationTokenSource.Token;
-
             IProgress<ExtractionItem> progress = new Progress<ExtractionItem>(item => ExtractionHistory.Add(item));
 
             await RunProcessAsync(async () =>
             {
-                try
+                if (!string.IsNullOrEmpty(valueD))
                 {
-                    if (!string.IsNullOrEmpty(valueD))
-                    {
-                        token.ThrowIfCancellationRequested(); // Vérifie si on a annulé avant de commencer
-                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Extracting Environment D000...");
-                        await Task.Run(() => PerformSingleExtraction(valueD, "D000", progress, isDemandId, token), token);
-                    }
+                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Extracting Environment D000...");
+                    await Task.Run(() => PerformSingleExtraction(valueD, "D000", progress, isDemandId));
+                }
 
-                    if (!string.IsNullOrEmpty(valueQ))
-                    {
-                        token.ThrowIfCancellationRequested(); // Vérifie si on a annulé avant de commencer
-                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Extracting Environment Q000...");
-                        await Task.Run(() => PerformSingleExtraction(valueQ, "Q000", progress, isDemandId, token), token);
-                    }
+                if (!string.IsNullOrEmpty(valueQ))
+                {
+                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Extracting Environment Q000...");
+                    await Task.Run(() => PerformSingleExtraction(valueQ, "Q000", progress, isDemandId));
+                }
 
-                    Application.Current.Dispatcher.Invoke(() => {
-                        TxtStatus.Text = "Single extraction completed successfully.";
-                        TxtStatus.Foreground = System.Windows.Media.Brushes.Green;
-                    });
-                }
-                catch (OperationCanceledException)
-                {
-                    Application.Current.Dispatcher.Invoke(() => {
-                        TxtStatus.Text = "Extraction annulée par l'utilisateur.";
-                        TxtStatus.Foreground = System.Windows.Media.Brushes.Red;
-                    });
-                }
-                finally
-                {
-                    _cancellationTokenSource?.Dispose();
-                    _cancellationTokenSource = null;
-                }
+                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Single extraction completed successfully.");
             });
         }
 
-        private void PerformSingleExtraction(string targetValue, string env, IProgress<ExtractionItem> progress, bool isDemandId, CancellationToken token)
+        private void PerformSingleExtraction(string targetValue, string env, IProgress<ExtractionItem> progress, bool isDemandId)
         {
             try
             {
-                token.ThrowIfCancellationRequested();
-
                 // On passe "true" pour "saveIndividualFile" et isDemandId à la fin pour le service d'extraction
                 ExtractionResult result = _extractionService.PerformExtraction(targetValue, env, true, isDemandId);
                 _lastGeneratedPath = Settings.OutputDir;
@@ -163,21 +122,6 @@ namespace AutoActivator.Gui
                     Time = DateTime.Now.ToString("HH:mm:ss"),
                     Test = "OK",
                     FilePath = result.FilePath
-                });
-            }
-            catch (OperationCanceledException)
-            {
-                progress.Report(new ExtractionItem
-                {
-                    ContractId = targetValue,
-                    InternalId = "-",
-                    Product = env,
-                    Premium = "-",
-                    Ucon = "-",
-                    Hdmd = "-",
-                    Time = DateTime.Now.ToString("HH:mm:ss"),
-                    Test = "Annulé",
-                    FilePath = string.Empty
                 });
             }
             catch (Exception ex)
@@ -216,11 +160,9 @@ namespace AutoActivator.Gui
             return openFileDialog.ShowDialog() == true ? openFileDialog.FileName : string.Empty;
         }
 
-        // NOUVEAU : Convertisseur automatique Excel -> CSV en arrière-plan avec sauvegarde propre et Annulation
-        private string PrepareCsvFromExcel(string excelFilePath, string env, CancellationToken token)
+        // NOUVEAU : Convertisseur automatique Excel -> CSV en arrière-plan avec sauvegarde propre
+        private string PrepareCsvFromExcel(string excelFilePath, string env)
         {
-            token.ThrowIfCancellationRequested(); // Stoppe avant même d'ouvrir Excel si annulé
-
             if (!File.Exists(excelFilePath))
                 throw new FileNotFoundException($"Le fichier Excel est introuvable sur le réseau ou en local : {excelFilePath}");
 
@@ -255,8 +197,6 @@ namespace AutoActivator.Gui
                     valueCol.NumberFormat = "0"; // Force le format nombre entier (évite les 1.23E+11)
                 }
 
-                token.ThrowIfCancellationRequested(); // Stoppe avant de sauvegarder si annulé
-
                 // Sauvegarde du CSV définitif dans votre dossier Output
                 workbook.SaveAs(savedCsvPath, Excel.XlFileFormat.xlCSV, Type.Missing, Type.Missing,
                                 Type.Missing, Type.Missing, Excel.XlSaveAsAccessMode.xlNoChange,
@@ -287,10 +227,6 @@ namespace AutoActivator.Gui
                 return;
             }
 
-            // NOUVEAU : Initialisation du jeton d'annulation
-            _cancellationTokenSource = new CancellationTokenSource();
-            CancellationToken token = _cancellationTokenSource.Token;
-
             var batchService = new BatchExtractionService(_extractionService);
 
             IProgress<BatchProgressInfo> progress = new Progress<BatchProgressInfo>(info =>
@@ -311,68 +247,45 @@ namespace AutoActivator.Gui
 
             await RunProcessAsync(async () =>
             {
-                try
+                // -- Traitement pour D000 --
+                if (!string.IsNullOrEmpty(fileD))
                 {
-                    // -- Traitement pour D000 --
-                    if (!string.IsNullOrEmpty(fileD))
+                    string actualFileD = fileD;
+                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Preparing Environment D000...");
+
+                    // Détection intelligente : Si c'est un Excel, on le convertit, sinon on l'utilise tel quel
+                    if (fileD.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || fileD.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                     {
-                        token.ThrowIfCancellationRequested();
-
-                        string actualFileD = fileD;
-                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Preparing Environment D000...");
-
-                        // Détection intelligente : Si c'est un Excel, on le convertit, sinon on l'utilise tel quel
-                        if (fileD.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || fileD.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
-                        {
-                            Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Converting Network Excel to CSV for D000...");
-                            actualFileD = await Task.Run(() => PrepareCsvFromExcel(fileD, "D000", token), token);
-                        }
-
-                        token.ThrowIfCancellationRequested();
-
-                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch Extracting Environment D000...");
-                        await Task.Run(() => batchService.PerformBatchExtraction(actualFileD, "D000", progress.Report, isDemandId), token);
+                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Converting Network Excel to CSV for D000...");
+                        actualFileD = await Task.Run(() => PrepareCsvFromExcel(fileD, "D000"));
                     }
 
-                    // -- Traitement pour Q000 --
-                    if (!string.IsNullOrEmpty(fileQ))
+                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch Extracting Environment D000...");
+                    await Task.Run(() => batchService.PerformBatchExtraction(actualFileD, "D000", progress.Report, isDemandId));
+                }
+
+                // -- Traitement pour Q000 --
+                if (!string.IsNullOrEmpty(fileQ))
+                {
+                    string actualFileQ = fileQ;
+                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Preparing Environment Q000...");
+
+                    // Détection intelligente : Si c'est un Excel, on le convertit, sinon on l'utilise tel quel
+                    if (fileQ.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || fileQ.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                     {
-                        token.ThrowIfCancellationRequested();
-
-                        string actualFileQ = fileQ;
-                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Preparing Environment Q000...");
-
-                        // Détection intelligente : Si c'est un Excel, on le convertit, sinon on l'utilise tel quel
-                        if (fileQ.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || fileQ.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
-                        {
-                            Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Converting Network Excel to CSV for Q000...");
-                            actualFileQ = await Task.Run(() => PrepareCsvFromExcel(fileQ, "Q000", token), token);
-                        }
-
-                        token.ThrowIfCancellationRequested();
-
-                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch Extracting Environment Q000...");
-                        await Task.Run(() => batchService.PerformBatchExtraction(actualFileQ, "Q000", progress.Report, isDemandId), token);
+                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Converting Network Excel to CSV for Q000...");
+                        actualFileQ = await Task.Run(() => PrepareCsvFromExcel(fileQ, "Q000"));
                     }
 
-                    _lastGeneratedPath = Settings.OutputDir;
-                    Application.Current.Dispatcher.Invoke(() => {
-                        TxtStatus.Text = "Batch extraction completed! Global files saved in Output folder.";
-                        TxtStatus.Foreground = System.Windows.Media.Brushes.Green;
-                    });
+                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch Extracting Environment Q000...");
+                    await Task.Run(() => batchService.PerformBatchExtraction(actualFileQ, "Q000", progress.Report, isDemandId));
                 }
-                catch (OperationCanceledException)
-                {
-                    Application.Current.Dispatcher.Invoke(() => {
-                        TxtStatus.Text = "Batch Extraction annulée par l'utilisateur.";
-                        TxtStatus.Foreground = System.Windows.Media.Brushes.Red;
-                    });
-                }
-                finally
-                {
-                    _cancellationTokenSource?.Dispose();
-                    _cancellationTokenSource = null;
-                }
+
+                _lastGeneratedPath = Settings.OutputDir;
+                Application.Current.Dispatcher.Invoke(() => {
+                    TxtStatus.Text = "Batch extraction completed! Global files saved in Output folder.";
+                    TxtStatus.Foreground = System.Windows.Media.Brushes.Green;
+                });
             });
         }
     }
