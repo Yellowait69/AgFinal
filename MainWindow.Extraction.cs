@@ -6,6 +6,8 @@ using Microsoft.Win32;
 using AutoActivator.Config;
 using AutoActivator.Models;
 using AutoActivator.Services;
+// NOUVEAU : Référence explicite pour piloter Excel en arrière-plan
+using Excel = Microsoft.Office.Interop.Excel;
 
 namespace AutoActivator.Gui
 {
@@ -47,18 +49,18 @@ namespace AutoActivator.Gui
             }
         }
 
-        // NOUVEAU : Méthode pour vider les champs du Batch Extraction lors du changement de type de recherche
+        // NOUVEAU : Méthode pour pré-remplir les champs du Batch Extraction avec les chemins réseau
         private void BatchInputType_Checked(object sender, RoutedEventArgs e)
         {
-            // On s'assure que les éléments visuels sont bien initialisés avant de vider le texte
+            // On s'assure que les éléments visuels sont bien initialisés avant de modifier le texte
             if (TxtBatchD != null)
             {
-                TxtBatchD.Text = string.Empty;
+                TxtBatchD.Text = @"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_C01ComparisonsDB_URL_ELIA_LoginPage_D000.xls";
             }
 
             if (TxtBatchQ != null)
             {
-                TxtBatchQ.Text = string.Empty;
+                TxtBatchQ.Text = @"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_C01ComparisonsDB_URL_ELIA_LoginPage_Q000.xls";
             }
         }
 
@@ -143,19 +145,71 @@ namespace AutoActivator.Gui
 
         // BATCH EXTRACTION TAB LOGIC
 
-        private void BtnBrowseD_Click(object sender, RoutedEventArgs e) => TxtBatchD.Text = OpenCsvDialog();
-        private void BtnBrowseQ_Click(object sender, RoutedEventArgs e) => TxtBatchQ.Text = OpenCsvDialog();
+        private void BtnBrowseD_Click(object sender, RoutedEventArgs e) => TxtBatchD.Text = OpenFileDialogHybrid();
+        private void BtnBrowseQ_Click(object sender, RoutedEventArgs e) => TxtBatchQ.Text = OpenFileDialogHybrid();
 
-        private string OpenCsvDialog()
+        // NOUVEAU : Un dialogue hybride qui accepte CSV, XLS et XLSX
+        private string OpenFileDialogHybrid()
         {
             var openFileDialog = new OpenFileDialog
             {
-                Filter = "CSV Files|*.csv",
-                Title = "Select a CSV file containing contracts",
-
+                Filter = "Data Files (*.csv;*.xls;*.xlsx)|*.csv;*.xls;*.xlsx|CSV Files (*.csv)|*.csv|Excel Files (*.xls;*.xlsx)|*.xls;*.xlsx",
+                Title = "Select a file containing contracts",
                 InitialDirectory = Path.GetFullPath(Settings.InputDir)
             };
             return openFileDialog.ShowDialog() == true ? openFileDialog.FileName : string.Empty;
+        }
+
+        // NOUVEAU : Convertisseur automatique Excel -> CSV en arrière-plan avec sauvegarde propre
+        private string PrepareCsvFromExcel(string excelFilePath, string env)
+        {
+            if (!File.Exists(excelFilePath))
+                throw new FileNotFoundException($"Le fichier Excel est introuvable sur le réseau ou en local : {excelFilePath}");
+
+            Directory.CreateDirectory(Settings.OutputDir);
+
+            // CHANGEMENT : On récupère le nom du fichier Excel d'origine (sans l'extension .xls/.xlsx)
+            string originalFileName = Path.GetFileNameWithoutExtension(excelFilePath);
+
+            // On crée un nom clair pour le fichier CSV converti qui sera sauvegardé
+            string csvFileName = $"Converti_{originalFileName}_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+            string savedCsvPath = Path.Combine(Settings.OutputDir, csvFileName);
+
+            Excel.Application excelApp = new Excel.Application();
+            excelApp.Visible = false;
+            excelApp.DisplayAlerts = false;
+
+            Excel.Workbook workbook = null;
+            try
+            {
+                // On ouvre en ReadOnly pour ne pas bloquer les collègues sur le réseau
+                workbook = excelApp.Workbooks.Open(excelFilePath, ReadOnly: true);
+                Excel.Worksheet worksheet = workbook.Sheets[1];
+
+                // On cherche la colonne "Value" (ou modifiez selon le vrai nom de votre colonne)
+                Excel.Range firstRow = worksheet.Rows[1];
+                Excel.Range searchRange = firstRow.Find("Value");
+
+                if (searchRange != null)
+                {
+                    int colIndex = searchRange.Column;
+                    Excel.Range valueCol = worksheet.Columns[colIndex];
+                    valueCol.NumberFormat = "0"; // Force le format nombre entier (évite les 1.23E+11)
+                }
+
+                // Sauvegarde du CSV définitif dans votre dossier Output
+                workbook.SaveAs(savedCsvPath, Excel.XlFileFormat.xlCSV, Type.Missing, Type.Missing,
+                                Type.Missing, Type.Missing, Excel.XlSaveAsAccessMode.xlNoChange,
+                                Type.Missing, Type.Missing, Type.Missing, Type.Missing, Type.Missing);
+            }
+            finally
+            {
+                if (workbook != null) workbook.Close(false);
+                excelApp.Quit();
+                System.Runtime.InteropServices.Marshal.ReleaseComObject(excelApp);
+            }
+
+            return savedCsvPath;
         }
 
         private async void BtnRunBatch_Click(object sender, RoutedEventArgs e)
@@ -168,7 +222,7 @@ namespace AutoActivator.Gui
 
             if (string.IsNullOrEmpty(fileD) && string.IsNullOrEmpty(fileQ))
             {
-                TxtStatus.Text = "Please select at least one CSV file.";
+                TxtStatus.Text = "Please select at least one file or use the default network paths.";
                 TxtStatus.Foreground = System.Windows.Media.Brushes.Orange;
                 return;
             }
@@ -179,7 +233,6 @@ namespace AutoActivator.Gui
             {
                 ExtractionHistory.Add(new ExtractionItem
                 {
-                    // Info.ContractId contiendra le VRAI numéro de contrat formaté si on a cherché par Demand ID
                     ContractId = FormatContractForDisplay(info.ContractId),
                     InternalId = info.InternalId,
                     Product = info.Product,
@@ -194,22 +247,45 @@ namespace AutoActivator.Gui
 
             await RunProcessAsync(async () =>
             {
+                // -- Traitement pour D000 --
                 if (!string.IsNullOrEmpty(fileD))
                 {
+                    string actualFileD = fileD;
+                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Preparing Environment D000...");
+
+                    // Détection intelligente : Si c'est un Excel, on le convertit, sinon on l'utilise tel quel
+                    if (fileD.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || fileD.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Converting Network Excel to CSV for D000...");
+                        actualFileD = await Task.Run(() => PrepareCsvFromExcel(fileD, "D000"));
+                    }
+
                     Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch Extracting Environment D000...");
-                    // NOUVEAU : on passe isDemandId à la méthode
-                    await Task.Run(() => batchService.PerformBatchExtraction(fileD, "D000", progress.Report, isDemandId));
+                    await Task.Run(() => batchService.PerformBatchExtraction(actualFileD, "D000", progress.Report, isDemandId));
                 }
 
+                // -- Traitement pour Q000 --
                 if (!string.IsNullOrEmpty(fileQ))
                 {
+                    string actualFileQ = fileQ;
+                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Preparing Environment Q000...");
+
+                    // Détection intelligente : Si c'est un Excel, on le convertit, sinon on l'utilise tel quel
+                    if (fileQ.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || fileQ.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Converting Network Excel to CSV for Q000...");
+                        actualFileQ = await Task.Run(() => PrepareCsvFromExcel(fileQ, "Q000"));
+                    }
+
                     Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch Extracting Environment Q000...");
-                    // NOUVEAU : on passe isDemandId à la méthode
-                    await Task.Run(() => batchService.PerformBatchExtraction(fileQ, "Q000", progress.Report, isDemandId));
+                    await Task.Run(() => batchService.PerformBatchExtraction(actualFileQ, "Q000", progress.Report, isDemandId));
                 }
 
                 _lastGeneratedPath = Settings.OutputDir;
-                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch extraction completed! Global files saved in Output folder.");
+                Application.Current.Dispatcher.Invoke(() => {
+                    TxtStatus.Text = "Batch extraction completed! Global files saved in Output folder.";
+                    TxtStatus.Foreground = System.Windows.Media.Brushes.Green;
+                });
             });
         }
     }
