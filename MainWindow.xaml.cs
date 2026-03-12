@@ -33,7 +33,7 @@ namespace AutoActivator.Gui
 
             _extractionService = new ExtractionService();
 
-            // Définir "Activation" comme onglet par défaut au lancement
+            // Set "Activation" as the default tab at startup
             BtnActivation_Click(null, null);
         }
 
@@ -51,19 +51,27 @@ namespace AutoActivator.Gui
             }
         }
 
-        // --- GESTION DES COULEURS DES ONGLETS ---
+        // --- TAB COLOR MANAGEMENT ---
         private void SetActiveTabColor(System.Windows.Controls.Button activeButton)
         {
             var inactiveColor = (SolidColorBrush)new BrushConverter().ConvertFrom("#34495E");
             var activeColor = (SolidColorBrush)new BrushConverter().ConvertFrom("#1ABC9C");
+            var helpColor = (SolidColorBrush)new BrushConverter().ConvertFrom("#8E44AD");
 
-            // Remettre tous les boutons en bleu foncé
+            // Reset all buttons to dark blue
             if (BtnActivation != null) BtnActivation.Background = inactiveColor;
             if (BtnExtraction != null) BtnExtraction.Background = inactiveColor;
             if (BtnComparison != null) BtnComparison.Background = inactiveColor;
+            if (BtnHelp != null) BtnHelp.Background = inactiveColor;
 
-            // Mettre le bouton actif en vert/turquoise
-            if (activeButton != null) activeButton.Background = activeColor;
+            // Set the active button color (using purple for Help, turquoise for others)
+            if (activeButton != null)
+            {
+                if (activeButton.Name == "BtnHelp")
+                    activeButton.Background = helpColor;
+                else
+                    activeButton.Background = activeColor;
+            }
         }
 
         private void BtnExtraction_Click(object sender, RoutedEventArgs e)
@@ -71,6 +79,7 @@ namespace AutoActivator.Gui
             if (GridExtraction != null) GridExtraction.Visibility = Visibility.Visible;
             if (GridComparison != null) GridComparison.Visibility = Visibility.Collapsed;
             if (GridActivation != null) GridActivation.Visibility = Visibility.Collapsed;
+            if (GridHelp != null) GridHelp.Visibility = Visibility.Collapsed;
 
             SetActiveTabColor(BtnExtraction);
         }
@@ -80,6 +89,7 @@ namespace AutoActivator.Gui
             if (GridExtraction != null) GridExtraction.Visibility = Visibility.Collapsed;
             if (GridComparison != null) GridComparison.Visibility = Visibility.Collapsed;
             if (GridActivation != null) GridActivation.Visibility = Visibility.Visible;
+            if (GridHelp != null) GridHelp.Visibility = Visibility.Collapsed;
 
             SetActiveTabColor(BtnActivation);
         }
@@ -89,17 +99,28 @@ namespace AutoActivator.Gui
             if (GridExtraction != null) GridExtraction.Visibility = Visibility.Collapsed;
             if (GridComparison != null) GridComparison.Visibility = Visibility.Visible;
             if (GridActivation != null) GridActivation.Visibility = Visibility.Collapsed;
+            if (GridHelp != null) GridHelp.Visibility = Visibility.Collapsed;
 
             SetActiveTabColor(BtnComparison);
         }
 
-        // --- MOTEUR ASYNCHRONE PRINCIPAL ---
+        private void BtnHelp_Click(object sender, RoutedEventArgs e)
+        {
+            if (GridExtraction != null) GridExtraction.Visibility = Visibility.Collapsed;
+            if (GridComparison != null) GridComparison.Visibility = Visibility.Collapsed;
+            if (GridActivation != null) GridActivation.Visibility = Visibility.Collapsed;
+            if (GridHelp != null) GridHelp.Visibility = Visibility.Visible;
+
+            SetActiveTabColor(BtnHelp);
+        }
+
+        // --- MAIN ASYNC ENGINE ---
         private async Task RunProcessAsync(Func<Task> action)
         {
             PrgLoading.Visibility = Visibility.Visible;
             LnkFile.Visibility = Visibility.Collapsed;
 
-            // Désactivation des boutons pendant le traitement
+            // Disable buttons during processing
             if (BtnRunSingle != null) BtnRunSingle.IsEnabled = false;
             if (BtnRunBatch != null) BtnRunBatch.IsEnabled = false;
             if (BtnRunSingleAct != null) BtnRunSingleAct.IsEnabled = false;
@@ -119,21 +140,21 @@ namespace AutoActivator.Gui
             }
             catch (OperationCanceledException)
             {
-                TxtStatus.Text = "Opération annulée par l'utilisateur.";
+                TxtStatus.Text = "Operation canceled by the user.";
                 TxtStatus.Foreground = Brushes.DarkOrange;
             }
             catch (Exception ex)
             {
-                TxtStatus.Text = $"Erreur critique: {ex.Message}";
+                TxtStatus.Text = $"Critical error: {ex.Message}";
                 TxtStatus.Foreground = Brushes.Red;
-                MessageBox.Show(ex.Message, "Erreur d'exécution", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(ex.Message, "Execution Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 LnkFile.Visibility = Visibility.Visible;
             }
             finally
             {
                 PrgLoading.Visibility = Visibility.Collapsed;
 
-                // Réactivation des boutons
+                // Re-enable buttons
                 if (BtnRunSingle != null) BtnRunSingle.IsEnabled = true;
                 if (BtnRunBatch != null) BtnRunBatch.IsEnabled = true;
                 if (BtnRunSingleAct != null) BtnRunSingleAct.IsEnabled = true;

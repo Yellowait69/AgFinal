@@ -66,6 +66,8 @@
             <Button x:Name="BtnActivation" Content="⚡ Activation" Padding="12" Margin="10,5" Click="BtnActivation_Click" Background="#1ABC9C" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
             <Button x:Name="BtnExtraction" Content="📥 Extraction" Padding="12" Margin="10,5" Click="BtnExtraction_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
             <Button x:Name="BtnComparison" Content="📊 Comparison" Padding="12" Margin="10,5" Click="BtnComparison_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
+
+            <Button x:Name="BtnHelp" Content="❓ Help &amp; Docs" Padding="12" Margin="10,5" Click="BtnHelp_Click" Background="#8E44AD" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
         </StackPanel>
 
         <Grid Grid.Column="1" Margin="25">
@@ -413,6 +415,73 @@
                                  Text="System is ready. Awaiting configuration..."/>
                     </Border>
                 </Grid>
+            </Grid>
+
+            <Grid x:Name="GridHelp" Grid.Row="0" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0">
+                    <TextBlock Text="Help &amp; Documentation Center" FontSize="24" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
+                </StackPanel>
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,0,0,10">
+                    <StackPanel Margin="0,0,15,0">
+
+                        <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,15">
+                            <StackPanel>
+                                <TextBlock Text="Welcome to the E.T.L Comparison Tool" FontWeight="Bold" FontSize="18" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                                <TextBlock Text="This software allows you to activate, extract, and compare contractual data individually or in batches. Please read the instructions below carefully to format your data files correctly and understand potential error codes." TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#3498DB" BorderThickness="2" Margin="0,0,0,15">
+                            <StackPanel>
+                                <TextBlock Text="📥 Extraction Module &amp; File Rules (Batch)" FontWeight="Bold" FontSize="18" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                                <TextBlock Text="The extraction module allows you to retrieve data from D000 or Q000 environments. When using batch extraction, your Excel or CSV files MUST adhere to the following templates:" TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,15"/>
+
+                                <TextBlock Text="1. Search by Contract ID:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                                <TextBlock Text="The program scans your file looking for a column named exactly 'Contract Lisa'. Ensure that your column header has this name, with no extra spaces." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
+
+                                <Border BorderBrush="#DCDDE1" BorderThickness="1" CornerRadius="4" Margin="20,0,0,15" HorizontalAlignment="Left">
+                                    <Image Source="/Images/TemplateContractLisa.png" Width="400" Stretch="Uniform"/>
+                                </Border>
+
+                                <TextBlock Text="2. Search by Demand ID:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                                <TextBlock Text="The program looks for a column named 'Value'. Note: the system expects this column to be located on the second row (Row 2) of your Excel file to find all Demand IDs." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
+
+                                <Border BorderBrush="#DCDDE1" BorderThickness="1" CornerRadius="4" Margin="20,0,0,15" HorizontalAlignment="Left">
+                                    <Image Source="/Images/TemplateDemandValue.png" Width="400" Stretch="Uniform"/>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#1ABC9C" BorderThickness="2" Margin="0,0,0,15">
+                            <StackPanel>
+                                <TextBlock Text="⚡ Activation Module &amp; Troubleshooting" FontWeight="Bold" FontSize="18" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                                <TextBlock Text="This module allows you to send payment or activation commands to the target environment. You must set the CUS Code, bureau number (BUCP), and the command (CMDPMT)." TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,15"/>
+
+                                <TextBlock Text="Common Errors:" FontWeight="Bold" Foreground="#E74C3C" Margin="0,0,0,5"/>
+                                <Border Background="#FDEDEC" CornerRadius="4" Padding="15" BorderBrush="#E74C3C" BorderThickness="1">
+                                    <StackPanel>
+                                        <TextBlock Text="❌ Error 008 (Job 'addprct')" FontWeight="Bold" Foreground="#C0392B"/>
+                                        <TextBlock Text="If during activation, the console or report returns a specific 008 error for the addprct job, it is highly likely that a premium has already been assigned to this contract/demand. The activation is therefore blocked by the central system to prevent duplicates." TextWrapping="Wrap" Foreground="#C0392B" Margin="0,5,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#9B59B6" BorderThickness="2" Margin="0,0,0,15">
+                            <StackPanel>
+                                <TextBlock Text="📊 Comparison Module" FontWeight="Bold" FontSize="18" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                                <TextBlock Text="This module analyzes two extracted CSV/Excel files. It automatically detects the tables present in the base file and compares them against the target file. The final report generated in the folder (which can be opened via the blue button) will highlight discrepancies, missing rows, or premium differences." TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20"/>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
             </Grid>
 
             <StackPanel Grid.Row="1" Margin="0,15,0,0">
