@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls; // Nécessaire pour ComboBox, ComboBoxItem
 using Microsoft.Win32;
 using AutoActivator.Config;
 using AutoActivator.Models;
@@ -33,48 +34,61 @@ namespace AutoActivator.Gui
             return contract;
         }
 
-        // SINGLE EXTRACTION TAB LOGIC
+        // -- GESTION DE L'INTERFACE UTILISATEUR --
 
         private void InputType_Checked(object sender, RoutedEventArgs e)
         {
-            // On s'assure que les éléments visuels sont bien initialisés avant de vider le texte
-            if (TxtSingleD != null)
+            // On s'assure que l'élément visuel est bien initialisé avant de vider le texte
+            if (TxtExtContract != null)
             {
-                TxtSingleD.Text = string.Empty;
-            }
-
-            if (TxtSingleQ != null)
-            {
-                TxtSingleQ.Text = string.Empty;
+                TxtExtContract.Text = string.Empty;
             }
         }
 
-        // NOUVEAU : Méthode pour pré-remplir les champs du Batch Extraction avec les chemins réseau
-        private void BatchInputType_Checked(object sender, RoutedEventArgs e)
+        // NOUVEAU : Met à jour ou vide le chemin réseau selon le bouton radio et l'environnement choisis
+        private void UpdateBatchExtCsvPath()
         {
-            // On s'assure que les éléments visuels sont bien initialisés avant de modifier le texte
-            if (TxtBatchD != null)
+            if (TxtBatchExtCsv != null)
             {
-                TxtBatchD.Text = @"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_C01ComparisonsDB_URL_ELIA_LoginPage_D000.xls";
-            }
+                // Si la recherche par Contract Number est sélectionnée, on vide le champ
+                if (RbBatchSearchContract != null && RbBatchSearchContract.IsChecked == true)
+                {
+                    TxtBatchExtCsv.Text = string.Empty;
+                }
+                // Si la recherche par Demand ID est sélectionnée, on met les chemins réseau par défaut
+                else if (RbBatchSearchDemand != null && RbBatchSearchDemand.IsChecked == true)
+                {
+                    string envValue = CmbExtEnv?.SelectedItem is ComboBoxItem eItem ? eItem.Tag?.ToString() ?? "D" : "D";
 
-            if (TxtBatchQ != null)
-            {
-                TxtBatchQ.Text = @"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_C01ComparisonsDB_URL_ELIA_LoginPage_Q000.xls";
+                    if (envValue == "D")
+                        TxtBatchExtCsv.Text = @"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_C01ComparisonsDB_URL_ELIA_LoginPage_D000.xls";
+                    else if (envValue == "Q")
+                        TxtBatchExtCsv.Text = @"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_C01ComparisonsDB_URL_ELIA_LoginPage_Q000.xls";
+                }
             }
         }
+
+        private void BatchInputType_Checked(object sender, RoutedEventArgs e) => UpdateBatchExtCsvPath();
+
+        // NOUVEAU : Événement lié au changement du menu déroulant
+        private void CmbExtEnv_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
+
+        // SINGLE EXTRACTION TAB LOGIC
 
         private async void BtnRunSingle_Click(object sender, RoutedEventArgs e)
         {
-            string valueD = TxtSingleD?.Text.Trim();
-            string valueQ = TxtSingleQ?.Text.Trim();
+            string rawInput = TxtExtContract?.Text.Trim();
+            string envValue = "D";
 
             // On regarde si la recherche se fait par Demand ID via le bouton radio de l'interface
-            bool isDemandId = RbSearchDemand.IsChecked == true;
+            bool isDemandId = RbSearchDemand?.IsChecked == true;
 
-            if (string.IsNullOrEmpty(valueD) && string.IsNullOrEmpty(valueQ))
+            // Récupère la valeur de l'environnement depuis la ComboBox
+            if (CmbExtEnv?.SelectedItem is ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
+
+            if (string.IsNullOrEmpty(rawInput))
             {
-                TxtStatus.Text = "Please enter at least one value (D000 or Q000).";
+                TxtStatus.Text = "Please enter a value.";
                 TxtStatus.Foreground = System.Windows.Media.Brushes.Orange;
                 return;
             }
@@ -83,17 +97,8 @@ namespace AutoActivator.Gui
 
             await RunProcessAsync(async () =>
             {
-                if (!string.IsNullOrEmpty(valueD))
-                {
-                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Extracting Environment D000...");
-                    await Task.Run(() => PerformSingleExtraction(valueD, "D000", progress, isDemandId));
-                }
-
-                if (!string.IsNullOrEmpty(valueQ))
-                {
-                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Extracting Environment Q000...");
-                    await Task.Run(() => PerformSingleExtraction(valueQ, "Q000", progress, isDemandId));
-                }
+                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Extracting Environment {envValue}000...");
+                await Task.Run(() => PerformSingleExtraction(rawInput, envValue + "000", progress, isDemandId));
 
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Single extraction completed successfully.");
             });
@@ -145,8 +150,7 @@ namespace AutoActivator.Gui
 
         // BATCH EXTRACTION TAB LOGIC
 
-        private void BtnBrowseD_Click(object sender, RoutedEventArgs e) => TxtBatchD.Text = OpenFileDialogHybrid();
-        private void BtnBrowseQ_Click(object sender, RoutedEventArgs e) => TxtBatchQ.Text = OpenFileDialogHybrid();
+        private void BtnBrowseExtCsv_Click(object sender, RoutedEventArgs e) => TxtBatchExtCsv.Text = OpenFileDialogHybrid();
 
         // NOUVEAU : Un dialogue hybride qui accepte CSV, XLS et XLSX
         private string OpenFileDialogHybrid()
@@ -214,15 +218,18 @@ namespace AutoActivator.Gui
 
         private async void BtnRunBatch_Click(object sender, RoutedEventArgs e)
         {
-            string fileD = TxtBatchD?.Text.Trim();
-            string fileQ = TxtBatchQ?.Text.Trim();
+            string filePath = TxtBatchExtCsv?.Text.Trim();
+            string envValue = "D";
 
             // NOUVEAU : Vérification de la méthode de recherche pour le batch (Contract vs Demand ID)
-            bool isDemandId = RbBatchSearchDemand.IsChecked == true;
+            bool isDemandId = RbBatchSearchDemand?.IsChecked == true;
 
-            if (string.IsNullOrEmpty(fileD) && string.IsNullOrEmpty(fileQ))
+            // Récupère la valeur de l'environnement depuis la ComboBox
+            if (CmbExtEnv?.SelectedItem is ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
+
+            if (string.IsNullOrEmpty(filePath))
             {
-                TxtStatus.Text = "Please select at least one file or use the default network paths.";
+                TxtStatus.Text = "Please select a file or use the default network paths.";
                 TxtStatus.Foreground = System.Windows.Media.Brushes.Orange;
                 return;
             }
@@ -247,39 +254,18 @@ namespace AutoActivator.Gui
 
             await RunProcessAsync(async () =>
             {
-                // -- Traitement pour D000 --
-                if (!string.IsNullOrEmpty(fileD))
+                string actualFile = filePath;
+                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Preparing Environment {envValue}000...");
+
+                // Détection intelligente : Si c'est un Excel, on le convertit, sinon on l'utilise tel quel
+                if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                 {
-                    string actualFileD = fileD;
-                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Preparing Environment D000...");
-
-                    // Détection intelligente : Si c'est un Excel, on le convertit, sinon on l'utilise tel quel
-                    if (fileD.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || fileD.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
-                    {
-                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Converting Network Excel to CSV for D000...");
-                        actualFileD = await Task.Run(() => PrepareCsvFromExcel(fileD, "D000"));
-                    }
-
-                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch Extracting Environment D000...");
-                    await Task.Run(() => batchService.PerformBatchExtraction(actualFileD, "D000", progress.Report, isDemandId));
+                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Converting Network Excel to CSV for {envValue}000...");
+                    actualFile = await Task.Run(() => PrepareCsvFromExcel(filePath, envValue + "000"));
                 }
 
-                // -- Traitement pour Q000 --
-                if (!string.IsNullOrEmpty(fileQ))
-                {
-                    string actualFileQ = fileQ;
-                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Preparing Environment Q000...");
-
-                    // Détection intelligente : Si c'est un Excel, on le convertit, sinon on l'utilise tel quel
-                    if (fileQ.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || fileQ.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
-                    {
-                        Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Converting Network Excel to CSV for Q000...");
-                        actualFileQ = await Task.Run(() => PrepareCsvFromExcel(fileQ, "Q000"));
-                    }
-
-                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Batch Extracting Environment Q000...");
-                    await Task.Run(() => batchService.PerformBatchExtraction(actualFileQ, "Q000", progress.Report, isDemandId));
-                }
+                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Batch Extracting Environment {envValue}000...");
+                await Task.Run(() => batchService.PerformBatchExtraction(actualFile, envValue + "000", progress.Report, isDemandId));
 
                 _lastGeneratedPath = Settings.OutputDir;
                 Application.Current.Dispatcher.Invoke(() => {

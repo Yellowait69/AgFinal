@@ -29,24 +29,50 @@ namespace AutoActivator.Services
 
             int successCount = 0, errorCount = 0;
 
-            using (var reader = new StreamReader(filePath, Encoding.UTF8))
+            // Utilisation de FileStream avec FileShare.ReadWrite pour pouvoir lire même si ouvert dans Excel
+            using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var reader = new StreamReader(fs, Encoding.UTF8))
             {
-                string headerLine = await reader.ReadLineAsync();
-                if (headerLine != null && headerLine.StartsWith("\uFEFF")) headerLine = headerLine.Substring(1);
-
-                char delimiter = headerLine.Count(c => c == ';') > headerLine.Count(c => c == ',') ? ';' : ',';
-                var headers = ParseCsvLine(headerLine, delimiter);
-
+                string line;
+                char delimiter = ';';
                 int contractIdx = -1;
-                for (int i = 0; i < headers.Count; i++)
+                bool headerFound = false;
+
+                // --- 1. RECHERCHE INTELLIGENTE DE L'EN-TÊTE ---
+                // Le programme scanne chaque ligne jusqu'à trouver la vraie ligne d'en-têtes
+                while ((line = await reader.ReadLineAsync()) != null)
                 {
-                    string h = headers[i].Trim().ToLower();
-                    if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa") || h.Contains("value") || h.Contains("demand")) contractIdx = i;
+                    if (line.StartsWith("\uFEFF")) line = line.Substring(1); // Nettoyage BOM
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+
+                    // Si c'est la ligne de titre parasite générée par un export, on l'ignore de force !
+                    if (line.Replace("\"", "").TrimStart().StartsWith("Contract in", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    delimiter = line.Count(c => c == ';') > line.Count(c => c == ',') ? ';' : ',';
+                    var headers = ParseCsvLine(line, delimiter);
+
+                    for (int i = 0; i < headers.Count; i++)
+                    {
+                        string h = headers[i].Trim().ToLower();
+                        if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa") || h.Contains("value") || h.Contains("demand"))
+                        {
+                            contractIdx = i;
+                        }
+                    }
+
+                    // Si on a trouvé la colonne d'identifiant principal, on arrête la recherche.
+                    if (contractIdx != -1)
+                    {
+                        headerFound = true;
+                        break;
+                    }
                 }
 
-                if (contractIdx == -1) throw new Exception("Colonne de contrat ou de Demand introuvable dans le fichier.");
+                if (!headerFound)
+                    throw new Exception("Colonne de contrat ou de Demand introuvable dans le fichier.");
 
-                string line;
+                // --- 2. LECTURE DES DONNÉES ---
                 int rowNum = 1;
                 while ((line = await reader.ReadLineAsync()) != null)
                 {
