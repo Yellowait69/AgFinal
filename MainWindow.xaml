@@ -172,7 +172,23 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="Session History" FontWeight="Bold" Foreground="#7F8C8D" Margin="0,0,0,10"/>
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <TextBlock Text="Session History" FontWeight="Bold" Foreground="#7F8C8D" VerticalAlignment="Center"/>
+
+                        <Button x:Name="BtnClearHistory" Content="🗑️ Clear History"
+                                HorizontalAlignment="Right" Padding="12,5"
+                                Background="#E74C3C" Foreground="White"
+                                BorderThickness="0" Cursor="Hand" FontWeight="Bold"
+                                Click="BtnClearHistory_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Grid>
 
                     <ListView x:Name="ListHistory" Grid.Row="1" Background="White" BorderBrush="#DCDDE1" BorderThickness="1" AlternationCount="2">
                         <ListView.ItemContainerStyle>
@@ -443,7 +459,7 @@
                                 <TextBlock Text="The extraction module allows you to retrieve data from D000 or Q000 environments. When using batch extraction, your Excel or CSV files MUST adhere to the following templates:" TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,15"/>
 
                                 <TextBlock Text="1. Search by Contract ID:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,5"/>
-                                <TextBlock Text="The program scans your file looking for a column named exactly 'Contract Lisa'. Ensure that your column header has this name, with no extra spaces." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
+                                <TextBlock Text="The program scans your file looking for a column named exactly 'LISA Contract'. Ensure that your column header has this name, with no extra spaces." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
 
                                 <Border BorderBrush="#DCDDE1" BorderThickness="1" CornerRadius="4" Margin="20,0,0,15" HorizontalAlignment="Left">
                                     <Image Source="/Images/TemplateContractLisa.png" Width="400" Stretch="Uniform"/>

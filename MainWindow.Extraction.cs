@@ -93,7 +93,8 @@ namespace AutoActivator.Gui
                 return;
             }
 
-            IProgress<ExtractionItem> progress = new Progress<ExtractionItem>(item => ExtractionHistory.Add(item));
+            // MODIFIÉ : On utilise Insert(0, item) pour que le plus récent soit affiché tout en haut
+            IProgress<ExtractionItem> progress = new Progress<ExtractionItem>(item => ExtractionHistory.Insert(0, item));
 
             await RunProcessAsync(async () =>
             {
@@ -238,7 +239,8 @@ namespace AutoActivator.Gui
 
             IProgress<BatchProgressInfo> progress = new Progress<BatchProgressInfo>(info =>
             {
-                ExtractionHistory.Add(new ExtractionItem
+                // MODIFIÉ : On utilise Insert(0, ...) pour insérer en haut de la liste
+                ExtractionHistory.Insert(0, new ExtractionItem
                 {
                     ContractId = FormatContractForDisplay(info.ContractId),
                     InternalId = info.InternalId,
@@ -273,6 +275,15 @@ namespace AutoActivator.Gui
                     TxtStatus.Foreground = System.Windows.Media.Brushes.Green;
                 });
             });
+        }
+
+        // NOUVEAU : Événement du bouton Clear pour vider la Session History
+        private void BtnClearHistory_Click(object sender, RoutedEventArgs e)
+        {
+            if (ExtractionHistory != null)
+            {
+                ExtractionHistory.Clear();
+            }
         }
     }
 }
