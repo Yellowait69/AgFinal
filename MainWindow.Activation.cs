@@ -34,6 +34,7 @@ namespace AutoActivator.Gui
             if (TxtActContract != null) TxtActContract.Text = string.Empty;
         }
 
+        // NOUVEAU : Met à jour le chemin réseau selon le bouton radio, l'environnement et le canal choisis
         private void UpdateBatchActCsvPath()
         {
             if (TxtBatchActCsv != null && RbBatchActSearchDemand != null)
@@ -41,11 +42,10 @@ namespace AutoActivator.Gui
                 if (RbBatchActSearchDemand.IsChecked == true)
                 {
                     string envValue = CmbActEnv?.SelectedItem is ComboBoxItem eItem ? eItem.Tag?.ToString() ?? "D" : "D";
+                    string channelValue = CmbActChannel?.SelectedItem is ComboBoxItem cItem ? cItem.Tag?.ToString() ?? "C01" : "C01";
 
-                    if (envValue == "D")
-                        TxtBatchActCsv.Text = @"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_C01ComparisonsDB_URL_ELIA_LoginPage_D000.xls";
-                    else if (envValue == "Q")
-                        TxtBatchActCsv.Text = @"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_C01ComparisonsDB_URL_ELIA_LoginPage_Q000.xls";
+                    // Génération dynamique du chemin avec le canal et l'environnement
+                    TxtBatchActCsv.Text = $@"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_{channelValue}ComparisonsDB_URL_ELIA_LoginPage_{envValue}000.xls";
                 }
                 else if (RbBatchActSearchContract != null && RbBatchActSearchContract.IsChecked == true)
                 {
@@ -55,7 +55,10 @@ namespace AutoActivator.Gui
         }
 
         private void BatchActInputType_Checked(object sender, RoutedEventArgs e) => UpdateBatchActCsvPath();
+
+        // NOUVEAU : Événements liés au changement des menus déroulants
         private void CmbActEnv_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchActCsvPath();
+        private void CmbActChannel_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchActCsvPath();
 
         private void BtnCancelActivation_Click(object sender, RoutedEventArgs e)
         {

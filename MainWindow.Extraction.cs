@@ -45,7 +45,7 @@ namespace AutoActivator.Gui
             }
         }
 
-        // NOUVEAU : Met à jour ou vide le chemin réseau selon le bouton radio et l'environnement choisis
+        // NOUVEAU : Met à jour ou vide le chemin réseau selon le bouton radio, l'environnement et le canal choisis
         private void UpdateBatchExtCsvPath()
         {
             if (TxtBatchExtCsv != null)
@@ -59,19 +59,19 @@ namespace AutoActivator.Gui
                 else if (RbBatchSearchDemand != null && RbBatchSearchDemand.IsChecked == true)
                 {
                     string envValue = CmbExtEnv?.SelectedItem is ComboBoxItem eItem ? eItem.Tag?.ToString() ?? "D" : "D";
+                    string channelValue = CmbExtChannel?.SelectedItem is ComboBoxItem cItem ? cItem.Tag?.ToString() ?? "C01" : "C01";
 
-                    if (envValue == "D")
-                        TxtBatchExtCsv.Text = @"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_C01ComparisonsDB_URL_ELIA_LoginPage_D000.xls";
-                    else if (envValue == "Q")
-                        TxtBatchExtCsv.Text = @"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_C01ComparisonsDB_URL_ELIA_LoginPage_Q000.xls";
+                    // Génération dynamique du chemin avec le canal et l'environnement
+                    TxtBatchExtCsv.Text = $@"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_{channelValue}ComparisonsDB_URL_ELIA_LoginPage_{envValue}000.xls";
                 }
             }
         }
 
         private void BatchInputType_Checked(object sender, RoutedEventArgs e) => UpdateBatchExtCsvPath();
 
-        // NOUVEAU : Événement lié au changement du menu déroulant
+        // NOUVEAU : Événements liés au changement des menus déroulants
         private void CmbExtEnv_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
+        private void CmbExtChannel_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
 
         // SINGLE EXTRACTION TAB LOGIC
 

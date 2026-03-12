@@ -89,13 +89,30 @@
                 <Border Grid.Row="1" Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,15">
                     <StackPanel>
                         <TextBlock Text="Global Extraction Settings" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,15"/>
-                        <StackPanel>
-                            <TextBlock Text="Environment:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
-                            <ComboBox x:Name="CmbExtEnv" Margin="0,0,0,0" Padding="6" FontSize="14" BorderBrush="#DCDDE1" SelectedIndex="0" SelectionChanged="CmbExtEnv_SelectionChanged">
-                                <ComboBoxItem Content="D000 (D)" Tag="D"/>
-                                <ComboBoxItem Content="Q000 (Q)" Tag="Q"/>
-                            </ComboBox>
-                        </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="15"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Environment:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <ComboBox x:Name="CmbExtEnv" Margin="0,0,0,0" Padding="6" FontSize="14" BorderBrush="#DCDDE1" SelectedIndex="0" SelectionChanged="CmbExtEnv_SelectionChanged">
+                                    <ComboBoxItem Content="D000 (D)" Tag="D"/>
+                                    <ComboBoxItem Content="Q000 (Q)" Tag="Q"/>
+                                </ComboBox>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Channel:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <ComboBox x:Name="CmbExtChannel" Margin="0,0,0,0" Padding="6" FontSize="14" BorderBrush="#DCDDE1" SelectedIndex="0" SelectionChanged="CmbExtChannel_SelectionChanged">
+                                    <ComboBoxItem Content="C01" Tag="C01"/>
+                                    <ComboBoxItem Content="C03" Tag="C03"/>
+                                    <ComboBoxItem Content="C05" Tag="C05"/>
+                                </ComboBox>
+                            </StackPanel>
+                        </Grid>
                     </StackPanel>
                 </Border>
 
@@ -235,6 +252,13 @@
                                 <ComboBox x:Name="CmbActEnv" Margin="0,0,0,15" Padding="6" FontSize="14" BorderBrush="#DCDDE1" SelectedIndex="0" SelectionChanged="CmbActEnv_SelectionChanged">
                                     <ComboBoxItem Content="D000 (D)" Tag="D"/>
                                     <ComboBoxItem Content="Q000 (Q)" Tag="Q"/>
+                                </ComboBox>
+
+                                <TextBlock Text="Channel:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <ComboBox x:Name="CmbActChannel" Margin="0,0,0,15" Padding="6" FontSize="14" BorderBrush="#DCDDE1" SelectedIndex="0" SelectionChanged="CmbActChannel_SelectionChanged">
+                                    <ComboBoxItem Content="C01" Tag="C01"/>
+                                    <ComboBoxItem Content="C03" Tag="C03"/>
+                                    <ComboBoxItem Content="C05" Tag="C05"/>
                                 </ComboBox>
 
                                 <TextBlock Text="CUS Code:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
