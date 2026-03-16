@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net; // Requis pour configurer le ServicePointManager
+using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -50,7 +50,8 @@ namespace AutoActivator.Services
                 bool headerFound = false;
 
                 // --- 1. RECHERCHE DE L'EN-TÊTE ---
-                while ((line = await reader.ReadLineAsync()) != null)
+                // Ajout de ConfigureAwait(false) pour éviter les deadlocks
+                while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
                     if (line.StartsWith("\uFEFF")) line = line.Substring(1); // Nettoyage BOM
                     if (string.IsNullOrWhiteSpace(line)) continue;
@@ -78,7 +79,7 @@ namespace AutoActivator.Services
 
                 // --- 2. CHARGEMENT EN MÉMOIRE ---
                 int currentRow = 1;
-                while ((line = await reader.ReadLineAsync()) != null)
+                while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
@@ -106,26 +107,27 @@ namespace AutoActivator.Services
 
             onProgress($"Lancement du traitement parallèle très haute vitesse... (0 / {totalItems} contrats)");
 
-            // NOUVEAU : On utilise l'index dans le Select pour créer un micro-décalage au lancement
+            // Utilisation de l'index dans le Select pour créer un micro-décalage au lancement
             var tasks = contractsToProcess.Select((item, index) => Task.Run(async () =>
             {
                 // Micro-décalage : Évite que 15 requêtes frappent le serveur ou la base de données à la même milliseconde.
-                // Le premier part à 0ms, le second à 100ms, etc. Plafonné à 2 secondes (2000ms).
-                await Task.Delay(Math.Min(index * 100, 2000), token);
+                // Plafonné à 2 secondes (2000ms). L'ajout de ConfigureAwait(false) est CRUCIAL ici.
+                await Task.Delay(Math.Min(index * 100, 2000), token).ConfigureAwait(false);
 
-                await semaphore.WaitAsync(token); // Attente d'un "ticket" d'exécution
+                await semaphore.WaitAsync(token).ConfigureAwait(false); // Attente d'un "ticket" d'exécution
                 try
                 {
                     if (token.IsCancellationRequested) return;
 
                     string resolvedContract = item.rawInput;
 
-                    onProgress($"[Requête DB] Recherche de: {item.rawInput}...");
+                    // Ajout du compteur dynamique au début du message
+                    onProgress($"[{processedItems} / {totalItems} terminés] Recherche DB : {item.rawInput}...");
 
                     // A. Résolution Demand ID (Si nécessaire)
                     if (isDemandId)
                     {
-                        resolvedContract = await _dataService.GetContractFromDemandAsync(item.rawInput, envValue + "000");
+                        resolvedContract = await _dataService.GetContractFromDemandAsync(item.rawInput, envValue + "000").ConfigureAwait(false);
 
                         if (string.IsNullOrEmpty(resolvedContract))
                         {
@@ -133,25 +135,26 @@ namespace AutoActivator.Services
                             Interlocked.Increment(ref errorCount); // Thread-safe incrémentation
 
                             int currentErr = Interlocked.Increment(ref processedItems);
-                            onProgress($"Activation par lot en cours : {currentErr} / {totalItems} contrats...");
+                            onProgress($"[{currentErr} / {totalItems} terminés] Échec Demand ID : {item.rawInput}");
                             return;
                         }
                     }
 
                     // B. Recherche de la prime
-                    string amount = await _dataService.FetchPremiumAsync(resolvedContract, envValue + "000");
+                    string amount = await _dataService.FetchPremiumAsync(resolvedContract, envValue + "000").ConfigureAwait(false);
                     string formattedContract = _dataService.FormatContractForJcl(resolvedContract);
 
-                    onProgress($"[Requête Mainframe API] Activation de: {formattedContract}...");
+                    // Ajout du compteur dynamique au début du message
+                    onProgress($"[{processedItems} / {totalItems} terminés] Envoi Mainframe API : {formattedContract}...");
 
                     // C. Exécution de la séquence d'activation
-                    await _dataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, msg => { }, token);
+                    await _dataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, msg => { }, token).ConfigureAwait(false);
 
                     globalReport.Add((item.rowNum, $"[SUCCÈS] Ligne {item.rowNum,-4} | Input: {item.rawInput} -> Contrat JCL: {formattedContract} | Env: {envValue} | Amount: {amount}"));
                     Interlocked.Increment(ref successCount);
 
                     int currentOk = Interlocked.Increment(ref processedItems);
-                    onProgress($"Activation par lot en cours : {currentOk} / {totalItems} contrats...");
+                    onProgress($"[{currentOk} / {totalItems} terminés] Succès : {formattedContract}");
                 }
                 catch (Exception ex)
                 {
@@ -159,7 +162,7 @@ namespace AutoActivator.Services
                     Interlocked.Increment(ref errorCount);
 
                     int currentFail = Interlocked.Increment(ref processedItems);
-                    onProgress($"Activation par lot en cours : {currentFail} / {totalItems} contrats...");
+                    onProgress($"[{currentFail} / {totalItems} terminés] Échec : {item.rawInput}");
                 }
                 finally
                 {
@@ -168,7 +171,11 @@ namespace AutoActivator.Services
             }, token)).ToList(); // .ToList() est CRUCIAL ici pour démarrer l'exécution.
 
             // On attend que TOUTES les activations soient terminées
-            await Task.WhenAll(tasks);
+            // Le ConfigureAwait(false) empêche le blocage final (deadlock) de l'interface !
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+
+            // Message de transition pour l'utilisateur
+            onProgress("Tous les contrats ont été traités. Génération du rapport...");
 
             // --- 4. ASSEMBLAGE DU RAPPORT FINAL ---
             // Les contrats ont été traités dans le désordre (parallélisme), on les trie par numéro de ligne pour la lisibilité
@@ -180,8 +187,25 @@ namespace AutoActivator.Services
             report.AppendLine("---------------------------------------------------------------------------------------------------------");
             report.AppendLine($"FIN DU TRAITEMENT. Succès: {successCount} | Échecs: {errorCount}");
 
-            string reportPath = Path.Combine(outputDir, $"Activation_Batch_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
-            File.WriteAllText(reportPath, report.ToString());
+            string reportPath = string.Empty;
+
+            try
+            {
+                // CRUCIAL : S'assure que le dossier d'export existe avant d'écrire, sinon l'application crashe silencieusement
+                if (!Directory.Exists(outputDir))
+                {
+                    Directory.CreateDirectory(outputDir);
+                }
+
+                reportPath = Path.Combine(outputDir, $"Activation_Batch_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
+                File.WriteAllText(reportPath, report.ToString());
+                onProgress("Rapport généré avec succès !");
+            }
+            catch (Exception ex)
+            {
+                onProgress($"ERREUR GRAVE : Impossible de sauvegarder le rapport ({ex.Message})");
+                throw;
+            }
 
             return (successCount, errorCount, reportPath);
         }
