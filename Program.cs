@@ -4,6 +4,7 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks; // INDISPENSABLE POUR L'ASYNCHRONE
 using AutoActivator.Config;
 using AutoActivator.Services;
 using AutoActivator.Sql;
@@ -12,7 +13,8 @@ namespace AutoActivator
 {
     class Program
     {
-        static void Main(string[] args)
+        // MODIFIÉ : La méthode Main devient "async Task" pour supporter l'asynchrone
+        static async Task Main(string[] args)
         {
             Console.WriteLine("==================================================");
             Console.WriteLine("       AUTO-ACTIVATOR L.I.S.A (.NET VERSION)      ");
@@ -40,10 +42,10 @@ namespace AutoActivator
             switch (choice)
             {
                 case "1":
-                    RunTestExtraction();
+                    await RunTestExtractionAsync(); // APPEL ASYNCHRONE
                     break;
                 case "2":
-                    RunActivation();
+                    await RunActivationAsync();     // APPEL ASYNCHRONE
                     break;
                 case "3":
                     RunComparison();
@@ -62,7 +64,7 @@ namespace AutoActivator
 
         // 1. EXTRACTION
 
-        private static void RunTestExtraction()
+        private static async Task RunTestExtractionAsync()
         {
             Console.WriteLine("\n--- Starting Extraction ---");
             Console.Write("Enter the contract number (e.g., 182-2728195-31): ");
@@ -79,7 +81,9 @@ namespace AutoActivator
 
             try
             {
-                var result = extractionService.PerformExtraction(input, envSuffix, true);
+                // APPEL ASYNCHRONE : On ajoute 'await' et on utilise 'PerformExtractionAsync'
+                // false à la fin indique que l'entrée n'est pas un Demand ID par défaut
+                var result = await extractionService.PerformExtractionAsync(input, envSuffix, true, false);
                 Console.WriteLine($"\n🎉 Extraction completed! Files generated in:\n--> {result.FilePath}");
             }
             catch (Exception ex)
@@ -89,9 +93,9 @@ namespace AutoActivator
         }
 
 
-        // ACTIVATION
+        // 2. ACTIVATION
 
-        private static void RunActivation()
+        private static async Task RunActivationAsync()
         {
             Console.WriteLine("\n--- Starting Activation Script ---");
             Console.Write("Environment suffix (e.g., D000 or Q000): ");
@@ -100,7 +104,9 @@ namespace AutoActivator
 
 
             var db = new DatabaseManager(envSuffix);
-            if (!db.TestConnection()) return;
+
+            // APPEL ASYNCHRONE
+            if (!await db.TestConnectionAsync()) return;
 
 
             var contratsSources = new List<string> { "182-2728195-31" };
@@ -109,7 +115,9 @@ namespace AutoActivator
             {
                 Console.WriteLine($"\n--- Processing: {oldContractExt} ---");
                 var parameters = new Dictionary<string, object> { { "@ContractNumber", oldContractExt } };
-                var dtId = db.GetData(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
+
+                // APPEL ASYNCHRONE
+                var dtId = await db.GetDataAsync(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
 
                 if (dtId.Rows.Count > 0)
                 {

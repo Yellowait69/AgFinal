@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using AutoActivator.Config;
 using AutoActivator.Models;
@@ -90,16 +91,15 @@ namespace AutoActivator.Services
                 }
             }
 
-            // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
-            // MaxDegreeOfParallelism = 15 signifie que 15 contrats sont extraits SIMULTANÉMENT.
-            // Vous pouvez augmenter ce chiffre à 20 ou 30 si votre base de données SQL le supporte sans ralentir.
-            var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = 15 };
+            // --- 3. TRAITEMENT PARALLÈLE MASSIF (COMPATIBLE .NET FRAMEWORK) ---
+            // Le Semaphore agit comme un péage qui ne laisse passer que 15 contrats simultanément
+            var semaphore = new SemaphoreSlim(15);
 
-            await Parallel.ForEachAsync(contractsToProcess, parallelOptions, async (item, token) =>
+            var tasks = contractsToProcess.Select(async item =>
             {
+                await semaphore.WaitAsync(); // Attendre son tour dans la file
                 try
                 {
-                    // L'appel est maintenant ASYNCHRONE pour ne pas bloquer les threads
                     ExtractionResult result = await _extractionService.PerformExtractionAsync(item.contractNumber, env, false, isDemandId);
 
                     string displayContract = isDemandId && !string.IsNullOrEmpty(result.ContractReference)
@@ -155,7 +155,14 @@ namespace AutoActivator.Services
                         Status = ex.Message.ToLower().Contains("not found") ? "Not found in DB" : "SQL Error"
                     });
                 }
+                finally
+                {
+                    semaphore.Release(); // Libère la place pour le contrat suivant
+                }
             });
+
+            // Lancement de toutes les requêtes en parallèle et attente de leur fin
+            await Task.WhenAll(tasks);
 
             // --- 4. SAUVEGARDE DU RAPPORT GLOBAL ---
             StringBuilder finalCombinedReport = new StringBuilder();
@@ -186,14 +193,23 @@ namespace AutoActivator.Services
             string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_{sizeTag}_{fileSignature}_{timestamp}.csv");
 
             string contentToWrite = finalCombinedReport.Length > 0 ? finalCombinedReport.ToString() : "NO CONTRACT FOUND.";
+
+            // Écriture du fichier de manière asynchrone pour ne pas bloquer
             try
             {
-                File.WriteAllText(combinedPath, contentToWrite, Encoding.UTF8);
+                using (StreamWriter writer = new StreamWriter(combinedPath, false, Encoding.UTF8))
+                {
+                    await writer.WriteAsync(contentToWrite);
+                }
             }
             catch (IOException)
             {
+                // Si le fichier est bloqué, on crée une copie avec un GUID aléatoire
                 string alternativePath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_{sizeTag}_{fileSignature}_{timestamp}_{Guid.NewGuid().ToString().Substring(0, 4)}.csv");
-                File.WriteAllText(alternativePath, contentToWrite, Encoding.UTF8);
+                using (StreamWriter writer = new StreamWriter(alternativePath, false, Encoding.UTF8))
+                {
+                    await writer.WriteAsync(contentToWrite);
+                }
             }
         }
 

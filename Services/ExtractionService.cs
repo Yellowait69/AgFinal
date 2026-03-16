@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using AutoActivator.Config;
 using AutoActivator.Models;
@@ -142,14 +143,21 @@ namespace AutoActivator.Services
 
                 string combinedContent = lisaHeader + sbLisa.ToString() + "\n" + eliaHeader + sbElia.ToString();
 
+                // COMPATIBILITÉ .NET ANCIEN : On utilise StreamWriter.WriteAsync
                 try
                 {
-                    await File.WriteAllTextAsync(combinedPath, combinedContent, Encoding.UTF8);
+                    using (StreamWriter writer = new StreamWriter(combinedPath, false, Encoding.UTF8))
+                    {
+                        await writer.WriteAsync(combinedContent);
+                    }
                 }
                 catch (IOException)
                 {
                     string alternativePath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_Uniq_{cleanedContract}_{timestamp}_{Guid.NewGuid().ToString().Substring(0, 4)}.csv");
-                    await File.WriteAllTextAsync(alternativePath, combinedContent, Encoding.UTF8);
+                    using (StreamWriter writer = new StreamWriter(alternativePath, false, Encoding.UTF8))
+                    {
+                        await writer.WriteAsync(combinedContent);
+                    }
                 }
             }
 
@@ -164,34 +172,45 @@ namespace AutoActivator.Services
             };
         }
 
-        // OPTIMISATION MAXIMALE : Cette méthode lance toutes les requêtes SQL en parallèle !
+        // OPTIMISATION MAXIMALE COMPATIBLE ANCIEN .NET
         private async Task ExtractAndAppendTablesAsync(DatabaseManager db, IEnumerable<string> tables, string parameterName, object parameterValue, StringBuilder sb)
         {
-            // Stockage Thread-Safe car plusieurs requêtes arrivent en même temps
             var resultsDictionary = new ConcurrentDictionary<string, string>();
 
-            // On lance 10 requêtes SQL simultanément maximum par contrat
-            var options = new ParallelOptions { MaxDegreeOfParallelism = 10 };
+            // Le Semaphore agit comme un péage pour n'autoriser que 10 requêtes simultanées
+            var semaphore = new SemaphoreSlim(10);
+            var tasks = new List<Task>();
 
-            await Parallel.ForEachAsync(tables, options, async (table, token) =>
+            foreach (var table in tables)
             {
-                if (SqlQueries.Queries.ContainsKey(table))
+                tasks.Add(Task.Run(async () =>
                 {
+                    await semaphore.WaitAsync();
                     try
                     {
-                        var dt = await db.GetDataAsync(SqlQueries.Queries[table], new Dictionary<string, object> { { parameterName, parameterValue } });
+                        if (SqlQueries.Queries.ContainsKey(table))
+                        {
+                            var dt = await db.GetDataAsync(SqlQueries.Queries[table], new Dictionary<string, object> { { parameterName, parameterValue } });
 
-                        var tempSb = new StringBuilder();
-                        CsvFormatter.AddTableToBuffer(tempSb, table, dt); // Formate le CSV en mémoire
+                            var tempSb = new StringBuilder();
+                            CsvFormatter.AddTableToBuffer(tempSb, table, dt); // Formate le CSV en mémoire
 
-                        resultsDictionary.TryAdd(table, tempSb.ToString());
+                            resultsDictionary.TryAdd(table, tempSb.ToString());
+                        }
                     }
                     catch (Exception ex)
                     {
                         resultsDictionary.TryAdd(table, $"### TABLE : {table} | EXTRACTION ERROR\nSQL Error: {ex.Message}\n");
                     }
-                }
-            });
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                }));
+            }
+
+            // Attendre que toutes les tables aient été extraites
+            await Task.WhenAll(tasks);
 
             // On réassemble le texte dans l'ordre exact du tableau d'origine (important pour la lisibilité)
             foreach (var table in tables)
