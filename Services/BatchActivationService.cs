@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net; // NOUVEAU : Requis pour configurer le ServicePointManager
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,6 +23,11 @@ namespace AutoActivator.Services
             string filePath, bool isDemandId, string envValue, string cus, string bucp, string cmdpmt,
             string username, string password, string outputDir, Action<string> onProgress, CancellationToken token)
         {
+            // CORRECTION 1 : DÉBLOCAGE RÉSEAU. Autorise plus de 2 requêtes HTTP simultanées.
+            // C'est vital car sinon .NET bloque la 3ème requête indéfiniment.
+            ServicePointManager.DefaultConnectionLimit = 100;
+            ServicePointManager.Expect100Continue = false;
+
             StringBuilder report = new StringBuilder();
             report.AppendLine("=== RAPPORT D'ACTIVATION BATCH (MODE PARALLÈLE) ===");
             report.AppendLine($"Date de lancement: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
@@ -90,8 +96,10 @@ namespace AutoActivator.Services
             }
 
             // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
-            // Le sémaphore limite à 15 activations simultanées pour ne pas crasher le Mainframe/DB
-            var semaphore = new SemaphoreSlim(15);
+
+            // CORRECTION 2 : Limite réduite à 3. Le Mainframe (ou la DB) rejette souvent les connexions massives
+            // en bloquant les sessions si on envoie 15 requêtes simultanément.
+            var semaphore = new SemaphoreSlim(3);
 
             // Initialisation des compteurs
             int totalItems = contractsToProcess.Count;
@@ -99,8 +107,7 @@ namespace AutoActivator.Services
 
             onProgress($"Lancement du traitement parallèle... (0 / {totalItems} contrats)");
 
-            // CORRECTION : Utilisation de Task.Run pour forcer le traitement hors de l'UI Thread
-            // Et appel à .ToList() pour matérialiser la requête LINQ et démarrer les tâches immédiatement
+            // Utilisation de Task.Run pour forcer le traitement hors de l'UI Thread
             var tasks = contractsToProcess.Select(item => Task.Run(async () =>
             {
                 await semaphore.WaitAsync(token); // Attente d'un "ticket" d'exécution
@@ -109,6 +116,9 @@ namespace AutoActivator.Services
                     if (token.IsCancellationRequested) return;
 
                     string resolvedContract = item.rawInput;
+
+                    // TRACE DE DEBUG 1 : Savoir si le blocage vient de la DB
+                    onProgress($"[Requête DB] Recherche de: {item.rawInput}...");
 
                     // A. Résolution Demand ID (Si nécessaire)
                     if (isDemandId)
@@ -120,7 +130,6 @@ namespace AutoActivator.Services
                             globalReport.Add((item.rowNum, $"[ÉCHEC]  Ligne {item.rowNum,-4} | Input: {item.rawInput} | Erreur: Aucun contrat associé à ce Demand ID en base."));
                             Interlocked.Increment(ref errorCount); // Thread-safe incrémentation
 
-                            // NOUVEAU : On incrémente le compteur global et on l'affiche
                             int currentErr = Interlocked.Increment(ref processedItems);
                             onProgress($"Activation par lot en cours : {currentErr} / {totalItems} contrats...");
                             return;
@@ -131,14 +140,15 @@ namespace AutoActivator.Services
                     string amount = await _dataService.FetchPremiumAsync(resolvedContract, envValue + "000");
                     string formattedContract = _dataService.FormatContractForJcl(resolvedContract);
 
+                    // TRACE DE DEBUG 2 : Savoir si le blocage vient de l'API MicroFocus
+                    onProgress($"[Requête Mainframe API] Activation de: {formattedContract}...");
+
                     // C. Exécution de la séquence d'activation
-                    // On ne spamme pas onProgress dans la boucle pour éviter de saturer l'UI en mode parallèle massif
                     await _dataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, msg => { }, token);
 
                     globalReport.Add((item.rowNum, $"[SUCCÈS] Ligne {item.rowNum,-4} | Input: {item.rawInput} -> Contrat JCL: {formattedContract} | Env: {envValue} | Amount: {amount}"));
                     Interlocked.Increment(ref successCount);
 
-                    // NOUVEAU : On incrémente le compteur global et on l'affiche
                     int currentOk = Interlocked.Increment(ref processedItems);
                     onProgress($"Activation par lot en cours : {currentOk} / {totalItems} contrats...");
                 }
@@ -147,7 +157,6 @@ namespace AutoActivator.Services
                     globalReport.Add((item.rowNum, $"[ÉCHEC]  Ligne {item.rowNum,-4} | Input: {item.rawInput} | Erreur: {ex.Message}"));
                     Interlocked.Increment(ref errorCount);
 
-                    // NOUVEAU : On incrémente le compteur global et on l'affiche
                     int currentFail = Interlocked.Increment(ref processedItems);
                     onProgress($"Activation par lot en cours : {currentFail} / {totalItems} contrats...");
                 }
