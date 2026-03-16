@@ -32,6 +32,10 @@ namespace AutoActivator.Models
         public string UconId { get; set; }
         public string DemandId { get; set; }
         public string Status { get; set; }
+
+        // NOUVEAU : Propriétés pour le compteur visuel (Progression en direct)
+        public int CurrentItem { get; set; }
+        public int TotalItems { get; set; }
     }
 
     // ==========================================

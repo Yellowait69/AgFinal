@@ -92,7 +92,12 @@ namespace AutoActivator.Services
             // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
             // Le sémaphore limite à 15 activations simultanées pour ne pas crasher le Mainframe/DB
             var semaphore = new SemaphoreSlim(15);
-            onProgress("Lancement du traitement parallèle... (Ceci peut prendre quelques instants)");
+
+            // Initialisation des compteurs
+            int totalItems = contractsToProcess.Count;
+            int processedItems = 0;
+
+            onProgress($"Lancement du traitement parallèle... (0 / {totalItems} contrats)");
 
             var tasks = contractsToProcess.Select(async item =>
             {
@@ -112,6 +117,10 @@ namespace AutoActivator.Services
                         {
                             globalReport.Add((item.rowNum, $"[ÉCHEC]  Ligne {item.rowNum,-4} | Input: {item.rawInput} | Erreur: Aucun contrat associé à ce Demand ID en base."));
                             Interlocked.Increment(ref errorCount); // Thread-safe incrémentation
+
+                            // NOUVEAU : On incrémente le compteur global et on l'affiche
+                            int currentErr = Interlocked.Increment(ref processedItems);
+                            onProgress($"Activation par lot en cours : {currentErr} / {totalItems} contrats...");
                             return;
                         }
                     }
@@ -126,11 +135,19 @@ namespace AutoActivator.Services
 
                     globalReport.Add((item.rowNum, $"[SUCCÈS] Ligne {item.rowNum,-4} | Input: {item.rawInput} -> Contrat JCL: {formattedContract} | Env: {envValue} | Amount: {amount}"));
                     Interlocked.Increment(ref successCount);
+
+                    // NOUVEAU : On incrémente le compteur global et on l'affiche
+                    int currentOk = Interlocked.Increment(ref processedItems);
+                    onProgress($"Activation par lot en cours : {currentOk} / {totalItems} contrats...");
                 }
                 catch (Exception ex)
                 {
                     globalReport.Add((item.rowNum, $"[ÉCHEC]  Ligne {item.rowNum,-4} | Input: {item.rawInput} | Erreur: {ex.Message}"));
                     Interlocked.Increment(ref errorCount);
+
+                    // NOUVEAU : On incrémente le compteur global et on l'affiche
+                    int currentFail = Interlocked.Increment(ref processedItems);
+                    onProgress($"Activation par lot en cours : {currentFail} / {totalItems} contrats...");
                 }
                 finally
                 {

@@ -101,6 +101,10 @@ namespace AutoActivator.Services
             // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
             var semaphore = new SemaphoreSlim(15);
 
+            // Initialisation des compteurs pour le suivi de la progression
+            int totalItems = contractsToProcess.Count;
+            int processedItems = 0;
+
             var tasks = contractsToProcess.Select(async item =>
             {
                 await semaphore.WaitAsync(); // Attendre son tour dans la file
@@ -138,6 +142,9 @@ namespace AutoActivator.Services
 
                     processedTestIds.Add(item.rawTestId);
 
+                    // Incrémentation sécurisée (Thread-Safe)
+                    int current = Interlocked.Increment(ref processedItems);
+
                     onProgressUpdate?.Invoke(new BatchProgressInfo
                     {
                         ContractId = displayContract,
@@ -146,11 +153,16 @@ namespace AutoActivator.Services
                         Premium = string.IsNullOrWhiteSpace(result.Premium) ? "0" : result.Premium,
                         UconId = result.UconId,
                         DemandId = result.DemandId,
-                        Status = "OK"
+                        Status = "OK",
+                        CurrentItem = current,        // <-- Mise à jour du compteur
+                        TotalItems = totalItems       // <-- Total des contrats
                     });
                 }
                 catch (Exception ex)
                 {
+                    // Incrémentation sécurisée même en cas d'erreur
+                    int current = Interlocked.Increment(ref processedItems);
+
                     onProgressUpdate?.Invoke(new BatchProgressInfo
                     {
                         ContractId = $"{item.contractNumber} (FAILED)",
@@ -159,7 +171,9 @@ namespace AutoActivator.Services
                         Premium = "0",
                         UconId = "Error",
                         DemandId = "Error",
-                        Status = ex.Message.ToLower().Contains("not found") ? "Not found in DB" : "SQL Error"
+                        Status = ex.Message.ToLower().Contains("not found") ? "Not found in DB" : "SQL Error",
+                        CurrentItem = current,        // <-- Mise à jour du compteur
+                        TotalItems = totalItems       // <-- Total des contrats
                     });
                 }
                 finally

@@ -224,10 +224,13 @@ namespace AutoActivator.Gui
 
             var batchService = new BatchExtractionService(_extractionService);
 
-            // Progress est lié automatiquement au Thread de l'UI (Dispatcher).
-            // Thread-Safe même si 15 contrats appellent cette fonction en même temps !
+            // NOUVEAU : Progress gère désormais l'insertion dans l'historique ET l'affichage du compteur dynamique
             IProgress<BatchProgressInfo> progress = new Progress<BatchProgressInfo>(info =>
             {
+                // 1. Mise à jour de la barre de statut avec le compteur en temps réel
+                TxtStatus.Text = $"Extraction par lot en cours : {info.CurrentItem} / {info.TotalItems} contrats traités...";
+
+                // 2. Ajout de la ligne dans le tableau d'historique (toujours en haut)
                 ExtractionHistory.Insert(0, new ExtractionItem
                 {
                     ContractId = FormatContractForDisplay(info.ContractId),
@@ -254,7 +257,7 @@ namespace AutoActivator.Gui
                     actualFile = await Task.Run(() => PrepareCsvFromExcel(filePath, envValue + "000"));
                 }
 
-                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Batch Extracting Environment {envValue}000 (Parallel Mode)...");
+                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Lancement de l'extraction par lot ({envValue}000)...");
 
                 // APPEL ASYNCHRONE DU BATCH (Parallélisme massif)
                 await batchService.PerformBatchExtractionAsync(actualFile, envValue + "000", progress.Report, isDemandId);

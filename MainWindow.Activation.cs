@@ -159,7 +159,8 @@ namespace AutoActivator.Gui
                 string password = Settings.DbConfig.Pwd;
                 bool isDemandId = false;
 
-                if (string.IsNullOrWhiteSpace(username) || stringIsNullOrWhiteSpace(password))
+                // CORRECTION ICI : "string.IsNullOrWhiteSpace" avec le point
+                if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
                     throw new Exception("Les identifiants ne sont pas configurés.");
 
                 Application.Current.Dispatcher.Invoke(() =>
