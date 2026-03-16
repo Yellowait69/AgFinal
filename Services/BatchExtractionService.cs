@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using AutoActivator.Config;
 using AutoActivator.Models;
 
@@ -17,31 +19,32 @@ namespace AutoActivator.Services
             _extractionService = extractionService;
         }
 
-        public void PerformBatchExtraction(string filePath, string env, Action<BatchProgressInfo> onProgressUpdate, bool isDemandId = false)
+        public async Task PerformBatchExtractionAsync(string filePath, string env, Action<BatchProgressInfo> onProgressUpdate, bool isDemandId = false)
         {
             if (!File.Exists(filePath))
                 throw new FileNotFoundException("The specified CSV file could not be found.", filePath);
 
-            StringBuilder globalCombined = new StringBuilder();
-            List<string> processedTestIds = new List<string>();
+            // Collections "Thread-Safe" pour le parallélisme
+            ConcurrentQueue<string> globalCombinedQueue = new ConcurrentQueue<string>();
+            ConcurrentBag<string> processedTestIds = new ConcurrentBag<string>();
 
-            // NOUVEAU : Ouverture avec FileShare.ReadWrite pour permettre la lecture même si le fichier est ouvert dans Excel
+            // Liste pour stocker les contrats à traiter avant de lancer le parallélisme
+            List<(string contractNumber, string testId)> contractsToProcess = new List<(string, string)>();
+
             using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             using (var reader = new StreamReader(fs, Encoding.UTF8))
             {
                 string line;
                 char delimiter = ';';
-                int contractIndex = -1, testIdIndex = -1; // premiumIndex a été supprimé
+                int contractIndex = -1, testIdIndex = -1;
                 bool headerFound = false;
 
                 // --- 1. RECHERCHE INTELLIGENTE DE L'EN-TÊTE ---
-                // Le programme scanne chaque ligne jusqu'à trouver la vraie ligne d'en-têtes
-                while ((line = reader.ReadLine()) != null)
+                while ((line = await reader.ReadLineAsync()) != null)
                 {
-                    if (line.StartsWith("\uFEFF")) line = line.Substring(1); // Nettoyage BOM
+                    if (line.StartsWith("\uFEFF")) line = line.Substring(1);
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
-                    // Si c'est la ligne de titre parasite générée par votre export, on l'ignore de force !
                     if (line.Replace("\"", "").TrimStart().StartsWith("Contract in", StringComparison.OrdinalIgnoreCase))
                         continue;
 
@@ -51,14 +54,10 @@ namespace AutoActivator.Services
                     for (int i = 0; i < cols.Count; i++)
                     {
                         string h = cols[i].Trim().ToLower();
-
-                        // On vérifie si la colonne contient nos mots clés (value, demand, contract...)
                         if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa") || h.Contains("value") || h.Contains("demand")) contractIndex = i;
-                        // La recherche de la colonne "premium" a été supprimée ici
                         if (h.Contains("test") || h.Contains("id test") || h.Contains("idtest")) testIdIndex = i;
                     }
 
-                    // Si on a trouvé la colonne d'identifiant principal, c'est qu'on a le vrai en-tête ! On arrête la recherche.
                     if (contractIndex != -1)
                     {
                         headerFound = true;
@@ -69,9 +68,8 @@ namespace AutoActivator.Services
                 if (!headerFound)
                     throw new Exception("Impossible de trouver la colonne 'Value', 'Demand' ou 'Contract' dans le fichier CSV.");
 
-                // --- 2. LECTURE DES DONNÉES ---
-                // Maintenant qu'on connait la bonne colonne, on lit le reste du fichier (les vraies données)
-                while ((line = reader.ReadLine()) != null)
+                // --- 2. LECTURE DES DONNÉES EN MÉMOIRE ---
+                while ((line = await reader.ReadLineAsync()) != null)
                 {
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
@@ -79,90 +77,105 @@ namespace AutoActivator.Services
 
                     if (columns.Count > contractIndex)
                     {
-                        // On nettoie les éventuels caractères parasites (comme les guillemets ou le =)
                         string contractNumber = columns[contractIndex].Replace("=", "").Replace("\"", "").Trim();
-                        // La lecture de premiumAmount depuis le CSV a été supprimée ici
-
                         string testId = (testIdIndex != -1 && columns.Count > testIdIndex)
                             ? columns[testIdIndex].Replace("=", "").Trim()
                             : contractNumber;
 
-                        // Si la case contient bien un numéro (et pas juste du vide), on lance l'extraction
                         if (!string.IsNullOrEmpty(contractNumber))
                         {
-                            try
-                            {
-                                // On transmet le booléen isDemandId au service d'extraction
-                                ExtractionResult result = _extractionService.PerformExtraction(contractNumber, env, false, isDemandId);
-
-                                // Si c'était un Demand ID, on récupère le vrai numéro de contrat renvoyé par le service
-                                string displayContract = isDemandId && !string.IsNullOrEmpty(result.ContractReference)
-                                    ? result.ContractReference
-                                    : contractNumber;
-
-                                if (!string.IsNullOrWhiteSpace(result.LisaContent) || !string.IsNullOrWhiteSpace(result.EliaContent))
-                                {
-                                    globalCombined.AppendLine(new string('=', 80));
-                                    globalCombined.AppendLine($"### GLOBAL CONTRACT REPORT: {displayContract} | TEST ID: {testId} | ENV: {env} ###");
-                                    globalCombined.AppendLine(new string('=', 80));
-
-                                    if (!string.IsNullOrWhiteSpace(result.LisaContent))
-                                    {
-                                        globalCombined.AppendLine($"--- LISA SECTION ---");
-                                        globalCombined.Append(result.LisaContent).AppendLine();
-                                    }
-
-                                    if (!string.IsNullOrWhiteSpace(result.EliaContent))
-                                    {
-                                        globalCombined.AppendLine($"--- ELIA SECTION (UCON: {result.UconId}) ---");
-                                        globalCombined.Append(result.EliaContent).AppendLine();
-                                    }
-                                }
-
-                                processedTestIds.Add(testId);
-
-                                onProgressUpdate?.Invoke(new BatchProgressInfo
-                                {
-                                    ContractId = displayContract,
-                                    InternalId = result.InternalId,
-                                    Product = env, // On affiche bien D000 ou Q000
-                                    // NOUVEAU: On va chercher la prime TOUJOURS dans le résultat SQL (result.Premium)
-                                    Premium = string.IsNullOrWhiteSpace(result.Premium) ? "0" : result.Premium,
-                                    UconId = result.UconId,
-                                    DemandId = result.DemandId,
-                                    Status = "OK"
-                                });
-                            }
-                            catch (Exception ex)
-                            {
-                                onProgressUpdate?.Invoke(new BatchProgressInfo
-                                {
-                                    ContractId = $"{contractNumber} (FAILED)",
-                                    InternalId = "Error",
-                                    Product = env, // On affiche l'environnement même en cas d'erreur
-                                    Premium = "0", // 0 par défaut en cas d'erreur
-                                    UconId = "Error",
-                                    DemandId = "Error",
-                                    Status = ex.Message.ToLower().Contains("not found") ? "Not found in DB" : "SQL Error"
-                                });
-                            }
+                            contractsToProcess.Add((contractNumber, testId));
                         }
                     }
                 }
             }
 
-            // --- 3. SAUVEGARDE DU RAPPORT GLOBAL ---
+            // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
+            // MaxDegreeOfParallelism = 15 signifie que 15 contrats sont extraits SIMULTANÉMENT.
+            // Vous pouvez augmenter ce chiffre à 20 ou 30 si votre base de données SQL le supporte sans ralentir.
+            var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = 15 };
+
+            await Parallel.ForEachAsync(contractsToProcess, parallelOptions, async (item, token) =>
+            {
+                try
+                {
+                    // L'appel est maintenant ASYNCHRONE pour ne pas bloquer les threads
+                    ExtractionResult result = await _extractionService.PerformExtractionAsync(item.contractNumber, env, false, isDemandId);
+
+                    string displayContract = isDemandId && !string.IsNullOrEmpty(result.ContractReference)
+                        ? result.ContractReference
+                        : item.contractNumber;
+
+                    if (!string.IsNullOrWhiteSpace(result.LisaContent) || !string.IsNullOrWhiteSpace(result.EliaContent))
+                    {
+                        StringBuilder localReport = new StringBuilder();
+                        localReport.AppendLine(new string('=', 80));
+                        localReport.AppendLine($"### GLOBAL CONTRACT REPORT: {displayContract} | TEST ID: {item.testId} | ENV: {env} ###");
+                        localReport.AppendLine(new string('=', 80));
+
+                        if (!string.IsNullOrWhiteSpace(result.LisaContent))
+                        {
+                            localReport.AppendLine($"--- LISA SECTION ---");
+                            localReport.Append(result.LisaContent).AppendLine();
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(result.EliaContent))
+                        {
+                            localReport.AppendLine($"--- ELIA SECTION (UCON: {result.UconId}) ---");
+                            localReport.Append(result.EliaContent).AppendLine();
+                        }
+
+                        // Ajout sécurisé (Thread-Safe)
+                        globalCombinedQueue.Enqueue(localReport.ToString());
+                    }
+
+                    processedTestIds.Add(item.testId);
+
+                    onProgressUpdate?.Invoke(new BatchProgressInfo
+                    {
+                        ContractId = displayContract,
+                        InternalId = result.InternalId,
+                        Product = env,
+                        Premium = string.IsNullOrWhiteSpace(result.Premium) ? "0" : result.Premium,
+                        UconId = result.UconId,
+                        DemandId = result.DemandId,
+                        Status = "OK"
+                    });
+                }
+                catch (Exception ex)
+                {
+                    onProgressUpdate?.Invoke(new BatchProgressInfo
+                    {
+                        ContractId = $"{item.contractNumber} (FAILED)",
+                        InternalId = "Error",
+                        Product = env,
+                        Premium = "0",
+                        UconId = "Error",
+                        DemandId = "Error",
+                        Status = ex.Message.ToLower().Contains("not found") ? "Not found in DB" : "SQL Error"
+                    });
+                }
+            });
+
+            // --- 4. SAUVEGARDE DU RAPPORT GLOBAL ---
+            StringBuilder finalCombinedReport = new StringBuilder();
+            foreach (var report in globalCombinedQueue)
+            {
+                finalCombinedReport.Append(report);
+            }
+
             string fileSignature = "NoContract";
             string sizeTag = "Big";
+            var idList = processedTestIds.ToList();
 
-            if (processedTestIds.Count > 0)
+            if (idList.Count > 0)
             {
-                var firstThree = processedTestIds.Take(3).Select(c => c.Replace(" ", ""));
+                var firstThree = idList.Take(3).Select(c => c.Replace(" ", ""));
                 fileSignature = string.Join("_", firstThree);
 
-                if (processedTestIds.Count > 3)
-                    fileSignature += $"_#{processedTestIds.Count - 3}other";
-                else if (processedTestIds.Count == 1)
+                if (idList.Count > 3)
+                    fileSignature += $"_#{idList.Count - 3}other";
+                else if (idList.Count == 1)
                     sizeTag = "Uniq";
             }
 
@@ -172,15 +185,13 @@ namespace AutoActivator.Services
             char envLetter = !string.IsNullOrEmpty(env) ? char.ToUpper(env[0]) : 'U';
             string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_{sizeTag}_{fileSignature}_{timestamp}.csv");
 
-            // NOUVEAU : On gère l'erreur au cas où un rapport portant le même nom serait déjà ouvert dans Excel
-            string contentToWrite = globalCombined.Length > 0 ? globalCombined.ToString() : "NO CONTRACT FOUND.";
+            string contentToWrite = finalCombinedReport.Length > 0 ? finalCombinedReport.ToString() : "NO CONTRACT FOUND.";
             try
             {
                 File.WriteAllText(combinedPath, contentToWrite, Encoding.UTF8);
             }
             catch (IOException)
             {
-                // Si le fichier est bloqué, on ajoute un suffixe aléatoire pour forcer la sauvegarde sans crasher
                 string alternativePath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_{sizeTag}_{fileSignature}_{timestamp}_{Guid.NewGuid().ToString().Substring(0, 4)}.csv");
                 File.WriteAllText(alternativePath, contentToWrite, Encoding.UTF8);
             }

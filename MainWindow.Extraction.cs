@@ -12,11 +12,9 @@ using Excel = Microsoft.Office.Interop.Excel;
 
 namespace AutoActivator.Gui
 {
-
     public partial class MainWindow : Window
     {
-
-        // RENOMMÉ : Formatage visuel pour l'interface de l'Extraction
+        // Formatage visuel pour l'interface de l'Extraction
         private string FormatContractForDisplay(string contract)
         {
             if (string.IsNullOrWhiteSpace(contract)) return contract;
@@ -45,7 +43,7 @@ namespace AutoActivator.Gui
             }
         }
 
-        // NOUVEAU : Met à jour ou vide le chemin réseau selon le bouton radio, l'environnement et le canal choisis
+        // Met à jour ou vide le chemin réseau selon le bouton radio, l'environnement et le canal choisis
         private void UpdateBatchExtCsvPath()
         {
             if (TxtBatchExtCsv != null)
@@ -69,7 +67,7 @@ namespace AutoActivator.Gui
 
         private void BatchInputType_Checked(object sender, RoutedEventArgs e) => UpdateBatchExtCsvPath();
 
-        // NOUVEAU : Événements liés au changement des menus déroulants
+        // Événements liés au changement des menus déroulants
         private void CmbExtEnv_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
         private void CmbExtChannel_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
 
@@ -93,28 +91,29 @@ namespace AutoActivator.Gui
                 return;
             }
 
-            // MODIFIÉ : On utilise Insert(0, item) pour que le plus récent soit affiché tout en haut
+            // On utilise Insert(0, item) pour que le plus récent soit affiché tout en haut
             IProgress<ExtractionItem> progress = new Progress<ExtractionItem>(item => ExtractionHistory.Insert(0, item));
 
             await RunProcessAsync(async () =>
             {
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Extracting Environment {envValue}000...");
-                await Task.Run(() => PerformSingleExtraction(rawInput, envValue + "000", progress, isDemandId));
+
+                // MODIFIÉ : On await directement la nouvelle méthode asynchrone sans bloquer l'UI
+                await PerformSingleExtractionAsync(rawInput, envValue + "000", progress, isDemandId);
 
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Single extraction completed successfully.");
             });
         }
 
-        private void PerformSingleExtraction(string targetValue, string env, IProgress<ExtractionItem> progress, bool isDemandId)
+        // MODIFIÉ : Transformé en async Task
+        private async Task PerformSingleExtractionAsync(string targetValue, string env, IProgress<ExtractionItem> progress, bool isDemandId)
         {
             try
             {
-                // On passe "true" pour "saveIndividualFile" et isDemandId à la fin pour le service d'extraction
-                ExtractionResult result = _extractionService.PerformExtraction(targetValue, env, true, isDemandId);
+                // APPEL ASYNCHRONE OPTIMISÉ
+                ExtractionResult result = await _extractionService.PerformExtractionAsync(targetValue, env, true, isDemandId);
                 _lastGeneratedPath = Settings.OutputDir;
 
-                // On utilise result.ContractReference qui contient le Contract Extended (ex: 582-2735865-77) renvoyé par le service
-                // Le préfixe [DMD] a été retiré, le numéro s'affiche proprement dans tous les cas.
                 string displayContract = isDemandId ? FormatContractForDisplay(result.ContractReference) : FormatContractForDisplay(targetValue);
 
                 progress.Report(new ExtractionItem
@@ -132,7 +131,6 @@ namespace AutoActivator.Gui
             }
             catch (Exception ex)
             {
-                // GESTION DE L'ERREUR : on n'interrompt pas l'application
                 progress.Report(new ExtractionItem
                 {
                     ContractId = targetValue,
@@ -148,12 +146,10 @@ namespace AutoActivator.Gui
             }
         }
 
-
         // BATCH EXTRACTION TAB LOGIC
 
         private void BtnBrowseExtCsv_Click(object sender, RoutedEventArgs e) => TxtBatchExtCsv.Text = OpenFileDialogHybrid();
 
-        // NOUVEAU : Un dialogue hybride qui accepte CSV, XLS et XLSX
         private string OpenFileDialogHybrid()
         {
             var openFileDialog = new OpenFileDialog
@@ -165,7 +161,6 @@ namespace AutoActivator.Gui
             return openFileDialog.ShowDialog() == true ? openFileDialog.FileName : string.Empty;
         }
 
-        // NOUVEAU : Convertisseur automatique Excel -> CSV en arrière-plan avec sauvegarde propre
         private string PrepareCsvFromExcel(string excelFilePath, string env)
         {
             if (!File.Exists(excelFilePath))
@@ -173,10 +168,7 @@ namespace AutoActivator.Gui
 
             Directory.CreateDirectory(Settings.OutputDir);
 
-            // CHANGEMENT : On récupère le nom du fichier Excel d'origine (sans l'extension .xls/.xlsx)
             string originalFileName = Path.GetFileNameWithoutExtension(excelFilePath);
-
-            // On crée un nom clair pour le fichier CSV converti qui sera sauvegardé
             string csvFileName = $"Converti_{originalFileName}_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
             string savedCsvPath = Path.Combine(Settings.OutputDir, csvFileName);
 
@@ -187,11 +179,9 @@ namespace AutoActivator.Gui
             Excel.Workbook workbook = null;
             try
             {
-                // On ouvre en ReadOnly pour ne pas bloquer les collègues sur le réseau
                 workbook = excelApp.Workbooks.Open(excelFilePath, ReadOnly: true);
                 Excel.Worksheet worksheet = workbook.Sheets[1];
 
-                // On cherche la colonne "Value" (ou modifiez selon le vrai nom de votre colonne)
                 Excel.Range firstRow = worksheet.Rows[2];
                 Excel.Range searchRange = firstRow.Find("Value");
 
@@ -199,10 +189,9 @@ namespace AutoActivator.Gui
                 {
                     int colIndex = searchRange.Column;
                     Excel.Range valueCol = worksheet.Columns[colIndex];
-                    valueCol.NumberFormat = "0"; // Force le format nombre entier (évite les 1.23E+11)
+                    valueCol.NumberFormat = "0";
                 }
 
-                // Sauvegarde du CSV définitif dans votre dossier Output
                 workbook.SaveAs(savedCsvPath, Excel.XlFileFormat.xlCSV, Type.Missing, Type.Missing,
                                 Type.Missing, Type.Missing, Excel.XlSaveAsAccessMode.xlNoChange,
                                 Type.Missing, Type.Missing, Type.Missing, Type.Missing, Type.Missing);
@@ -222,10 +211,8 @@ namespace AutoActivator.Gui
             string filePath = TxtBatchExtCsv?.Text.Trim();
             string envValue = "D";
 
-            // NOUVEAU : Vérification de la méthode de recherche pour le batch (Contract vs Demand ID)
             bool isDemandId = RbBatchSearchDemand?.IsChecked == true;
 
-            // Récupère la valeur de l'environnement depuis la ComboBox
             if (CmbExtEnv?.SelectedItem is ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
 
             if (string.IsNullOrEmpty(filePath))
@@ -237,9 +224,10 @@ namespace AutoActivator.Gui
 
             var batchService = new BatchExtractionService(_extractionService);
 
+            // Progress est lié automatiquement au Thread de l'UI (Dispatcher).
+            // Thread-Safe même si 15 contrats appellent cette fonction en même temps !
             IProgress<BatchProgressInfo> progress = new Progress<BatchProgressInfo>(info =>
             {
-                // MODIFIÉ : On utilise Insert(0, ...) pour insérer en haut de la liste
                 ExtractionHistory.Insert(0, new ExtractionItem
                 {
                     ContractId = FormatContractForDisplay(info.ContractId),
@@ -259,15 +247,17 @@ namespace AutoActivator.Gui
                 string actualFile = filePath;
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Preparing Environment {envValue}000...");
 
-                // Détection intelligente : Si c'est un Excel, on le convertit, sinon on l'utilise tel quel
                 if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                 {
                     Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Converting Network Excel to CSV for {envValue}000...");
+                    // Excel COM object creation doit rester dans un Task.Run car synchrone et très lourd
                     actualFile = await Task.Run(() => PrepareCsvFromExcel(filePath, envValue + "000"));
                 }
 
-                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Batch Extracting Environment {envValue}000...");
-                await Task.Run(() => batchService.PerformBatchExtraction(actualFile, envValue + "000", progress.Report, isDemandId));
+                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Batch Extracting Environment {envValue}000 (Parallel Mode)...");
+
+                // APPEL ASYNCHRONE DU BATCH (Parallélisme massif)
+                await batchService.PerformBatchExtractionAsync(actualFile, envValue + "000", progress.Report, isDemandId);
 
                 _lastGeneratedPath = Settings.OutputDir;
                 Application.Current.Dispatcher.Invoke(() => {
@@ -277,7 +267,6 @@ namespace AutoActivator.Gui
             });
         }
 
-        // NOUVEAU : Événement du bouton Clear pour vider la Session History
         private void BtnClearHistory_Click(object sender, RoutedEventArgs e)
         {
             if (ExtractionHistory != null)
