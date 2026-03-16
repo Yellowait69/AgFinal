@@ -72,6 +72,14 @@ namespace AutoActivator.Models
         /// </summary>
         public int TotalDifferencesFound { get; set; }
 
+        // --- NOUVELLES PROPRIÉTÉS POUR LA GESTION DES TESTS (ID TEST) ---
+        public int TotalBaseTests { get; set; }
+        public int TotalTargetTests { get; set; }
+        public int ComparedTestsCount { get; set; }
+        public List<string> MissingInTarget { get; set; } = new List<string>();
+        public List<string> MissingInBase { get; set; } = new List<string>();
+        // ----------------------------------------------------------------
+
         /// <summary>
         /// Detailed list of results file by file, table by table.
         /// </summary>

@@ -140,6 +140,13 @@ namespace AutoActivator.Gui
             TxtTotalErrors.Text = report.TotalDifferencesFound.ToString("N0");
             TxtScorePercentage.Text = $"{report.GlobalSuccessPercentage}%";
 
+            // Préparation du message informatif sur les tests (NOUVEAU)
+            string infoTests = "";
+            if (report.MissingInBase.Any() || report.MissingInTarget.Any())
+            {
+                infoTests = $"\n(Info: {report.ComparedTestsCount} tests comparés. {report.MissingInTarget.Count} absents cible, {report.MissingInBase.Count} absents base)";
+            }
+
             // 2. Animer le Cercle de Progression
             // L'Ellipse fait 140 de largeur, StrokeThickness = 12. Rayon = (140 - 12) / 2 = 64
             double radius = 64.0;
@@ -155,19 +162,19 @@ namespace AutoActivator.Gui
             if (report.GlobalSuccessPercentage == 100)
             {
                 CircleProgress.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2ECC71")); // Vert
-                TxtDashboardTitle.Text = "🎉 Parfait ! Aucune différence détectée.";
+                TxtDashboardTitle.Text = "🎉 Parfait ! Aucune différence détectée." + infoTests;
                 TxtDashboardTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2ECC71"));
             }
             else if (report.GlobalSuccessPercentage >= 95)
             {
                 CircleProgress.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F1C40F")); // Jaune
-                TxtDashboardTitle.Text = "⚠️ Presque parfait, quelques anomalies.";
+                TxtDashboardTitle.Text = "⚠️ Presque parfait, quelques anomalies." + infoTests;
                 TxtDashboardTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F39C12"));
             }
             else
             {
                 CircleProgress.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E74C3C")); // Rouge
-                TxtDashboardTitle.Text = "❌ Des différences majeures ont été trouvées.";
+                TxtDashboardTitle.Text = "❌ Des différences majeures ont été trouvées." + infoTests;
                 TxtDashboardTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E74C3C"));
             }
 
@@ -197,6 +204,27 @@ namespace AutoActivator.Gui
             sb.AppendLine("=====================================================");
             sb.AppendLine("                 COMPARISON REPORT                   ");
             sb.AppendLine("=====================================================");
+
+            // --- NOUVELLE SECTION D'INFORMATIONS SUR LES TESTS ---
+            sb.AppendLine($"[TESTS METRICS]");
+            sb.AppendLine($"Tests in Base File   : {report.TotalBaseTests}");
+            sb.AppendLine($"Tests in Target File : {report.TotalTargetTests}");
+            sb.AppendLine($"Tests Compared       : {report.ComparedTestsCount}");
+
+            if (report.MissingInTarget.Any() || report.MissingInBase.Any())
+            {
+                sb.AppendLine("\n[DISCREPANCIES - NON BLOCKING INFO]");
+                if (report.MissingInTarget.Any())
+                {
+                    sb.AppendLine($"- Tests found ONLY in Base (ignored): {string.Join(", ", report.MissingInTarget)}");
+                }
+                if (report.MissingInBase.Any())
+                {
+                    sb.AppendLine($"- Tests found ONLY in Target (ignored): {string.Join(", ", report.MissingInBase)}");
+                }
+            }
+            sb.AppendLine("-----------------------------------------------------");
+
             sb.AppendLine($"Global Success Rate : {report.GlobalSuccessPercentage} %");
             sb.AppendLine($"Total Rows Analyzed : {report.TotalRowsCompared}");
             sb.AppendLine($"Total Errors Found  : {report.TotalDifferencesFound}");
@@ -205,7 +233,7 @@ namespace AutoActivator.Gui
             if (report.GlobalSuccessPercentage == 100)
             {
                 sb.AppendLine("✅ PERFECT MATCH!");
-                sb.AppendLine("All tables for the most recent contracts are perfectly identical.");
+                sb.AppendLine("All tables for the common tested contracts are perfectly identical.");
             }
             else
             {

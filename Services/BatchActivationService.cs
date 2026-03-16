@@ -83,7 +83,10 @@ namespace AutoActivator.Services
                     if (columns.Count <= contractIdx) continue;
 
                     string rawInput = columns[contractIdx].Replace("=", "").Replace("\"", "").Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
-                    if (string.IsNullOrEmpty(rawInput)) continue;
+
+                    // NOUVEAU : On ignore les lignes vides OU la ligne parasite "End of File"
+                    if (string.IsNullOrEmpty(rawInput) || rawInput.Equals("End of File", StringComparison.OrdinalIgnoreCase))
+                        continue;
 
                     string resolvedContract = rawInput;
 

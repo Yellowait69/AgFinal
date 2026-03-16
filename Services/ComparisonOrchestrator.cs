@@ -61,20 +61,32 @@ namespace AutoActivator.Services
             var baseBlocks = CsvFormatter.SplitAndFilterMostRecentByTestId(baseFile);
             var targetBlocks = CsvFormatter.SplitAndFilterMostRecentByTestId(targetFile);
 
-            if (baseBlocks.Count == 0 || targetBlocks.Count == 0)
+            // Modification : on s'assure qu'au moins un des deux fichiers contient des données
+            if (baseBlocks.Count == 0 && targetBlocks.Count == 0)
             {
-                throw new Exception("Aucune donnée trouvée. Le format est-il correct ?");
+                throw new Exception("Aucune donnée trouvée dans aucun des deux fichiers. Le format est-il correct ?");
             }
 
-            // 2. Trouver les IDs communs entre les deux fichiers (ex: ID501)
-            var commonTestIds = baseBlocks.Keys.Intersect(targetBlocks.Keys).ToList();
+            // 2. Extraire les listes d'IDs de chaque fichier
+            var baseIds = baseBlocks.Keys.ToList();
+            var targetIds = targetBlocks.Keys.ToList();
+
+            // 3. Trouver les IDs communs et les différences (tests manquants d'un côté ou de l'autre)
+            var commonTestIds = baseIds.Intersect(targetIds).ToList();
+
+            // On remplit le rapport avec les informations sur les tests
+            report.TotalBaseTests = baseIds.Count;
+            report.TotalTargetTests = targetIds.Count;
+            report.ComparedTestsCount = commonTestIds.Count;
+            report.MissingInTarget = baseIds.Except(targetIds).ToList(); // Présents dans Base, absents dans Target
+            report.MissingInBase = targetIds.Except(baseIds).ToList();   // Présents dans Target, absents dans Base
 
             if (commonTestIds.Count == 0)
             {
-                throw new Exception("Aucun ID de Test commun (ex: ID501) n'a été trouvé entre les deux fichiers.");
+                throw new Exception($"Aucun ID de Test commun n'a été trouvé. Comparaison impossible. (Base: {baseIds.Count} tests, Target: {targetIds.Count} tests)");
             }
 
-            // 3. Boucle de comparaison sur chaque ID
+            // 4. Boucle de comparaison uniquement sur les IDs communs
             foreach (var testId in commonTestIds)
             {
                 string baseContent = baseBlocks[testId];

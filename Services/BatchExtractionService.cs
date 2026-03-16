@@ -79,6 +79,13 @@ namespace AutoActivator.Services
                     if (columns.Count > contractIndex)
                     {
                         string contractNumber = columns[contractIndex].Replace("=", "").Replace("\"", "").Trim();
+
+                        // NOUVEAU : On ignore la ligne parasite générée dans certains exports Excel
+                        if (contractNumber.Equals("End of File", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
                         string rawTestId = (testIdIndex != -1 && columns.Count > testIdIndex)
                             ? columns[testIdIndex].Replace("=", "").Replace("\"", "").Trim()
                             : contractNumber;
