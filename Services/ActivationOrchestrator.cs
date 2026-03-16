@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text; // Ajouté pour l'encodage (Encoding.UTF8)
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -25,7 +25,7 @@ namespace AutoActivator.Services
                 string currentEnv = generalVariables.ContainsKey("ENV") ? generalVariables["ENV"] : "D";
 
                 // On réduit la verbosité pour ne pas spammer l'UI en mode batch
-                bool isLogged = await _apiService.LogonAsync(username, password, currentEnv, msg => {}, cancellationToken);
+                bool isLogged = await _apiService.LogonAsync(username, password, currentEnv, msg => {}, cancellationToken).ConfigureAwait(false);
 
                 if (!isLogged) throw new Exception("Impossible de se connecter au serveur MicroFocus (Vérifiez le VPN).");
 
@@ -35,11 +35,11 @@ namespace AutoActivator.Services
                 int jobCounter = 1;
 
                 // Soumission Séquentielle (Obligatoire pour la cohérence des bases de données Mainframe)
-                await ProcessSubmitAndWaitAsync("ADDPRCT", addprctVars, jobCounter++, onProgress, cancellationToken);
-                await ProcessSubmitAndWaitAsync("LVPP06U", generalVariables, jobCounter++, onProgress, cancellationToken);
-                await ProcessSubmitAndWaitAsync("LVPG22U", generalVariables, jobCounter++, onProgress, cancellationToken);
-                await ProcessSubmitAndWaitAsync("LI1J04D0", generalVariables, jobCounter++, onProgress, cancellationToken);
-                await ProcessSubmitAndWaitAsync("LI1J04D2", generalVariables, jobCounter++, onProgress, cancellationToken);
+                await ProcessSubmitAndWaitAsync("ADDPRCT", addprctVars, jobCounter++, onProgress, cancellationToken).ConfigureAwait(false);
+                await ProcessSubmitAndWaitAsync("LVPP06U", generalVariables, jobCounter++, onProgress, cancellationToken).ConfigureAwait(false);
+                await ProcessSubmitAndWaitAsync("LVPG22U", generalVariables, jobCounter++, onProgress, cancellationToken).ConfigureAwait(false);
+                await ProcessSubmitAndWaitAsync("LI1J04D0", generalVariables, jobCounter++, onProgress, cancellationToken).ConfigureAwait(false);
+                await ProcessSubmitAndWaitAsync("LI1J04D2", generalVariables, jobCounter++, onProgress, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -69,7 +69,7 @@ namespace AutoActivator.Services
             }
 
             // 2. Préparation du JCL
-            string readyContent = await _jclProcessor.GetPreparedJclAsync(jobName, variables, count);
+            string readyContent = await _jclProcessor.GetPreparedJclAsync(jobName, variables, count).ConfigureAwait(false);
 
             if (jobName == "LVPG22U")
             {
@@ -110,33 +110,33 @@ namespace AutoActivator.Services
                 // CORRECTION CS0117 ICI : Utilisation de StreamWriter asynchrone
                 using (StreamWriter writer = new StreamWriter(debugFilePath, false, Encoding.UTF8))
                 {
-                    await writer.WriteAsync(readyContent);
+                    await writer.WriteAsync(readyContent).ConfigureAwait(false);
                 }
             }
             catch { /* On ignore silencieusement les erreurs d'écriture de debug */ }
 
             // 3. Soumission API Micro Focus
-            var (Success, JobNum, Error) = await _apiService.SubmitJobAsync(readyContent, cancellationToken);
+            var (Success, JobNum, Error) = await _apiService.SubmitJobAsync(readyContent, cancellationToken).ConfigureAwait(false);
             if (!Success) throw new Exception($"Échec de la soumission de {jobName}. Erreur:\n{Error}");
 
-            // OPTIMISATION 2 : Polling Agressif (toutes les 2 secondes pour maximiser la vitesse)
+            // OPTIMISATION 2 : Polling Agressif (1.5 secondes) + Tolérance augmentée
             bool finished = false;
-            int maxAttempts = 90; // 3 minutes maximum par Job (90 * 2s)
+            int maxAttempts = 120; // Plus d'essais pour éviter le timeout
 
             for (int i = 0; i < maxAttempts; i++)
             {
-                await Task.Delay(2000, cancellationToken); // Attente courte constante
+                await Task.Delay(1500, cancellationToken).ConfigureAwait(false); // Attente plus rapide
 
-                var (Status, ReturnCode) = await _apiService.CheckJobStatusAsync(JobNum, cancellationToken);
+                var (Status, ReturnCode) = await _apiService.CheckJobStatusAsync(JobNum, cancellationToken).ConfigureAwait(false);
 
                 // Cas 1: Crash système JCL
-                if (Status == "JCLError" || Status == "Abend")
+                if (Status == "JCLError" || Status == "Abend" || Status == "Failed")
                 {
                     throw new Exception($"Crash système pour {jobName}. Statut: {Status} (Code: {ReturnCode}).");
                 }
 
-                // Cas 2: Exécution terminée
-                if (Status == "Complete")
+                // Cas 2: Exécution terminée - CORRECTION : on gère aussi Output et Done
+                if (Status == "Complete" || Status == "Output" || Status == "Done")
                 {
                     string cleanRC = ReturnCode.TrimStart('0');
                     if (string.IsNullOrEmpty(cleanRC)) cleanRC = "0";
@@ -152,16 +152,13 @@ namespace AutoActivator.Services
                     {
                         try
                         {
-                            string reportContent = await _apiService.GetJobBusinessReportAsync(JobNum, cancellationToken);
+                            string reportContent = await _apiService.GetJobBusinessReportAsync(JobNum, cancellationToken).ConfigureAwait(false);
 
-                            // OPTIMISATION 3 : ID de Job dans le nom de fichier pour éviter les conflits en Batch
                             string reportPath = Path.Combine(Path.GetTempPath(), $"REPORT_{jobName}_{JobNum}.txt");
 
-                            // OPTIMISATION 4 : Async et Suppression de "Process.Start(notepad.exe)" pour éviter le crash PC
-                            // CORRECTION CS0117 ICI : Utilisation de StreamWriter asynchrone
                             using (StreamWriter writer = new StreamWriter(reportPath, false, Encoding.UTF8))
                             {
-                                await writer.WriteAsync(reportContent);
+                                await writer.WriteAsync(reportContent).ConfigureAwait(false);
                             }
                         }
                         catch { }
