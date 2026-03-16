@@ -21,50 +21,48 @@ namespace AutoActivator.Services
 
         public async Task<string> GetContractFromDemandAsync(string demandId, string envSuffix)
         {
-            return await Task.Run(() =>
+            try
             {
-                try
-                {
-                    var db = new DatabaseManager(envSuffix);
-                    string cleanDemandId = demandId.Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
-                    var dt = db.GetData(SqlQueries.Queries["GET_CONTRACT_BY_DEMAND"], new Dictionary<string, object> { { "@DemandId", cleanDemandId } });
+                var db = new DatabaseManager(envSuffix);
+                string cleanDemandId = demandId.Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
 
-                    if (dt.Rows.Count > 0)
-                    {
-                        return dt.Rows[0]["IT5UCONLREFEXN"]?.ToString()?.Trim();
-                    }
+                // OPTIMISATION : Utilisation de GetDataAsync natif pour ne pas bloquer de thread
+                var dt = await db.GetDataAsync(SqlQueries.Queries["GET_CONTRACT_BY_DEMAND"], new Dictionary<string, object> { { "@DemandId", cleanDemandId } });
+
+                if (dt.Rows.Count > 0)
+                {
+                    return dt.Rows[0]["IT5UCONLREFEXN"]?.ToString()?.Trim();
                 }
-                catch { }
-                return null;
-            });
+            }
+            catch { }
+            return null;
         }
 
         public async Task<string> FetchPremiumAsync(string contract, string envSuffix)
         {
-            return await Task.Run(() =>
+            try
             {
-                try
-                {
-                    var db = new DatabaseManager(envSuffix);
-                    string dbContract = contract.Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
-                    var dtElia = db.GetData(SqlQueries.Queries["GET_ELIA_ID"], new Dictionary<string, object> { { "@ContractNumber", dbContract } });
+                var db = new DatabaseManager(envSuffix);
+                string dbContract = contract.Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
 
-                    if (dtElia.Rows.Count > 0)
+                // OPTIMISATION : Appels asynchrones natifs
+                var dtElia = await db.GetDataAsync(SqlQueries.Queries["GET_ELIA_ID"], new Dictionary<string, object> { { "@ContractNumber", dbContract } });
+
+                if (dtElia.Rows.Count > 0)
+                {
+                    string eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"]?.ToString()?.Trim();
+                    if (!string.IsNullOrEmpty(eliaUconId) && SqlQueries.Queries.ContainsKey("FJ1.TB5UPRP"))
                     {
-                        string eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"]?.ToString()?.Trim();
-                        if (!string.IsNullOrEmpty(eliaUconId) && SqlQueries.Queries.ContainsKey("FJ1.TB5UPRP"))
+                        var dtPremium = await db.GetDataAsync(SqlQueries.Queries["FJ1.TB5UPRP"], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
+                        if (dtPremium.Rows.Count > 0 && dtPremium.Columns.Contains("IT5UPRPUBRU"))
                         {
-                            var dtPremium = db.GetData(SqlQueries.Queries["FJ1.TB5UPRP"], new Dictionary<string, object> { { "@EliaId", eliaUconId } });
-                            if (dtPremium.Rows.Count > 0 && dtPremium.Columns.Contains("IT5UPRPUBRU"))
-                            {
-                                return dtPremium.Rows[0]["IT5UPRPUBRU"]?.ToString()?.Trim() ?? "0";
-                            }
+                            return dtPremium.Rows[0]["IT5UPRPUBRU"]?.ToString()?.Trim() ?? "0";
                         }
                     }
                 }
-                catch { }
-                return "0";
-            });
+            }
+            catch { }
+            return "0";
         }
 
         public async Task ExecuteActivationSequenceAsync(string contract, string amount, string envValue, string cus, string bucp, string cmdpmt, string username, string password, Action<string> onProgress, CancellationToken token)

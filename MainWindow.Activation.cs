@@ -37,26 +37,30 @@ namespace AutoActivator.Gui
         // NOUVEAU : Met à jour le chemin réseau selon le bouton radio, l'environnement et le canal choisis
         private void UpdateBatchActCsvPath()
         {
-            if (TxtBatchActCsv != null && RbBatchActSearchDemand != null)
-            {
-                if (RbBatchActSearchDemand.IsChecked == true)
-                {
-                    string envValue = CmbActEnv?.SelectedItem is ComboBoxItem eItem ? eItem.Tag?.ToString() ?? "D" : "D";
-                    string channelValue = CmbActChannel?.SelectedItem is ComboBoxItem cItem ? cItem.Tag?.ToString() ?? "C01" : "C01";
+            // Vérification de sécurité (les éléments de l'UI peuvent être nulls pendant l'initialisation XAML)
+            if (TxtBatchActCsv == null || RbBatchActSearchDemand == null) return;
 
-                    // Génération dynamique du chemin avec le canal et l'environnement
-                    TxtBatchActCsv.Text = $@"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_{channelValue}ComparisonsDB_URL_ELIA_LoginPage_{envValue}000.xls";
-                }
-                else if (RbBatchActSearchContract != null && RbBatchActSearchContract.IsChecked == true)
-                {
-                    TxtBatchActCsv.Text = string.Empty;
-                }
+            if (RbBatchActSearchDemand.IsChecked == true)
+            {
+                string envValue = CmbActEnv?.SelectedItem is ComboBoxItem eItem ? eItem.Tag?.ToString() ?? "D" : "D";
+
+                // Si le canal n'est pas encore initialisé, on prend "C01" par défaut
+                string channelValue = CmbActChannel?.SelectedItem is ComboBoxItem cItem ? cItem.Tag?.ToString() ?? "C01" : "C01";
+
+                // Génération dynamique du chemin avec le canal et l'environnement
+                TxtBatchActCsv.Text = $@"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_{channelValue}ComparisonsDB_URL_ELIA_LoginPage_{envValue}000.xls";
+            }
+            else if (RbBatchActSearchContract != null && RbBatchActSearchContract.IsChecked == true)
+            {
+                // Si on cherche par Contrat, on vide la case car le fichier réseau ne concerne que les Demands ID
+                TxtBatchActCsv.Text = string.Empty;
             }
         }
 
+        // Appelé quand on clique sur "Contrat" ou "Demand ID" dans l'onglet Batch
         private void BatchActInputType_Checked(object sender, RoutedEventArgs e) => UpdateBatchActCsvPath();
 
-        // NOUVEAU : Événements liés au changement des menus déroulants
+        // NOUVEAU : Appelé quand on change "Env (D/Q/...)" ou "Canal (C01/C02/...)"
         private void CmbActEnv_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchActCsvPath();
         private void CmbActChannel_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchActCsvPath();
 
@@ -65,7 +69,7 @@ namespace AutoActivator.Gui
             if (_cts != null && !_cts.IsCancellationRequested)
             {
                 _cts.Cancel();
-                TxtStatus.Text = "Annulation en cours... La séquence va s'arrêter au prochain point de contrôle.";
+                TxtStatus.Text = "Annulation en cours... La séquence va s'arrêter.";
                 TxtStatus.Foreground = Brushes.DarkOrange;
             }
         }
@@ -155,7 +159,7 @@ namespace AutoActivator.Gui
                 string password = Settings.DbConfig.Pwd;
                 bool isDemandId = false;
 
-                if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+                if (string.IsNullOrWhiteSpace(username) || stringIsNullOrWhiteSpace(password))
                     throw new Exception("Les identifiants ne sont pas configurés.");
 
                 Application.Current.Dispatcher.Invoke(() =>

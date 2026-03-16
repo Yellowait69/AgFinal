@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -22,14 +23,18 @@ namespace AutoActivator.Services
             string username, string password, string outputDir, Action<string> onProgress, CancellationToken token)
         {
             StringBuilder report = new StringBuilder();
-            report.AppendLine("=== RAPPORT D'ACTIVATION BATCH ===");
+            report.AppendLine("=== RAPPORT D'ACTIVATION BATCH (MODE PARALLÈLE) ===");
             report.AppendLine($"Date de lancement: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
             report.AppendLine($"Configuration Globale -> Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt}\n");
             report.AppendLine("---------------------------------------------------------------------------------------------------------");
 
-            int successCount = 0, errorCount = 0;
+            int successCount = 0;
+            int errorCount = 0;
 
-            // Utilisation de FileStream avec FileShare.ReadWrite pour pouvoir lire même si ouvert dans Excel
+            // Structure Thread-Safe pour stocker les résultats dans le désordre, puis les trier à la fin
+            var globalReport = new ConcurrentBag<(int RowNum, string Message)>();
+            var contractsToProcess = new List<(string rawInput, int rowNum)>();
+
             using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             using (var reader = new StreamReader(fs, Encoding.UTF8))
             {
@@ -38,14 +43,12 @@ namespace AutoActivator.Services
                 int contractIdx = -1;
                 bool headerFound = false;
 
-                // --- 1. RECHERCHE INTELLIGENTE DE L'EN-TÊTE ---
-                // Le programme scanne chaque ligne jusqu'à trouver la vraie ligne d'en-têtes
+                // --- 1. RECHERCHE DE L'EN-TÊTE ---
                 while ((line = await reader.ReadLineAsync()) != null)
                 {
                     if (line.StartsWith("\uFEFF")) line = line.Substring(1); // Nettoyage BOM
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
-                    // Si c'est la ligne de titre parasite générée par un export, on l'ignore de force !
                     if (line.Replace("\"", "").TrimStart().StartsWith("Contract in", StringComparison.OrdinalIgnoreCase))
                         continue;
 
@@ -61,23 +64,17 @@ namespace AutoActivator.Services
                         }
                     }
 
-                    // Si on a trouvé la colonne d'identifiant principal, on arrête la recherche.
-                    if (contractIdx != -1)
-                    {
-                        headerFound = true;
-                        break;
-                    }
+                    if (contractIdx != -1) { headerFound = true; break; }
                 }
 
                 if (!headerFound)
                     throw new Exception("Colonne de contrat ou de Demand introuvable dans le fichier.");
 
-                // --- 2. LECTURE DES DONNÉES ---
-                int rowNum = 1;
+                // --- 2. CHARGEMENT EN MÉMOIRE ---
+                int currentRow = 1;
                 while ((line = await reader.ReadLineAsync()) != null)
                 {
                     if (string.IsNullOrWhiteSpace(line)) continue;
-                    if (token.IsCancellationRequested) break;
 
                     var columns = ParseCsvLine(line, delimiter);
                     if (columns.Count <= contractIdx) continue;
@@ -88,40 +85,67 @@ namespace AutoActivator.Services
                     if (string.IsNullOrEmpty(rawInput) || rawInput.Equals("End of File", StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    string resolvedContract = rawInput;
+                    contractsToProcess.Add((rawInput, currentRow++));
+                }
+            }
 
+            // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
+            // Le sémaphore limite à 15 activations simultanées pour ne pas crasher le Mainframe/DB
+            var semaphore = new SemaphoreSlim(15);
+            onProgress("Lancement du traitement parallèle... (Ceci peut prendre quelques instants)");
+
+            var tasks = contractsToProcess.Select(async item =>
+            {
+                await semaphore.WaitAsync(token); // Attente d'un "ticket" d'exécution
+                try
+                {
+                    if (token.IsCancellationRequested) return;
+
+                    string resolvedContract = item.rawInput;
+
+                    // A. Résolution Demand ID (Si nécessaire)
                     if (isDemandId)
                     {
-                        onProgress($"Batch en cours: Résolution Demand ID {rawInput} (Ligne {rowNum})...");
-                        resolvedContract = await _dataService.GetContractFromDemandAsync(rawInput, envValue + "000");
+                        resolvedContract = await _dataService.GetContractFromDemandAsync(item.rawInput, envValue + "000");
 
                         if (string.IsNullOrEmpty(resolvedContract))
                         {
-                            report.AppendLine($"[ÉCHEC]  Input: {rawInput} | Env: {envValue} | Erreur: Aucun contrat associé à ce Demand ID en base.");
-                            errorCount++;
-                            rowNum++;
-                            continue;
+                            globalReport.Add((item.rowNum, $"[ÉCHEC]  Ligne {item.rowNum,-4} | Input: {item.rawInput} | Erreur: Aucun contrat associé à ce Demand ID en base."));
+                            Interlocked.Increment(ref errorCount); // Thread-safe incrémentation
+                            return;
                         }
                     }
 
-                    onProgress($"Batch en cours: Recherche prime pour {resolvedContract} (Ligne {rowNum})...");
+                    // B. Recherche de la prime
                     string amount = await _dataService.FetchPremiumAsync(resolvedContract, envValue + "000");
                     string formattedContract = _dataService.FormatContractForJcl(resolvedContract);
 
-                    onProgress($"Batch en cours: Activation de {formattedContract} (Ligne {rowNum++})...");
+                    // C. Exécution de la séquence d'activation
+                    // On ne spamme pas onProgress dans la boucle pour éviter de saturer l'UI en mode parallèle massif
+                    await _dataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, msg => { }, token);
 
-                    try
-                    {
-                        await _dataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, onProgress, token);
-                        report.AppendLine($"[SUCCÈS] Input: {rawInput} -> Contrat JCL: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount}");
-                        successCount++;
-                    }
-                    catch (Exception ex)
-                    {
-                        report.AppendLine($"[ÉCHEC]  Input: {rawInput} -> Contrat JCL: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Erreur: {ex.Message}");
-                        errorCount++;
-                    }
+                    globalReport.Add((item.rowNum, $"[SUCCÈS] Ligne {item.rowNum,-4} | Input: {item.rawInput} -> Contrat JCL: {formattedContract} | Env: {envValue} | Amount: {amount}"));
+                    Interlocked.Increment(ref successCount);
                 }
+                catch (Exception ex)
+                {
+                    globalReport.Add((item.rowNum, $"[ÉCHEC]  Ligne {item.rowNum,-4} | Input: {item.rawInput} | Erreur: {ex.Message}"));
+                    Interlocked.Increment(ref errorCount);
+                }
+                finally
+                {
+                    semaphore.Release(); // Libère le "ticket" pour le contrat suivant
+                }
+            });
+
+            // On attend que TOUTES les activations soient terminées
+            await Task.WhenAll(tasks);
+
+            // --- 4. ASSEMBLAGE DU RAPPORT FINAL ---
+            // Les contrats ont été traités dans le désordre (parallélisme), on les trie par numéro de ligne pour la lisibilité
+            foreach (var log in globalReport.OrderBy(x => x.RowNum))
+            {
+                report.AppendLine(log.Message);
             }
 
             report.AppendLine("---------------------------------------------------------------------------------------------------------");
