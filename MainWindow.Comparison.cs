@@ -3,6 +3,9 @@ using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Media;
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Win32;
 using AutoActivator.Config;
 using AutoActivator.Models;
@@ -10,11 +13,21 @@ using AutoActivator.Services;
 
 namespace AutoActivator.Gui
 {
+    // Petite classe pour formater l'affichage dans le DataGrid de l'interface
+    public class UIComparisonResult
+    {
+        public string TableName { get; set; }
+        public string Status { get; set; }
+        public string ErrorDetails { get; set; }
+        public bool IsMatch { get; set; }
+        public string StatusIcon => IsMatch ? "✔ OK" : "✖ KO";
+        public SolidColorBrush StatusColor => IsMatch ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2ECC71"))
+                                                      : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E74C3C"));
+    }
+
     public partial class MainWindow : Window
     {
-
         // COMPARISON MODULE LOGIC
-
 
         private void BtnBrowseBase_Click(object sender, RoutedEventArgs e)
         {
@@ -62,52 +75,120 @@ namespace AutoActivator.Gui
             if (string.IsNullOrEmpty(baseFile) || string.IsNullOrEmpty(targetFile)) return;
 
             BtnRunComparison.IsEnabled = false;
-            TxtComparisonResults.Text = "Running deep comparison on all tables... Please wait.";
 
-            await Task.Run(() =>
+            // Cacher le tableau de bord précédent et afficher le message d'attente
+            PanelDashboard.Visibility = Visibility.Collapsed;
+            GridResults.Visibility = Visibility.Collapsed;
+            TxtComparisonWaiting.Visibility = Visibility.Visible;
+            TxtComparisonWaiting.Text = "Analyse approfondie en cours...\n(Filtrage du contrat le plus récent par Test ID). Veuillez patienter.";
+
+            await Task.Run(async () =>
             {
                 var orchestrator = new ComparisonOrchestrator();
                 try
                 {
-                    //  Lancer la comparaison
+                    // Lancer la comparaison (Filtrage intelligent inclus)
                     var report = orchestrator.RunFullComparison(baseFile, targetFile);
 
-                    //  Générer le texte du rapport
+                    // Générer le texte du rapport (pour la sauvegarde fichier texte classique)
                     string reportContent = GenerateReportText(report);
 
-                    //  Créer un nom de fichier avec un ID unique
-
+                    // Créer un nom de fichier avec un ID unique
                     string[] fileIds = orchestrator.GetFileIds(baseFile);
                     string uniqueId = fileIds.Length >= 3 ? fileIds[2] : "UnknownID";
                     string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
                     Directory.CreateDirectory(Settings.OutputDir);
-                    string reportFileName = $"ComparisonReport_{uniqueId}_{timestamp}.txt";
-                    string reportFilePath = Path.Combine(Settings.OutputDir, reportFileName);
+                    string reportFilePath = Path.Combine(Settings.OutputDir, $"ComparisonReport_{uniqueId}_{timestamp}.txt");
 
-                    //  Sauvegarder le rapport sur le disque
-                    File.WriteAllText(reportFilePath, reportContent, Encoding.UTF8);
+                    // Sauvegarder le rapport complet sur le disque en mode Asynchrone
+                    using (StreamWriter writer = new StreamWriter(reportFilePath, false, Encoding.UTF8))
+                    {
+                        await writer.WriteAsync(reportContent);
+                    }
 
-                    //  Permettre à l'UI d'ouvrir le dossier
                     _lastGeneratedPath = Settings.OutputDir;
 
-                    //  Afficher à l'écran avec le chemin d'accès
+                    // METTRE À JOUR LA NOUVELLE INTERFACE VISUELLE
                     Application.Current.Dispatcher.Invoke(() =>
                     {
-                        TxtComparisonResults.Text = reportContent;
-                        TxtComparisonResults.Text += $"\n\n📂 Rapport sauvegardé avec succès sous :\n{reportFilePath}\n";
-                        TxtComparisonResults.Text += "(Vous pouvez utiliser le bouton d'ouverture de dossier pour y accéder)";
+                        UpdateDashboardUI(report);
                     });
                 }
                 catch (Exception ex)
                 {
-                    Application.Current.Dispatcher.Invoke(() => TxtComparisonResults.Text = $"CRITICAL ERROR:\n{ex.Message}\n\n{ex.StackTrace}");
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        TxtComparisonWaiting.Text = $"ERREUR CRITIQUE:\n{ex.Message}\n\n{ex.StackTrace}";
+                        TxtComparisonWaiting.Foreground = new SolidColorBrush(Colors.Red);
+                    });
                 }
             });
 
             BtnRunComparison.IsEnabled = true;
         }
 
+        private void UpdateDashboardUI(ComparisonReport report)
+        {
+            // Basculer l'affichage
+            TxtComparisonWaiting.Visibility = Visibility.Collapsed;
+            PanelDashboard.Visibility = Visibility.Visible;
+            GridResults.Visibility = Visibility.Visible;
+
+            // 1. Mettre à jour les textes des statistiques
+            TxtTotalRows.Text = report.TotalRowsCompared.ToString("N0");
+            TxtTotalErrors.Text = report.TotalDifferencesFound.ToString("N0");
+            TxtScorePercentage.Text = $"{report.GlobalSuccessPercentage}%";
+
+            // 2. Animer le Cercle de Progression
+            // L'Ellipse fait 140 de largeur, StrokeThickness = 12. Rayon = (140 - 12) / 2 = 64
+            double radius = 64.0;
+            double circumference = 2 * Math.PI * radius;
+
+            // Calculer la longueur du trait en fonction du pourcentage
+            double dashLength = (report.GlobalSuccessPercentage / 100.0) * circumference;
+
+            // Appliquer au cercle (DashLength, EspaceVide) divisé par StrokeThickness
+            CircleProgress.StrokeDashArray = new DoubleCollection { dashLength / 12.0, circumference };
+
+            // Changer la couleur en fonction du score
+            if (report.GlobalSuccessPercentage == 100)
+            {
+                CircleProgress.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2ECC71")); // Vert
+                TxtDashboardTitle.Text = "🎉 Parfait ! Aucune différence détectée.";
+                TxtDashboardTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2ECC71"));
+            }
+            else if (report.GlobalSuccessPercentage >= 95)
+            {
+                CircleProgress.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F1C40F")); // Jaune
+                TxtDashboardTitle.Text = "⚠️ Presque parfait, quelques anomalies.";
+                TxtDashboardTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F39C12"));
+            }
+            else
+            {
+                CircleProgress.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E74C3C")); // Rouge
+                TxtDashboardTitle.Text = "❌ Des différences majeures ont été trouvées.";
+                TxtDashboardTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E74C3C"));
+            }
+
+            // 3. Préparer et trier la liste pour le DataGrid
+            var uiResults = new List<UIComparisonResult>();
+            foreach (var r in report.FileResults)
+            {
+                uiResults.Add(new UIComparisonResult
+                {
+                    TableName = r.TableName,
+                    Status = r.Status,
+                    IsMatch = r.IsMatch,
+                    ErrorDetails = string.IsNullOrWhiteSpace(r.ErrorDetails) ? "Aucune différence détectée." : r.ErrorDetails.Trim()
+                });
+            }
+
+            // MAGIE : On trie la liste pour que les erreurs (IsMatch = false) apparaissent TOUJOURS EN HAUT !
+            var sortedResults = uiResults.OrderBy(x => x.IsMatch).ThenBy(x => x.TableName).ToList();
+
+            GridResults.ItemsSource = sortedResults;
+        }
 
         private string GenerateReportText(ComparisonReport report)
         {
@@ -124,7 +205,7 @@ namespace AutoActivator.Gui
             if (report.GlobalSuccessPercentage == 100)
             {
                 sb.AppendLine("✅ PERFECT MATCH!");
-                sb.AppendLine("All tables in the files are perfectly identical.");
+                sb.AppendLine("All tables for the most recent contracts are perfectly identical.");
             }
             else
             {
@@ -148,7 +229,6 @@ namespace AutoActivator.Gui
 
             return sb.ToString();
         }
-
 
         private void BtnOpenFolder_Click(object sender, RoutedEventArgs e)
         {

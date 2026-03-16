@@ -29,8 +29,8 @@ namespace AutoActivator.Services
             ConcurrentQueue<string> globalCombinedQueue = new ConcurrentQueue<string>();
             ConcurrentBag<string> processedTestIds = new ConcurrentBag<string>();
 
-            // Liste pour stocker les contrats à traiter avant de lancer le parallélisme
-            List<(string contractNumber, string testId)> contractsToProcess = new List<(string, string)>();
+            // On garde tous les contrats sans les filtrer, en conservant le Test ID brut complet (avec ProcessID)
+            List<(string contractNumber, string rawTestId)> contractsToProcess = new List<(string, string)>();
 
             using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             using (var reader = new StreamReader(fs, Encoding.UTF8))
@@ -56,7 +56,7 @@ namespace AutoActivator.Services
                     {
                         string h = cols[i].Trim().ToLower();
                         if (h.Contains("contract") || h.Contains("contrat") || h.Contains("lisa") || h.Contains("value") || h.Contains("demand")) contractIndex = i;
-                        if (h.Contains("test") || h.Contains("id test") || h.Contains("idtest")) testIdIndex = i;
+                        if (h.Contains("test") || h.Contains("id test") || h.Contains("idtest") || h == "key") testIdIndex = i;
                     }
 
                     if (contractIndex != -1)
@@ -79,20 +79,19 @@ namespace AutoActivator.Services
                     if (columns.Count > contractIndex)
                     {
                         string contractNumber = columns[contractIndex].Replace("=", "").Replace("\"", "").Trim();
-                        string testId = (testIdIndex != -1 && columns.Count > testIdIndex)
-                            ? columns[testIdIndex].Replace("=", "").Trim()
+                        string rawTestId = (testIdIndex != -1 && columns.Count > testIdIndex)
+                            ? columns[testIdIndex].Replace("=", "").Replace("\"", "").Trim()
                             : contractNumber;
 
                         if (!string.IsNullOrEmpty(contractNumber))
                         {
-                            contractsToProcess.Add((contractNumber, testId));
+                            contractsToProcess.Add((contractNumber, rawTestId));
                         }
                     }
                 }
             }
 
-            // --- 3. TRAITEMENT PARALLÈLE MASSIF (COMPATIBLE .NET FRAMEWORK) ---
-            // Le Semaphore agit comme un péage qui ne laisse passer que 15 contrats simultanément
+            // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
             var semaphore = new SemaphoreSlim(15);
 
             var tasks = contractsToProcess.Select(async item =>
@@ -110,7 +109,8 @@ namespace AutoActivator.Services
                     {
                         StringBuilder localReport = new StringBuilder();
                         localReport.AppendLine(new string('=', 80));
-                        localReport.AppendLine($"### GLOBAL CONTRACT REPORT: {displayContract} | TEST ID: {item.testId} | ENV: {env} ###");
+                        // On inscrit le rawTestId complet (incluant la date) dans le rapport
+                        localReport.AppendLine($"### GLOBAL CONTRACT REPORT: {displayContract} | TEST ID: {item.rawTestId} | ENV: {env} ###");
                         localReport.AppendLine(new string('=', 80));
 
                         if (!string.IsNullOrWhiteSpace(result.LisaContent))
@@ -129,7 +129,7 @@ namespace AutoActivator.Services
                         globalCombinedQueue.Enqueue(localReport.ToString());
                     }
 
-                    processedTestIds.Add(item.testId);
+                    processedTestIds.Add(item.rawTestId);
 
                     onProgressUpdate?.Invoke(new BatchProgressInfo
                     {
@@ -177,7 +177,8 @@ namespace AutoActivator.Services
 
             if (idList.Count > 0)
             {
-                var firstThree = idList.Take(3).Select(c => c.Replace(" ", ""));
+                // On isole "ID501" de "ID501_FIB_Process..." pour nommer le fichier proprement
+                var firstThree = idList.Select(c => c.Split('_')[0].Replace(" ", "")).Distinct().Take(3);
                 fileSignature = string.Join("_", firstThree);
 
                 if (idList.Count > 3)

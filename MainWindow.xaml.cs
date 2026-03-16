@@ -16,7 +16,9 @@ namespace AutoActivator.Gui
 {
     public partial class MainWindow : Window
     {
+        // Variable partagée entre toutes les classes partielles (.Extraction.cs, .Comparison.cs, etc.)
         private string _lastGeneratedPath = "";
+
         private readonly ExtractionService _extractionService;
         private CancellationTokenSource _cts;
 
@@ -26,14 +28,17 @@ namespace AutoActivator.Gui
         {
             InitializeComponent();
             InitializeDirectories();
+
+            // Lier l'historique visuel (DataGrid) à notre collection
             ListHistory.ItemsSource = ExtractionHistory;
 
+            // Trier automatiquement l'historique d'extraction par Environnement (Product)
             ICollectionView view = CollectionViewSource.GetDefaultView(ExtractionHistory);
             view.SortDescriptions.Add(new SortDescription("Product", ListSortDirection.Ascending));
 
             _extractionService = new ExtractionService();
 
-            // Set "Activation" as the default tab at startup
+            // Définir "Activation" comme l'onglet par défaut au démarrage
             BtnActivation_Click(null, null);
         }
 
@@ -51,26 +56,26 @@ namespace AutoActivator.Gui
             }
         }
 
-        // --- TAB COLOR MANAGEMENT ---
+        // --- GESTION DES COULEURS ET DE LA NAVIGATION DES ONGLETS ---
         private void SetActiveTabColor(System.Windows.Controls.Button activeButton)
         {
             var inactiveColor = (SolidColorBrush)new BrushConverter().ConvertFrom("#34495E");
             var activeColor = (SolidColorBrush)new BrushConverter().ConvertFrom("#1ABC9C");
             var helpColor = (SolidColorBrush)new BrushConverter().ConvertFrom("#8E44AD");
 
-            // Reset all buttons to dark blue
+            // Réinitialiser tous les boutons à leur couleur "inactive" (Bleu foncé)
             if (BtnActivation != null) BtnActivation.Background = inactiveColor;
             if (BtnExtraction != null) BtnExtraction.Background = inactiveColor;
             if (BtnComparison != null) BtnComparison.Background = inactiveColor;
             if (BtnHelp != null) BtnHelp.Background = inactiveColor;
 
-            // Set the active button color (using purple for Help, turquoise for others)
+            // Appliquer la couleur "active" au bouton sélectionné
             if (activeButton != null)
             {
                 if (activeButton.Name == "BtnHelp")
-                    activeButton.Background = helpColor;
+                    activeButton.Background = helpColor; // Violet pour l'aide
                 else
-                    activeButton.Background = activeColor;
+                    activeButton.Background = activeColor; // Turquoise pour le reste
             }
         }
 
@@ -114,19 +119,22 @@ namespace AutoActivator.Gui
             SetActiveTabColor(BtnHelp);
         }
 
-        // --- MAIN ASYNC ENGINE ---
+        // --- MOTEUR ASYNCHRONE PRINCIPAL (Gère l'UI pendant les chargements) ---
         private async Task RunProcessAsync(Func<Task> action)
         {
+            // Afficher la barre de chargement et cacher le lien du précédent fichier
             PrgLoading.Visibility = Visibility.Visible;
             LnkFile.Visibility = Visibility.Collapsed;
 
-            // Disable buttons during processing
+            // Désactiver tous les boutons d'action pour empêcher l'utilisateur de lancer 2 processus en même temps
             if (BtnRunSingle != null) BtnRunSingle.IsEnabled = false;
             if (BtnRunBatch != null) BtnRunBatch.IsEnabled = false;
             if (BtnRunSingleAct != null) BtnRunSingleAct.IsEnabled = false;
             if (BtnRunBatchAct != null) BtnRunBatchAct.IsEnabled = false;
             if (BtnRunComparison != null) BtnRunComparison.IsEnabled = false;
+            if (BtnOpenComparisonFolder != null) BtnOpenComparisonFolder.IsEnabled = false;
 
+            // Activer les boutons d'annulation (si l'utilisateur veut stopper le Batch)
             if (BtnCancelSingleAct != null) BtnCancelSingleAct.IsEnabled = true;
             if (BtnCancelBatchAct != null) BtnCancelBatchAct.IsEnabled = true;
 
@@ -134,35 +142,41 @@ namespace AutoActivator.Gui
 
             try
             {
+                // Exécuter l'action asynchrone (Extraction, Comparaison ou Activation)
                 await action();
+
+                // Si réussi, afficher le lien et passer le texte en vert
                 LnkFile.Visibility = Visibility.Visible;
                 TxtStatus.Foreground = Brushes.Green;
             }
             catch (OperationCanceledException)
             {
-                TxtStatus.Text = "Operation canceled by the user.";
+                TxtStatus.Text = "Opération annulée par l'utilisateur.";
                 TxtStatus.Foreground = Brushes.DarkOrange;
             }
             catch (Exception ex)
             {
-                TxtStatus.Text = $"Critical error: {ex.Message}";
+                TxtStatus.Text = $"Erreur critique : {ex.Message}";
                 TxtStatus.Foreground = Brushes.Red;
-                MessageBox.Show(ex.Message, "Execution Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(ex.Message, "Erreur d'exécution", MessageBoxButton.OK, MessageBoxImage.Error);
                 LnkFile.Visibility = Visibility.Visible;
             }
             finally
             {
+                // Cacher la barre de chargement une fois l'opération terminée
                 PrgLoading.Visibility = Visibility.Collapsed;
 
-                // Re-enable buttons
+                // Réactiver les boutons
                 if (BtnRunSingle != null) BtnRunSingle.IsEnabled = true;
                 if (BtnRunBatch != null) BtnRunBatch.IsEnabled = true;
                 if (BtnRunSingleAct != null) BtnRunSingleAct.IsEnabled = true;
                 if (BtnRunBatchAct != null) BtnRunBatchAct.IsEnabled = true;
+                if (BtnOpenComparisonFolder != null) BtnOpenComparisonFolder.IsEnabled = true;
 
                 if (BtnCancelSingleAct != null) BtnCancelSingleAct.IsEnabled = false;
                 if (BtnCancelBatchAct != null) BtnCancelBatchAct.IsEnabled = false;
 
+                // Le bouton de comparaison ne se réactive que si les deux fichiers sont toujours bien renseignés
                 if (BtnRunComparison != null)
                 {
                     BtnRunComparison.IsEnabled = !string.IsNullOrWhiteSpace(TxtBaseFile?.Text) && !string.IsNullOrWhiteSpace(TxtTargetFile?.Text);
@@ -170,18 +184,29 @@ namespace AutoActivator.Gui
             }
         }
 
+        // --- GESTION DU LIEN CLIQUABLE (Hyperlink) ---
         private void Hyperlink_Click(object sender, RoutedEventArgs e)
         {
             try
             {
                 if (Directory.Exists(_lastGeneratedPath))
+                {
+                    // Ouvre simplement le dossier
                     Process.Start("explorer.exe", _lastGeneratedPath);
+                }
                 else if (File.Exists(_lastGeneratedPath))
+                {
+                    // Ouvre le dossier ET sélectionne le fichier spécifique
                     Process.Start("explorer.exe", $"/select,\"{_lastGeneratedPath}\"");
+                }
+                else
+                {
+                    MessageBox.Show("Le fichier ou le dossier est introuvable. Il a peut-être été déplacé.", "Introuvable", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error opening path: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Erreur lors de l'ouverture du chemin : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }

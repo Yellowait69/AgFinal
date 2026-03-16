@@ -36,8 +36,20 @@ namespace AutoActivator.Services
 
             try
             {
+                // NOUVEAU : Nettoyer le nom de la table pour les exclusions
+                // Si le nom reçu est "[ID501] LV.PCONT0", on extrait "LV.PCONT0" pour que le dictionnaire d'exclusions fonctionne.
+                string cleanTableName = tableName;
+                if (cleanTableName.StartsWith("["))
+                {
+                    int closeBracketIdx = cleanTableName.IndexOf(']');
+                    if (closeBracketIdx != -1 && closeBracketIdx + 1 < cleanTableName.Length)
+                    {
+                        cleanTableName = cleanTableName.Substring(closeBracketIdx + 1).Trim();
+                    }
+                }
+
                 // STEPS 2 & 3: Apply exclusion rules AND align schema
-                var exclusions = Exclusions.GetExclusionsForTable(tableName) ?? new HashSet<string>();
+                var exclusions = Exclusions.GetExclusionsForTable(cleanTableName) ?? new HashSet<string>();
 
                 var allColsRef = dfRef.Columns.Cast<DataColumn>().Select(c => c.ColumnName);
                 var allColsNew = dfNew.Columns.Cast<DataColumn>().Select(c => c.ColumnName);

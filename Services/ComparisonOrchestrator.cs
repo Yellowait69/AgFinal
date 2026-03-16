@@ -51,29 +51,48 @@ namespace AutoActivator.Services
         }
 
         /// <summary>
-        /// Lance la comparaison complète. Lit toutes les tables du fichier combiné et les compare une par une.
+        /// Lance la comparaison complète. Ne garde en mémoire que le contrat le plus récent pour chaque Test ID.
         /// </summary>
         public ComparisonReport RunFullComparison(string baseFile, string targetFile)
         {
             var report = new ComparisonReport();
 
-            // Récupère automatiquement TOUTES les tables contenues dans le fichier combiné
-            List<string> tablesToCompare = CsvFormatter.GetAllTableNames(baseFile);
+            // 1. Lire et filtrer les fichiers : on ne garde en mémoire que le texte du contrat LE PLUS RÉCENT pour chaque ID (ex: ID501)
+            var baseBlocks = CsvFormatter.SplitAndFilterMostRecentByTestId(baseFile);
+            var targetBlocks = CsvFormatter.SplitAndFilterMostRecentByTestId(targetFile);
 
-            if (tablesToCompare.Count == 0)
+            if (baseBlocks.Count == 0 || targetBlocks.Count == 0)
             {
-                throw new Exception("Aucune table trouvée dans le fichier de base. Le format est-il correct ?");
+                throw new Exception("Aucune donnée trouvée. Le format est-il correct ?");
             }
 
-            // Boucle de comparaison sur chaque table trouvée
-            foreach (var tableName in tablesToCompare)
-            {
-                // Déduction automatique de la section (LISA ou ELIA) selon le préfixe de la table
-                // "LV." correspond généralement à LISA et "FJ1." à ELIA
-                string tableType = tableName.StartsWith("LV.") ? "LISA" : (tableName.StartsWith("FJ1.") ? "ELIA" : "COMBINED");
+            // 2. Trouver les IDs communs entre les deux fichiers (ex: ID501)
+            var commonTestIds = baseBlocks.Keys.Intersect(targetBlocks.Keys).ToList();
 
-                // Comparaison de la table extraite depuis les deux fichiers globaux
-                CompareAndAppendToReport(baseFile, targetFile, tableName, tableType, report);
+            if (commonTestIds.Count == 0)
+            {
+                throw new Exception("Aucun ID de Test commun (ex: ID501) n'a été trouvé entre les deux fichiers.");
+            }
+
+            // 3. Boucle de comparaison sur chaque ID
+            foreach (var testId in commonTestIds)
+            {
+                string baseContent = baseBlocks[testId];
+                string targetContent = targetBlocks[testId];
+
+                // Obtenir toutes les tables impliquées pour ce contrat précis
+                List<string> tablesToCompare = CsvFormatter.GetAllTableNamesFromContent(baseContent);
+
+                foreach (var tableName in tablesToCompare)
+                {
+                    // Déduction automatique de la section (LISA ou ELIA)
+                    string tableType = tableName.StartsWith("LV.") ? "LISA" : (tableName.StartsWith("FJ1.") ? "ELIA" : "COMBINED");
+
+                    // Nom formaté pour l'affichage (ex: "[ID501] LV.PCONT0")
+                    string displayTableName = $"[{testId}] {tableName}";
+
+                    CompareAndAppendToReport(baseContent, targetContent, tableName, displayTableName, tableType, report, Path.GetFileName(baseFile), Path.GetFileName(targetFile));
+                }
             }
 
             // Calcul du pourcentage de réussite global
@@ -82,20 +101,21 @@ namespace AutoActivator.Services
             return report;
         }
 
-        private void CompareAndAppendToReport(string file1, string file2, string tableName, string type, ComparisonReport report)
+        private void CompareAndAppendToReport(string baseContent, string targetContent, string actualTableName, string displayTableName, string type, ComparisonReport report, string baseFileName, string targetFileName)
         {
-            // Utilisation du parseur CSV pour extraire la table spécifique du fichier combiné
-            DataTable df1 = CsvFormatter.LoadTableFromCsv(file1, tableName);
-            DataTable df2 = CsvFormatter.LoadTableFromCsv(file2, tableName);
+            // Charge la table spécifiée depuis les textes filtrés en mémoire
+            DataTable df1 = CsvFormatter.LoadTableFromContent(baseContent, actualTableName);
+            DataTable df2 = CsvFormatter.LoadTableFromContent(targetContent, actualTableName);
 
-            var (Status, Details) = Comparator.CompareDataTables(df1, df2, tableName);
+            // Comparaison avec affichage formaté (incluant l'ID de Test)
+            var (Status, Details) = Comparator.CompareDataTables(df1, df2, displayTableName);
 
             var fileResult = new FileComparisonResult
             {
                 FileType = type,
-                BaseFileName = Path.GetFileName(file1),
-                TargetFileName = Path.GetFileName(file2),
-                TableName = tableName,
+                BaseFileName = baseFileName,
+                TargetFileName = targetFileName,
+                TableName = displayTableName,
                 Status = Status,
                 ErrorDetails = Details
             };
@@ -108,13 +128,12 @@ namespace AutoActivator.Services
 
             if (Status != "OK" && Status != "OK_EMPTY")
             {
-                //  Compte le nombre de lignes remontées avec des erreurs depuis "Details"
+                // Compte le nombre de lignes remontées avec des erreurs depuis "Details"
                 if (!string.IsNullOrEmpty(Details))
                 {
-                    // Compte le nombre d'occurrences de "Row #" dans le rapport pour savoir combien de lignes ont échoué
                     int diffCount = Details.Split(new[] { "Row #" }, StringSplitOptions.None).Length - 1;
 
-                    // Si aucune ligne spécifique n'est pointée (erreur structurelle), on considère que toute la table a échoué
+                    // Si aucune ligne spécifique n'est pointée, on considère que toute la table a échoué
                     report.TotalDifferencesFound += diffCount > 0 ? diffCount : rowsCount;
                 }
                 else
