@@ -99,7 +99,9 @@ namespace AutoActivator.Services
 
             onProgress($"Lancement du traitement parallèle... (0 / {totalItems} contrats)");
 
-            var tasks = contractsToProcess.Select(async item =>
+            // CORRECTION : Utilisation de Task.Run pour forcer le traitement hors de l'UI Thread
+            // Et appel à .ToList() pour matérialiser la requête LINQ et démarrer les tâches immédiatement
+            var tasks = contractsToProcess.Select(item => Task.Run(async () =>
             {
                 await semaphore.WaitAsync(token); // Attente d'un "ticket" d'exécution
                 try
@@ -153,7 +155,7 @@ namespace AutoActivator.Services
                 {
                     semaphore.Release(); // Libère le "ticket" pour le contrat suivant
                 }
-            });
+            }, token)).ToList(); // .ToList() est CRUCIAL ici pour démarrer l'exécution.
 
             // On attend que TOUTES les activations soient terminées
             await Task.WhenAll(tasks);

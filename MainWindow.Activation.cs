@@ -123,8 +123,8 @@ namespace AutoActivator.Gui
 
                 try
                 {
-                    // L'UI Thread est mis à jour proprement via un delegate passé au service métier
-                    await _activationDataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, msg => Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = msg), _cts.Token);
+                    // L'UI Thread est mis à jour proprement via InvokeAsync (non-bloquant)
+                    await _activationDataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, msg => Application.Current.Dispatcher.InvokeAsync(() => TxtStatus.Text = msg), _cts.Token);
                     report.AppendLine($"Input Original: {rawInput} | Contrat Trouvé: {resolvedContract} | Contrat JCL: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: SUCCÈS");
                 }
                 catch (Exception ex)
@@ -159,7 +159,6 @@ namespace AutoActivator.Gui
                 string password = Settings.DbConfig.Pwd;
                 bool isDemandId = false;
 
-                // CORRECTION ICI : "string.IsNullOrWhiteSpace" avec le point
                 if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
                     throw new Exception("Les identifiants ne sont pas configurés.");
 
@@ -184,10 +183,10 @@ namespace AutoActivator.Gui
 
                 var batchService = new BatchActivationService(_activationDataService);
 
-                // L'UI Thread est mis à jour proprement via un delegate
+                // CORRECTION : L'UI Thread est mis à jour proprement via InvokeAsync pour ne pas bloquer les tâches parallèles
                 var result = await batchService.RunBatchAsync(
                     filePath, isDemandId, envValue, cus, bucp, cmdpmt, username, password, Settings.OutputDir,
-                    msg => Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = msg),
+                    msg => Application.Current.Dispatcher.InvokeAsync(() => TxtStatus.Text = msg),
                     _cts.Token
                 );
 
