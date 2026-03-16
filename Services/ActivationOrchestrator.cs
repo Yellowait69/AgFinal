@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text; // Ajouté pour l'encodage (Encoding.UTF8)
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -100,12 +101,17 @@ namespace AutoActivator.Services
                 }
             }
 
-            // OPTIMISATION 1 : Fichiers "Thread-Safe" (identifiant unique GUID) + Async
+            // OPTIMISATION 1 : Fichiers "Thread-Safe" (identifiant unique GUID) + Async compatible .NET Framework
             try
             {
                 string uniqueId = Guid.NewGuid().ToString("N").Substring(0, 6);
                 string debugFilePath = Path.Combine(Path.GetTempPath(), $"DEBUG_JCL_{jobName}_{uniqueId}.txt");
-                await File.WriteAllTextAsync(debugFilePath, readyContent, cancellationToken);
+
+                // CORRECTION CS0117 ICI : Utilisation de StreamWriter asynchrone
+                using (StreamWriter writer = new StreamWriter(debugFilePath, false, Encoding.UTF8))
+                {
+                    await writer.WriteAsync(readyContent);
+                }
             }
             catch { /* On ignore silencieusement les erreurs d'écriture de debug */ }
 
@@ -152,7 +158,11 @@ namespace AutoActivator.Services
                             string reportPath = Path.Combine(Path.GetTempPath(), $"REPORT_{jobName}_{JobNum}.txt");
 
                             // OPTIMISATION 4 : Async et Suppression de "Process.Start(notepad.exe)" pour éviter le crash PC
-                            await File.WriteAllTextAsync(reportPath, reportContent, cancellationToken);
+                            // CORRECTION CS0117 ICI : Utilisation de StreamWriter asynchrone
+                            using (StreamWriter writer = new StreamWriter(reportPath, false, Encoding.UTF8))
+                            {
+                                await writer.WriteAsync(reportContent);
+                            }
                         }
                         catch { }
                     }
