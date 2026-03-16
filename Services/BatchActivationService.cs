@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net; // NOUVEAU : Requis pour configurer le ServicePointManager
+using System.Net; // Requis pour configurer le ServicePointManager
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,13 +23,13 @@ namespace AutoActivator.Services
             string filePath, bool isDemandId, string envValue, string cus, string bucp, string cmdpmt,
             string username, string password, string outputDir, Action<string> onProgress, CancellationToken token)
         {
-            // CORRECTION 1 : DÉBLOCAGE RÉSEAU. Autorise plus de 2 requêtes HTTP simultanées.
+            // DÉBLOCAGE RÉSEAU. Autorise plus de 2 requêtes HTTP simultanées.
             // C'est vital car sinon .NET bloque la 3ème requête indéfiniment.
             ServicePointManager.DefaultConnectionLimit = 100;
             ServicePointManager.Expect100Continue = false;
 
             StringBuilder report = new StringBuilder();
-            report.AppendLine("=== RAPPORT D'ACTIVATION BATCH (MODE PARALLÈLE) ===");
+            report.AppendLine("=== RAPPORT D'ACTIVATION BATCH (MODE PARALLÈLE HAUTE VITESSE) ===");
             report.AppendLine($"Date de lancement: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
             report.AppendLine($"Configuration Globale -> Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt}\n");
             report.AppendLine("---------------------------------------------------------------------------------------------------------");
@@ -87,7 +87,7 @@ namespace AutoActivator.Services
 
                     string rawInput = columns[contractIdx].Replace("=", "").Replace("\"", "").Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
 
-                    // NOUVEAU : On ignore les lignes vides OU la ligne parasite "End of File"
+                    // On ignore les lignes vides OU la ligne parasite "End of File"
                     if (string.IsNullOrEmpty(rawInput) || rawInput.Equals("End of File", StringComparison.OrdinalIgnoreCase))
                         continue;
 
@@ -97,19 +97,22 @@ namespace AutoActivator.Services
 
             // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
 
-            // CORRECTION 2 : Limite réduite à 3. Le Mainframe (ou la DB) rejette souvent les connexions massives
-            // en bloquant les sessions si on envoie 15 requêtes simultanément.
-            var semaphore = new SemaphoreSlim(3);
+            // ACCÉLÉRATION : On passe à 15 requêtes simultanées
+            var semaphore = new SemaphoreSlim(15);
 
             // Initialisation des compteurs
             int totalItems = contractsToProcess.Count;
             int processedItems = 0;
 
-            onProgress($"Lancement du traitement parallèle... (0 / {totalItems} contrats)");
+            onProgress($"Lancement du traitement parallèle très haute vitesse... (0 / {totalItems} contrats)");
 
-            // Utilisation de Task.Run pour forcer le traitement hors de l'UI Thread
-            var tasks = contractsToProcess.Select(item => Task.Run(async () =>
+            // NOUVEAU : On utilise l'index dans le Select pour créer un micro-décalage au lancement
+            var tasks = contractsToProcess.Select((item, index) => Task.Run(async () =>
             {
+                // Micro-décalage : Évite que 15 requêtes frappent le serveur ou la base de données à la même milliseconde.
+                // Le premier part à 0ms, le second à 100ms, etc. Plafonné à 2 secondes (2000ms).
+                await Task.Delay(Math.Min(index * 100, 2000), token);
+
                 await semaphore.WaitAsync(token); // Attente d'un "ticket" d'exécution
                 try
                 {
@@ -117,7 +120,6 @@ namespace AutoActivator.Services
 
                     string resolvedContract = item.rawInput;
 
-                    // TRACE DE DEBUG 1 : Savoir si le blocage vient de la DB
                     onProgress($"[Requête DB] Recherche de: {item.rawInput}...");
 
                     // A. Résolution Demand ID (Si nécessaire)
@@ -140,7 +142,6 @@ namespace AutoActivator.Services
                     string amount = await _dataService.FetchPremiumAsync(resolvedContract, envValue + "000");
                     string formattedContract = _dataService.FormatContractForJcl(resolvedContract);
 
-                    // TRACE DE DEBUG 2 : Savoir si le blocage vient de l'API MicroFocus
                     onProgress($"[Requête Mainframe API] Activation de: {formattedContract}...");
 
                     // C. Exécution de la séquence d'activation
