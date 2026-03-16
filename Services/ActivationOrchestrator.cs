@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text; // Ajouté pour l'encodage (Encoding.UTF8)
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -12,167 +12,241 @@ namespace AutoActivator.Services
         private readonly JclProcessorService _jclProcessor;
         private readonly MicroFocusApiService _apiService;
 
+        private const int POLLING_DELAY_MS = 2000;
+        private const int MAX_POLL_ATTEMPTS = 90;
+
         public ActivationOrchestrator(string jclDirectory)
         {
             _jclProcessor = new JclProcessorService(jclDirectory);
             _apiService = new MicroFocusApiService();
         }
 
-        public async Task RunActivationSequenceAsync(Dictionary<string, string> generalVariables, Dictionary<string, string> addprctSpecificVariables, string username, string password, Action<string> onProgress, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Lance la séquence complète d’activation (5 jobs critiques)
+        /// </summary>
+        public async Task RunActivationSequenceAsync(
+            Dictionary<string, string> generalVariables,
+            Dictionary<string, string> addprctSpecificVariables,
+            string username,
+            string password,
+            Action<string> onProgress,
+            CancellationToken cancellationToken = default,
+            bool skipLogon = false)
         {
             try
             {
-                string currentEnv = generalVariables.ContainsKey("ENV") ? generalVariables["ENV"] : "D";
+                string env = GetVariable(generalVariables, "ENV", "D");
 
-                // On réduit la verbosité pour ne pas spammer l'UI en mode batch
-                bool isLogged = await _apiService.LogonAsync(username, password, currentEnv, msg => {}, cancellationToken);
+                if (!skipLogon)
+                {
+                    onProgress($"Connexion au serveur MicroFocus ({env}000)...");
 
-                if (!isLogged) throw new Exception("Impossible de se connecter au serveur MicroFocus (Vérifiez le VPN).");
+                    bool logged = await _apiService.LogonAsync(
+                        username,
+                        password,
+                        env,
+                        msg => { },
+                        cancellationToken);
 
-                var addprctVars = new Dictionary<string, string>(generalVariables);
-                foreach (var kvp in addprctSpecificVariables) addprctVars[kvp.Key] = kvp.Value;
+                    if (!logged)
+                        throw new Exception("Impossible de se connecter au serveur MicroFocus.");
+                }
 
-                int jobCounter = 1;
+                var addprctVars = MergeVariables(generalVariables, addprctSpecificVariables);
 
-                // Soumission Séquentielle (Obligatoire pour la cohérence des bases de données Mainframe)
-                await ProcessSubmitAndWaitAsync("ADDPRCT", addprctVars, jobCounter++, onProgress, cancellationToken);
-                await ProcessSubmitAndWaitAsync("LVPP06U", generalVariables, jobCounter++, onProgress, cancellationToken);
-                await ProcessSubmitAndWaitAsync("LVPG22U", generalVariables, jobCounter++, onProgress, cancellationToken);
-                await ProcessSubmitAndWaitAsync("LI1J04D0", generalVariables, jobCounter++, onProgress, cancellationToken);
-                await ProcessSubmitAndWaitAsync("LI1J04D2", generalVariables, jobCounter++, onProgress, cancellationToken);
+                int jobIndex = 1;
+
+                await ProcessSubmitAndWaitAsync("ADDPRCT", addprctVars, jobIndex++, onProgress, cancellationToken);
+                await ProcessSubmitAndWaitAsync("LVPP06U", generalVariables, jobIndex++, onProgress, cancellationToken);
+                await ProcessSubmitAndWaitAsync("LVPG22U", generalVariables, jobIndex++, onProgress, cancellationToken);
+                await ProcessSubmitAndWaitAsync("LI1J04D0", generalVariables, jobIndex++, onProgress, cancellationToken);
+                await ProcessSubmitAndWaitAsync("LI1J04D2", generalVariables, jobIndex++, onProgress, cancellationToken);
+
+                onProgress("Séquence d’activation terminée avec succès.");
             }
             catch (OperationCanceledException)
             {
-                onProgress("[ANNULATION] La séquence a été stoppée par l'utilisateur.");
+                onProgress("[ANNULATION] La séquence a été stoppée.");
                 throw;
             }
             catch (Exception ex)
             {
-                onProgress($"[ERREUR CRITIQUE] Chaîne interrompue: {ex.Message}");
+                onProgress($"[ERREUR CRITIQUE] {ex.Message}");
                 throw;
             }
         }
 
-        private async Task ProcessSubmitAndWaitAsync(string jobName, Dictionary<string, string> variables, int count, Action<string> onProgress, CancellationToken cancellationToken)
+        private async Task ProcessSubmitAndWaitAsync(
+            string jobName,
+            Dictionary<string, string> variables,
+            int jobIndex,
+            Action<string> onProgress,
+            CancellationToken cancellationToken)
         {
-            // 1. Ajout de la variable JOBNAM
-            variables["JOBNAM"] = jobName;
+            onProgress($"Préparation du job {jobName}...");
 
-            // Injection AP
-            if (jobName == "LVPP06U" || jobName == "LVPG22U")
-            {
-                variables["AP"] = "LV";
-            }
-            else if (jobName == "LI1J04D0" || jobName == "LI1J04D2")
-            {
-                variables["AP"] = "LI";
-            }
+            PrepareJobVariables(jobName, variables);
 
-            // 2. Préparation du JCL
-            string readyContent = await _jclProcessor.GetPreparedJclAsync(jobName, variables, count);
+            string readyJcl = await _jclProcessor.GetPreparedJclAsync(jobName, variables, jobIndex);
 
+            readyJcl = ApplyJobSpecificAdjustments(jobName, readyJcl, variables);
+
+            await WriteDebugFile(jobName, readyJcl);
+
+            onProgress($"Soumission du job {jobName}...");
+
+            var (success, jobNumber, error) = await _apiService.SubmitJobAsync(readyJcl, cancellationToken);
+
+            if (!success)
+                throw new Exception($"Échec soumission {jobName} : {error}");
+
+            onProgress($"Job {jobName} soumis ({jobNumber})");
+
+            await WaitForJobCompletion(jobName, jobNumber, onProgress, cancellationToken);
+        }
+
+        private void PrepareJobVariables(string jobName, Dictionary<string, string> vars)
+        {
+            vars["JOBNAM"] = jobName;
+
+            if (jobName is "LVPP06U" or "LVPG22U")
+                vars["AP"] = "LV";
+
+            if (jobName is "LI1J04D0" or "LI1J04D2")
+                vars["AP"] = "LI";
+        }
+
+        private string ApplyJobSpecificAdjustments(
+            string jobName,
+            string content,
+            Dictionary<string, string> variables)
+        {
             if (jobName == "LVPG22U")
             {
-                int icegenerIndex = readyContent.IndexOf("//ICEGENER IF");
-                if (icegenerIndex != -1) readyContent = readyContent.Substring(0, icegenerIndex);
+                int index = content.IndexOf("//ICEGENER IF");
+                if (index != -1)
+                    content = content.Substring(0, index);
             }
 
             if (jobName == "LI1J04D0" || jobName == "LI1J04D2")
             {
-                string subJobName = (jobName == "LI1J04D0") ? "LI1J04D1" : "LI1J04D3";
+                string subJob = jobName == "LI1J04D0" ? "LI1J04D1" : "LI1J04D3";
 
-                if (readyContent.Contains("$JOBNAME"))
-                    readyContent = readyContent.Replace("$JOBNAME", subJobName);
+                content = content.Replace("$JOBNAME", subJob);
 
-                string envLetter = variables.ContainsKey("ENVIMS") ? variables["ENVIMS"] : "T";
-                string notifyUser = variables.ContainsKey("USERNAME") ? variables["USERNAME"] : "XA3894";
+                string envLetter = GetVariable(variables, "ENVIMS", "T");
+                string notifyUser = GetVariable(variables, "USERNAME", "UNKNOWN");
 
-                string dataMarker = "DLM=##";
-                int dataIndex = readyContent.IndexOf(dataMarker);
+                int dataIndex = content.IndexOf("DLM=##");
 
                 if (dataIndex != -1)
                 {
-                    int endOfLineIndex = readyContent.IndexOf('\n', dataIndex);
-                    if (endOfLineIndex != -1)
+                    int lineEnd = content.IndexOf('\n', dataIndex);
+
+                    if (lineEnd != -1)
                     {
-                        string jobCardToInject = $"//{subJobName} JOB CLASS=A,SCHENV=IM7{envLetter},NOTIFY={notifyUser}\r\n";
-                        readyContent = readyContent.Insert(endOfLineIndex + 1, jobCardToInject);
+                        string jobCard =
+                            $"//{subJob} JOB CLASS=A,SCHENV=IM7{envLetter},NOTIFY={notifyUser}\r\n";
+
+                        content = content.Insert(lineEnd + 1, jobCard);
                     }
                 }
             }
 
-            // OPTIMISATION 1 : Fichiers "Thread-Safe" (identifiant unique GUID) + Async compatible .NET Framework
+            return content;
+        }
+
+        private async Task WaitForJobCompletion(
+            string jobName,
+            string jobNumber,
+            Action<string> onProgress,
+            CancellationToken cancellationToken)
+        {
+            for (int attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++)
+            {
+                await Task.Delay(POLLING_DELAY_MS, cancellationToken);
+
+                var (status, rc) = await _apiService.CheckJobStatusAsync(jobNumber, cancellationToken);
+
+                if (status == "JCLError" || status == "Abend")
+                    throw new Exception($"Crash système {jobName} ({status}) RC={rc}");
+
+                if (status == "Complete")
+                {
+                    string cleanRC = rc.TrimStart('0');
+                    if (string.IsNullOrEmpty(cleanRC))
+                        cleanRC = "0";
+
+                    if (cleanRC != "0" && cleanRC != "4")
+                        throw new Exception($"Erreur métier {jobName} RC={rc}");
+
+                    onProgress($"Job {jobName} terminé RC={cleanRC}");
+
+                    await SaveBusinessReportIfNeeded(jobName, jobNumber, cancellationToken);
+
+                    return;
+                }
+            }
+
+            throw new Exception($"Timeout pour le Job {jobName} ({jobNumber})");
+        }
+
+        private async Task SaveBusinessReportIfNeeded(
+            string jobName,
+            string jobNumber,
+            CancellationToken cancellationToken)
+        {
+            if (jobName is not ("ADDPRCT" or "LVPG22U" or "LI1J04D0"))
+                return;
+
             try
             {
-                string uniqueId = Guid.NewGuid().ToString("N").Substring(0, 6);
-                string debugFilePath = Path.Combine(Path.GetTempPath(), $"DEBUG_JCL_{jobName}_{uniqueId}.txt");
+                string report = await _apiService.GetJobBusinessReportAsync(jobNumber, cancellationToken);
 
-                // CORRECTION CS0117 ICI : Utilisation de StreamWriter asynchrone
-                using (StreamWriter writer = new StreamWriter(debugFilePath, false, Encoding.UTF8))
-                {
-                    await writer.WriteAsync(readyContent);
-                }
+                string path = Path.Combine(
+                    Path.GetTempPath(),
+                    $"REPORT_{jobName}_{jobNumber}.txt");
+
+                await File.WriteAllTextAsync(path, report, Encoding.UTF8, cancellationToken);
             }
-            catch { /* On ignore silencieusement les erreurs d'écriture de debug */ }
-
-            // 3. Soumission API Micro Focus
-            var (Success, JobNum, Error) = await _apiService.SubmitJobAsync(readyContent, cancellationToken);
-            if (!Success) throw new Exception($"Échec de la soumission de {jobName}. Erreur:\n{Error}");
-
-            // OPTIMISATION 2 : Polling Agressif (toutes les 2 secondes pour maximiser la vitesse)
-            bool finished = false;
-            int maxAttempts = 90; // 3 minutes maximum par Job (90 * 2s)
-
-            for (int i = 0; i < maxAttempts; i++)
+            catch
             {
-                await Task.Delay(2000, cancellationToken); // Attente courte constante
-
-                var (Status, ReturnCode) = await _apiService.CheckJobStatusAsync(JobNum, cancellationToken);
-
-                // Cas 1: Crash système JCL
-                if (Status == "JCLError" || Status == "Abend")
-                {
-                    throw new Exception($"Crash système pour {jobName}. Statut: {Status} (Code: {ReturnCode}).");
-                }
-
-                // Cas 2: Exécution terminée
-                if (Status == "Complete")
-                {
-                    string cleanRC = ReturnCode.TrimStart('0');
-                    if (string.IsNullOrEmpty(cleanRC)) cleanRC = "0";
-
-                    // Code d'erreur métier
-                    if (cleanRC != "0" && cleanRC != "4")
-                    {
-                        throw new Exception($"Erreur métier sur le job {jobName} (Return code: {ReturnCode}). Séquence annulée.");
-                    }
-
-                    // Téléchargement des rapports
-                    if (jobName == "ADDPRCT" || jobName == "LVPG22U" || jobName == "LI1J04D0")
-                    {
-                        try
-                        {
-                            string reportContent = await _apiService.GetJobBusinessReportAsync(JobNum, cancellationToken);
-
-                            // OPTIMISATION 3 : ID de Job dans le nom de fichier pour éviter les conflits en Batch
-                            string reportPath = Path.Combine(Path.GetTempPath(), $"REPORT_{jobName}_{JobNum}.txt");
-
-                            // OPTIMISATION 4 : Async et Suppression de "Process.Start(notepad.exe)" pour éviter le crash PC
-                            // CORRECTION CS0117 ICI : Utilisation de StreamWriter asynchrone
-                            using (StreamWriter writer = new StreamWriter(reportPath, false, Encoding.UTF8))
-                            {
-                                await writer.WriteAsync(reportContent);
-                            }
-                        }
-                        catch { }
-                    }
-
-                    finished = true;
-                    break; // On sort de la boucle d'attente instantanément
-                }
+                // volontairement silencieux
             }
+        }
 
-            if (!finished) throw new Exception($"Le Job {JobNum} ({jobName}) a dépassé le temps d'attente maximum (Timeout).");
+        private async Task WriteDebugFile(string jobName, string content)
+        {
+            try
+            {
+                string id = Guid.NewGuid().ToString("N")[..6];
+
+                string path = Path.Combine(
+                    Path.GetTempPath(),
+                    $"DEBUG_JCL_{jobName}_{id}.txt");
+
+                await File.WriteAllTextAsync(path, content, Encoding.UTF8);
+            }
+            catch
+            {
+            }
+        }
+
+        private Dictionary<string, string> MergeVariables(
+            Dictionary<string, string> baseVars,
+            Dictionary<string, string> extraVars)
+        {
+            var result = new Dictionary<string, string>(baseVars);
+
+            foreach (var kv in extraVars)
+                result[kv.Key] = kv.Value;
+
+            return result;
+        }
+
+        private string GetVariable(Dictionary<string, string> vars, string key, string defaultValue)
+        {
+            return vars.TryGetValue(key, out var value) ? value : defaultValue;
         }
     }
 }
