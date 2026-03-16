@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -46,50 +47,125 @@ namespace AutoActivator.Utils
             return field;
         }
 
-        /// <summary>
-        /// Scanne le fichier CSV pour récupérer les noms de toutes les tables qu'il contient.
-        /// </summary>
-        public static List<string> GetAllTableNames(string filePath)
-        {
-            var tableNames = new List<string>();
-            if (!File.Exists(filePath)) return tableNames;
+        // --- NOUVELLES MÉTHODES POUR LE FILTRAGE INTELLIGENT LORS DE LA COMPARAISON ---
 
-            // Lit toutes les lignes et cherche les balises d'en-tête de table
-            string[] lines = File.ReadAllLines(filePath);
-            foreach (var line in lines)
+        private static DateTime ParseProcessIdToDate(string rawTestId)
+        {
+            try
             {
-                if (line.StartsWith("### TABLE : "))
+                int idx = rawTestId.IndexOf("ProcessID:");
+                if (idx != -1)
                 {
-                    // Extrait le nom entre "### TABLE : " et " |"
-                    int startIndex = 12;
-                    int endIndex = line.IndexOf(" |", startIndex);
-                    if (endIndex > startIndex)
+                    string dateStr = rawTestId.Substring(idx + 10).Trim();
+                    if (dateStr.Length >= 12)
                     {
-                        tableNames.Add(line.Substring(startIndex, endIndex - startIndex).Trim());
+                        dateStr = dateStr.Substring(0, 12);
+                        if (DateTime.TryParseExact(dateStr, "ddMMyyHHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dt)) return dt;
+                        if (DateTime.TryParseExact(dateStr, "yyMMddHHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dt2)) return dt2;
                     }
                 }
             }
-            return tableNames;
+            catch { }
+            return DateTime.MinValue;
         }
 
         /// <summary>
-        /// Extrait une table spécifique d'un fichier multi-tables généré par l'ExtractionService.
-        /// Gère correctement les points-virgules et retours à la ligne inclus dans les champs entre guillemets.
+        /// Découpe le fichier complet et ne garde QUE le bloc de texte du contrat le plus récent pour chaque Test ID.
         /// </summary>
-        public static DataTable LoadTableFromCsv(string filePath, string tableName)
+        public static Dictionary<string, string> SplitAndFilterMostRecentByTestId(string filePath)
+        {
+            var blocks = new Dictionary<string, (DateTime date, StringBuilder content)>();
+            if (!File.Exists(filePath)) return new Dictionary<string, string>();
+
+            string[] lines = File.ReadAllLines(filePath);
+            string currentRootTestId = "UNKNOWN";
+            DateTime currentDate = DateTime.MinValue;
+            StringBuilder currentBlock = new StringBuilder();
+            long fallbackCounter = 0; // Si pas de date, on prend le dernier dans l'ordre de lecture
+
+            foreach (var line in lines)
+            {
+                // À chaque nouveau contrat trouvé dans le fichier...
+                if (line.StartsWith("### GLOBAL CONTRACT REPORT:"))
+                {
+                    // 1. Sauvegarder le bloc du contrat PRÉCÉDENT s'il est plus récent que celui déjà en mémoire
+                    if (currentBlock.Length > 0 && currentRootTestId != "UNKNOWN")
+                    {
+                        if (!blocks.ContainsKey(currentRootTestId) || currentDate >= blocks[currentRootTestId].date)
+                        {
+                            blocks[currentRootTestId] = (currentDate, currentBlock);
+                        }
+                    }
+
+                    // 2. Préparer le NOUVEAU bloc
+                    currentBlock = new StringBuilder();
+                    currentDate = new DateTime(fallbackCounter++);
+                    currentRootTestId = "UNKNOWN";
+
+                    int idx = line.IndexOf("TEST ID:");
+                    if (idx != -1)
+                    {
+                        int endIdx = line.IndexOf("|", idx);
+                        if (endIdx != -1)
+                        {
+                            string rawTestId = line.Substring(idx + 8, endIdx - (idx + 8)).Trim();
+
+                            // On extrait "ID501" de "ID501_FIB_ProcessID:130326145957"
+                            currentRootTestId = rawTestId.Contains("_") ? rawTestId.Split('_')[0].Trim() : rawTestId;
+
+                            // On extrait la date pour pouvoir comparer
+                            DateTime parsedDate = ParseProcessIdToDate(rawTestId);
+                            if (parsedDate != DateTime.MinValue) currentDate = parsedDate;
+                        }
+                    }
+                }
+
+                currentBlock.AppendLine(line);
+            }
+
+            // N'oublions pas d'enregistrer le tout dernier contrat lu du fichier !
+            if (currentBlock.Length > 0 && currentRootTestId != "UNKNOWN")
+            {
+                if (!blocks.ContainsKey(currentRootTestId) || currentDate >= blocks[currentRootTestId].date)
+                {
+                    blocks[currentRootTestId] = (currentDate, currentBlock);
+                }
+            }
+
+            // On retourne le dictionnaire propre avec juste le texte
+            return blocks.ToDictionary(k => k.Key, v => v.Value.content.ToString());
+        }
+
+        public static List<string> GetAllTableNamesFromContent(string fileContent)
+        {
+            var tableNames = new HashSet<string>();
+            using (var reader = new StringReader(fileContent))
+            {
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    if (line.StartsWith("### TABLE : "))
+                    {
+                        int startIndex = 12;
+                        int endIndex = line.IndexOf(" |", startIndex);
+                        if (endIndex > startIndex)
+                        {
+                            tableNames.Add(line.Substring(startIndex, endIndex - startIndex).Trim());
+                        }
+                    }
+                }
+            }
+            return tableNames.ToList();
+        }
+
+        public static DataTable LoadTableFromContent(string fileContent, string tableName)
         {
             var dt = new DataTable(tableName);
-            if (!File.Exists(filePath)) return dt;
-
-            string fileContent = File.ReadAllText(filePath);
-
-            //  Localiser le début de la table demandée
             string searchString = $"### TABLE : {tableName} |";
             int tableStartIndex = fileContent.IndexOf(searchString);
 
-            if (tableStartIndex == -1) return dt; // Table introuvable
+            if (tableStartIndex == -1) return dt;
 
-            // Sauter l'en-tête de la table et la ligne de tirets "----"
             int firstNewLine = fileContent.IndexOf('\n', tableStartIndex);
             int secondNewLine = fileContent.IndexOf('\n', firstNewLine + 1);
             if (firstNewLine == -1 || secondNewLine == -1) return dt;
@@ -101,7 +177,6 @@ namespace AutoActivator.Utils
             StringBuilder currentField = new StringBuilder();
             List<string> currentLine = new List<string>();
 
-            //  Analyser le texte caractère par caractère
             for (int i = dataStartIndex; i < fileContent.Length; i++)
             {
                 char c = fileContent[i];
@@ -131,22 +206,18 @@ namespace AutoActivator.Utils
                     currentLine.Add(currentField.ToString());
                     currentField.Clear();
 
-                    // Condition d'arrêt fin de la table (ligne vide, tirets ou message d'erreur)
                     if (currentLine.Count == 1 && (string.IsNullOrWhiteSpace(currentLine[0]) || currentLine[0].StartsWith("---") || currentLine[0] == "AUCUNE DONNÉE TROUVÉE"))
                     {
                         break;
                     }
 
-                    // Traitement de la ligne extraite
                     if (isHeader)
                     {
                         foreach (var field in currentLine)
                         {
                             string colName = field.Trim();
-                            // Sécurité pour éviter que le DataTable plante si 2 colonnes ont le même nom
                             int suffix = 1;
                             while (dt.Columns.Contains(colName)) colName = $"{field.Trim()}_{suffix++}";
-
                             dt.Columns.Add(colName);
                         }
                         isHeader = false;
@@ -170,6 +241,19 @@ namespace AutoActivator.Utils
             }
 
             return dt;
+        }
+
+        // --- ANCIENNES MÉTHODES POUR CONSERVER LA COMPATIBILITÉ AVEC LE RESTE DE L'APPLICATION ---
+        public static List<string> GetAllTableNames(string filePath)
+        {
+            if (!File.Exists(filePath)) return new List<string>();
+            return GetAllTableNamesFromContent(File.ReadAllText(filePath));
+        }
+
+        public static DataTable LoadTableFromCsv(string filePath, string tableName)
+        {
+            if (!File.Exists(filePath)) return new DataTable(tableName);
+            return LoadTableFromContent(File.ReadAllText(filePath), tableName);
         }
     }
 }
