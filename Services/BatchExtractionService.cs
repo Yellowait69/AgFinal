@@ -41,7 +41,8 @@ namespace AutoActivator.Services
                 bool headerFound = false;
 
                 // --- 1. RECHERCHE INTELLIGENTE DE L'EN-TÊTE ---
-                while ((line = await reader.ReadLineAsync()) != null)
+                // Ajout de ConfigureAwait(false) pour ne pas bloquer l'UI
+                while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
                     if (line.StartsWith("\uFEFF")) line = line.Substring(1);
                     if (string.IsNullOrWhiteSpace(line)) continue;
@@ -70,7 +71,7 @@ namespace AutoActivator.Services
                     throw new Exception("Impossible de trouver la colonne 'Value', 'Demand' ou 'Contract' dans le fichier CSV.");
 
                 // --- 2. LECTURE DES DONNÉES EN MÉMOIRE ---
-                while ((line = await reader.ReadLineAsync()) != null)
+                while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
@@ -99,18 +100,21 @@ namespace AutoActivator.Services
             }
 
             // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
-            var semaphore = new SemaphoreSlim(15);
+            // OPTIMISATION : On passe à 50 extractions de contrats simultanées
+            var semaphore = new SemaphoreSlim(50);
 
             // Initialisation des compteurs pour le suivi de la progression
             int totalItems = contractsToProcess.Count;
             int processedItems = 0;
 
-            var tasks = contractsToProcess.Select(async item =>
+            // OPTIMISATION : Utilisation de Task.Run pour forcer l'exécution hors de l'UI Thread + ToList() à la fin
+            var tasks = contractsToProcess.Select(item => Task.Run(async () =>
             {
-                await semaphore.WaitAsync(); // Attendre son tour dans la file
+                // Ajout de ConfigureAwait(false)
+                await semaphore.WaitAsync().ConfigureAwait(false);
                 try
                 {
-                    ExtractionResult result = await _extractionService.PerformExtractionAsync(item.contractNumber, env, false, isDemandId);
+                    ExtractionResult result = await _extractionService.PerformExtractionAsync(item.contractNumber, env, false, isDemandId).ConfigureAwait(false);
 
                     string displayContract = isDemandId && !string.IsNullOrEmpty(result.ContractReference)
                         ? result.ContractReference
@@ -180,10 +184,10 @@ namespace AutoActivator.Services
                 {
                     semaphore.Release(); // Libère la place pour le contrat suivant
                 }
-            });
+            })).ToList(); // <-- IMPORTANT : .ToList() matérialise la requête et lance les tâches
 
-            // Lancement de toutes les requêtes en parallèle et attente de leur fin
-            await Task.WhenAll(tasks);
+            // Lancement de toutes les requêtes en parallèle et attente de leur fin sans bloquer l'UI
+            await Task.WhenAll(tasks).ConfigureAwait(false);
 
             // --- 4. SAUVEGARDE DU RAPPORT GLOBAL ---
             StringBuilder finalCombinedReport = new StringBuilder();
@@ -216,12 +220,12 @@ namespace AutoActivator.Services
 
             string contentToWrite = finalCombinedReport.Length > 0 ? finalCombinedReport.ToString() : "NO CONTRACT FOUND.";
 
-            // Écriture du fichier de manière asynchrone pour ne pas bloquer
+            // Écriture du fichier de manière asynchrone pour ne pas bloquer (ajout du ConfigureAwait(false))
             try
             {
                 using (StreamWriter writer = new StreamWriter(combinedPath, false, Encoding.UTF8))
                 {
-                    await writer.WriteAsync(contentToWrite);
+                    await writer.WriteAsync(contentToWrite).ConfigureAwait(false);
                 }
             }
             catch (IOException)
@@ -230,7 +234,7 @@ namespace AutoActivator.Services
                 string alternativePath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_{sizeTag}_{fileSignature}_{timestamp}_{Guid.NewGuid().ToString().Substring(0, 4)}.csv");
                 using (StreamWriter writer = new StreamWriter(alternativePath, false, Encoding.UTF8))
                 {
-                    await writer.WriteAsync(contentToWrite);
+                    await writer.WriteAsync(contentToWrite).ConfigureAwait(false);
                 }
             }
         }

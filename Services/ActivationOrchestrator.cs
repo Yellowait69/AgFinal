@@ -119,13 +119,14 @@ namespace AutoActivator.Services
             var (Success, JobNum, Error) = await _apiService.SubmitJobAsync(readyContent, cancellationToken).ConfigureAwait(false);
             if (!Success) throw new Exception($"Échec de la soumission de {jobName}. Erreur:\n{Error}");
 
-            // OPTIMISATION 2 : Polling Agressif (1.5 secondes) + Tolérance augmentée
+            // OPTIMISATION 2 : Polling Agressif MAXIMAL (500 ms) + Tolérance augmentée
             bool finished = false;
-            int maxAttempts = 120; // Plus d'essais pour éviter le timeout
+            int maxAttempts = 360; // 360 essais de 500ms = 3 minutes maximum d'attente
 
             for (int i = 0; i < maxAttempts; i++)
             {
-                await Task.Delay(1500, cancellationToken).ConfigureAwait(false); // Attente plus rapide
+                // VITESSE MAXIMALE : Attente d'une demi-seconde entre chaque requête
+                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
 
                 var (Status, ReturnCode) = await _apiService.CheckJobStatusAsync(JobNum, cancellationToken).ConfigureAwait(false);
 

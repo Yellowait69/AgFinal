@@ -24,12 +24,11 @@ namespace AutoActivator.Services
             string username, string password, string outputDir, Action<string> onProgress, CancellationToken token)
         {
             // DÉBLOCAGE RÉSEAU. Autorise plus de 2 requêtes HTTP simultanées.
-            // C'est vital car sinon .NET bloque la 3ème requête indéfiniment.
             ServicePointManager.DefaultConnectionLimit = 100;
             ServicePointManager.Expect100Continue = false;
 
             StringBuilder report = new StringBuilder();
-            report.AppendLine("=== RAPPORT D'ACTIVATION BATCH (MODE PARALLÈLE HAUTE VITESSE) ===");
+            report.AppendLine("=== RAPPORT D'ACTIVATION BATCH (MODE PARALLÈLE VITESSE MAXIMALE) ===");
             report.AppendLine($"Date de lancement: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
             report.AppendLine($"Configuration Globale -> Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt}\n");
             report.AppendLine("---------------------------------------------------------------------------------------------------------");
@@ -50,7 +49,6 @@ namespace AutoActivator.Services
                 bool headerFound = false;
 
                 // --- 1. RECHERCHE DE L'EN-TÊTE ---
-                // Ajout de ConfigureAwait(false) pour éviter les deadlocks
                 while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
                     if (line.StartsWith("\uFEFF")) line = line.Substring(1); // Nettoyage BOM
@@ -98,30 +96,27 @@ namespace AutoActivator.Services
 
             // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
 
-            // ACCÉLÉRATION : On passe à 15 requêtes simultanées
-            var semaphore = new SemaphoreSlim(15);
+            // ACCÉLÉRATION MAXIMALE : On passe de 15 à 50 requêtes simultanées
+            var semaphore = new SemaphoreSlim(50);
 
             // Initialisation des compteurs
             int totalItems = contractsToProcess.Count;
             int processedItems = 0;
 
-            onProgress($"Lancement du traitement parallèle très haute vitesse... (0 / {totalItems} contrats)");
+            onProgress($"Lancement du traitement parallèle vitesse maximale... (0 / {totalItems} contrats)");
 
-            // Utilisation de l'index dans le Select pour créer un micro-décalage au lancement
             var tasks = contractsToProcess.Select((item, index) => Task.Run(async () =>
             {
-                // Micro-décalage : Évite que 15 requêtes frappent le serveur ou la base de données à la même milliseconde.
-                // Plafonné à 2 secondes (2000ms). L'ajout de ConfigureAwait(false) est CRUCIAL ici.
-                await Task.Delay(Math.Min(index * 100, 2000), token).ConfigureAwait(false);
+                // Micro-décalage accéléré : 50ms d'écart entre chaque frappe (au lieu de 100ms)
+                await Task.Delay(Math.Min(index * 50, 2000), token).ConfigureAwait(false);
 
-                await semaphore.WaitAsync(token).ConfigureAwait(false); // Attente d'un "ticket" d'exécution
+                await semaphore.WaitAsync(token).ConfigureAwait(false);
                 try
                 {
                     if (token.IsCancellationRequested) return;
 
                     string resolvedContract = item.rawInput;
 
-                    // Ajout du compteur dynamique au début du message
                     onProgress($"[{processedItems} / {totalItems} terminés] Recherche DB : {item.rawInput}...");
 
                     // A. Résolution Demand ID (Si nécessaire)
@@ -132,7 +127,7 @@ namespace AutoActivator.Services
                         if (string.IsNullOrEmpty(resolvedContract))
                         {
                             globalReport.Add((item.rowNum, $"[ÉCHEC]  Ligne {item.rowNum,-4} | Input: {item.rawInput} | Erreur: Aucun contrat associé à ce Demand ID en base."));
-                            Interlocked.Increment(ref errorCount); // Thread-safe incrémentation
+                            Interlocked.Increment(ref errorCount);
 
                             int currentErr = Interlocked.Increment(ref processedItems);
                             onProgress($"[{currentErr} / {totalItems} terminés] Échec Demand ID : {item.rawInput}");
@@ -144,7 +139,6 @@ namespace AutoActivator.Services
                     string amount = await _dataService.FetchPremiumAsync(resolvedContract, envValue + "000").ConfigureAwait(false);
                     string formattedContract = _dataService.FormatContractForJcl(resolvedContract);
 
-                    // Ajout du compteur dynamique au début du message
                     onProgress($"[{processedItems} / {totalItems} terminés] Envoi Mainframe API : {formattedContract}...");
 
                     // C. Exécution de la séquence d'activation
@@ -166,19 +160,16 @@ namespace AutoActivator.Services
                 }
                 finally
                 {
-                    semaphore.Release(); // Libère le "ticket" pour le contrat suivant
+                    semaphore.Release();
                 }
-            }, token)).ToList(); // .ToList() est CRUCIAL ici pour démarrer l'exécution.
+            }, token)).ToList();
 
-            // On attend que TOUTES les activations soient terminées
-            // Le ConfigureAwait(false) empêche le blocage final (deadlock) de l'interface !
+            // Attente non-bloquante pour l'interface utilisateur
             await Task.WhenAll(tasks).ConfigureAwait(false);
 
-            // Message de transition pour l'utilisateur
             onProgress("Tous les contrats ont été traités. Génération du rapport...");
 
             // --- 4. ASSEMBLAGE DU RAPPORT FINAL ---
-            // Les contrats ont été traités dans le désordre (parallélisme), on les trie par numéro de ligne pour la lisibilité
             foreach (var log in globalReport.OrderBy(x => x.RowNum))
             {
                 report.AppendLine(log.Message);
@@ -191,7 +182,7 @@ namespace AutoActivator.Services
 
             try
             {
-                // CRUCIAL : S'assure que le dossier d'export existe avant d'écrire, sinon l'application crashe silencieusement
+                // CRUCIAL : S'assure que le dossier d'export existe avant d'écrire
                 if (!Directory.Exists(outputDir))
                 {
                     Directory.CreateDirectory(outputDir);
