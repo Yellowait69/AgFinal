@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -15,7 +16,9 @@ namespace AutoActivator.Services
     public class MicroFocusApiService
     {
         private static readonly CookieContainer _cookieContainer = new CookieContainer();
-        private static readonly Dictionary<string, string> _lastWorkingServers = new Dictionary<string, string>();
+
+        // CORRECTION 1 : Rendu Thread-Safe pour supporter 50 accès simultanés sans s'emmêler les pinceaux
+        private static readonly ConcurrentDictionary<string, string> _lastWorkingServers = new ConcurrentDictionary<string, string>();
 
         private readonly Dictionary<string, List<string>> _activeServers = new Dictionary<string, List<string>>()
         {
@@ -89,7 +92,7 @@ namespace AutoActivator.Services
                     {
                         if (response.StatusCode == HttpStatusCode.OK && await TestConnectionAsync(_nodeUrl, cancellationToken).ConfigureAwait(false))
                         {
-                            _lastWorkingServers[env] = ActiveServer;
+                            _lastWorkingServers[env] = ActiveServer; // ConcurrentDictionary gère l'assignation safe
                             return true;
                         }
                     }
@@ -332,6 +335,12 @@ namespace AutoActivator.Services
         private HttpWebRequest CreateRequest(string url, string method, string referer)
         {
             var request = (HttpWebRequest)WebRequest.Create(url);
+
+            // CORRECTION 2 CRITIQUE : Forçage absolu de la limite de connexion sur le ServicePoint Actif.
+            // Quoi qu'il arrive, Windows laissera passer 500 requêtes en même temps pour cette URL précise.
+            request.ServicePoint.ConnectionLimit = 500;
+            request.ServicePoint.Expect100Continue = false;
+
             request.Method = method;
             request.ContentType = "application/json";
             request.Accept = "application/json, text/plain, */*";
