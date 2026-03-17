@@ -25,11 +25,10 @@ namespace AutoActivator.Services
             if (!File.Exists(filePath))
                 throw new FileNotFoundException("The specified CSV file could not be found.", filePath);
 
-            // Collections "Thread-Safe" pour le parallélisme
-            ConcurrentQueue<string> globalCombinedQueue = new ConcurrentQueue<string>();
-            ConcurrentBag<string> processedTestIds = new ConcurrentBag<string>();
+            // CORRECTION : Utilisation d'un dictionnaire pour conserver l'ordre STRICT d'origine via l'index de la liste
+            ConcurrentDictionary<int, string> globalCombinedResults = new ConcurrentDictionary<int, string>();
 
-            // On garde tous les contrats sans les filtrer, en conservant le Test ID brut complet (avec ProcessID)
+            // On garde tous les contrats sans les filtrer, en conservant le Test ID brut complet
             List<(string contractNumber, string rawTestId)> contractsToProcess = new List<(string, string)>();
 
             using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
@@ -41,7 +40,6 @@ namespace AutoActivator.Services
                 bool headerFound = false;
 
                 // --- 1. RECHERCHE INTELLIGENTE DE L'EN-TÊTE ---
-                // Ajout de ConfigureAwait(false) pour ne pas bloquer l'UI
                 while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
                     if (line.StartsWith("\uFEFF")) line = line.Substring(1);
@@ -100,18 +98,17 @@ namespace AutoActivator.Services
             }
 
             // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
-            // OPTIMISATION : On passe à 50 extractions de contrats simultanées
-            var semaphore = new SemaphoreSlim(50);
+            // CORRECTION : Réduction de 50 à 10 pour ne pas foudroyer le Pool de connexions SQL
+            var semaphore = new SemaphoreSlim(10);
 
             // Initialisation des compteurs pour le suivi de la progression
             int totalItems = contractsToProcess.Count;
             int processedItems = 0;
 
-            // OPTIMISATION : Utilisation de l'Index pour un micro-décalage et de Task.Run pour forcer l'exécution hors de l'UI Thread
             var tasks = contractsToProcess.Select((item, index) => Task.Run(async () =>
             {
-                // Micro-décalage (10ms) pour ne pas assommer le Pool de connexion SQL à la milliseconde 0
-                await Task.Delay(Math.Min(index * 10, 1000)).ConfigureAwait(false);
+                // Micro-décalage pour ne pas assommer le Pool de connexion SQL à la milliseconde 0
+                await Task.Delay(Math.Min(index * 20, 2000)).ConfigureAwait(false);
 
                 await semaphore.WaitAsync().ConfigureAwait(false);
                 try
@@ -126,7 +123,6 @@ namespace AutoActivator.Services
                     {
                         StringBuilder localReport = new StringBuilder();
                         localReport.AppendLine(new string('=', 80));
-                        // On inscrit le rawTestId complet (incluant la date) dans le rapport
                         localReport.AppendLine($"### GLOBAL CONTRACT REPORT: {displayContract} | TEST ID: {item.rawTestId} | ENV: {env} ###");
                         localReport.AppendLine(new string('=', 80));
 
@@ -142,13 +138,10 @@ namespace AutoActivator.Services
                             localReport.Append(result.EliaContent).AppendLine();
                         }
 
-                        // Ajout sécurisé (Thread-Safe)
-                        globalCombinedQueue.Enqueue(localReport.ToString());
+                        // Ajout sécurisé à l'index exact du contrat (garantit le même ordre que le fichier lu)
+                        globalCombinedResults.TryAdd(index, localReport.ToString());
                     }
 
-                    processedTestIds.Add(item.rawTestId);
-
-                    // Incrémentation sécurisée (Thread-Safe)
                     int current = Interlocked.Increment(ref processedItems);
 
                     onProgressUpdate?.Invoke(new BatchProgressInfo
@@ -160,15 +153,13 @@ namespace AutoActivator.Services
                         UconId = result.UconId,
                         DemandId = result.DemandId,
                         Status = "OK",
-                        CurrentItem = current,        // <-- Mise à jour du compteur
-                        TotalItems = totalItems       // <-- Total des contrats
+                        CurrentItem = current,
+                        TotalItems = totalItems
                     });
                 }
                 catch (Exception ex)
                 {
-                    // Incrémentation sécurisée même en cas d'erreur
                     int current = Interlocked.Increment(ref processedItems);
-
                     onProgressUpdate?.Invoke(new BatchProgressInfo
                     {
                         ContractId = $"{item.contractNumber} (FAILED)",
@@ -178,33 +169,38 @@ namespace AutoActivator.Services
                         UconId = "Error",
                         DemandId = "Error",
                         Status = ex.Message.ToLower().Contains("not found") ? "Not found in DB" : "SQL Error",
-                        CurrentItem = current,        // <-- Mise à jour du compteur
-                        TotalItems = totalItems       // <-- Total des contrats
+                        CurrentItem = current,
+                        TotalItems = totalItems
                     });
                 }
                 finally
                 {
-                    semaphore.Release(); // Libère la place pour le contrat suivant
+                    semaphore.Release();
                 }
-            })).ToList(); // <-- IMPORTANT : .ToList() matérialise la requête et lance les tâches
+            })).ToList();
 
             // Lancement de toutes les requêtes en parallèle et attente de leur fin sans bloquer l'UI
             await Task.WhenAll(tasks).ConfigureAwait(false);
 
             // --- 4. SAUVEGARDE DU RAPPORT GLOBAL ---
+            // CORRECTION : Reconstitution du fichier dans l'ordre strict initial de 0 à totalItems
             StringBuilder finalCombinedReport = new StringBuilder();
-            foreach (var report in globalCombinedQueue)
+            for (int i = 0; i < totalItems; i++)
             {
-                finalCombinedReport.Append(report);
+                if (globalCombinedResults.TryGetValue(i, out var report))
+                {
+                    finalCombinedReport.Append(report);
+                }
             }
 
             string fileSignature = "NoContract";
             string sizeTag = "Big";
-            var idList = processedTestIds.ToList();
+
+            // CORRECTION : On prend les IDs d'origine pour que le nom de fichier soit toujours calculé sur les mêmes bases
+            var idList = contractsToProcess.Select(c => c.rawTestId).ToList();
 
             if (idList.Count > 0)
             {
-                // On isole "ID501" de "ID501_FIB_Process..." pour nommer le fichier proprement
                 var firstThree = idList.Select(c => c.Split('_')[0].Replace(" ", "")).Distinct().Take(3);
                 fileSignature = string.Join("_", firstThree);
 
@@ -222,7 +218,6 @@ namespace AutoActivator.Services
 
             string contentToWrite = finalCombinedReport.Length > 0 ? finalCombinedReport.ToString() : "NO CONTRACT FOUND.";
 
-            // Écriture du fichier de manière asynchrone pour ne pas bloquer (ajout du ConfigureAwait(false))
             try
             {
                 using (StreamWriter writer = new StreamWriter(combinedPath, false, Encoding.UTF8))
@@ -232,7 +227,6 @@ namespace AutoActivator.Services
             }
             catch (IOException)
             {
-                // Si le fichier est bloqué, on crée une copie avec un GUID aléatoire
                 string alternativePath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_{sizeTag}_{fileSignature}_{timestamp}_{Guid.NewGuid().ToString().Substring(0, 4)}.csv");
                 using (StreamWriter writer = new StreamWriter(alternativePath, false, Encoding.UTF8))
                 {

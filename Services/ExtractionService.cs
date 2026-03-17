@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
+using System.Linq; // Nécessaire pour le .ToList()
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -173,10 +174,14 @@ namespace AutoActivator.Services
         {
             var resultsDictionary = new ConcurrentDictionary<string, string>();
 
-            var semaphore = new SemaphoreSlim(30);
+            // CORRECTION 1 : Réduit de 30 à 10 pour stabiliser les requêtes SQL (max 10 requêtes simultanées par contrat)
+            var semaphore = new SemaphoreSlim(10);
             var tasks = new List<Task>();
 
-            foreach (var table in tables)
+            // CORRECTION 2 : Pour garantir que les tables sont ajoutées dans le même ordre à chaque fois (ordre de la liste 'tables')
+            var tablesList = tables.ToList();
+
+            foreach (var table in tablesList)
             {
                 tasks.Add(Task.Run(async () =>
                 {
@@ -185,7 +190,6 @@ namespace AutoActivator.Services
                     {
                         if (SqlQueries.Queries.ContainsKey(table))
                         {
-                            // CORRECTION MAJEURE : Instance dédiée par thread d'extraction de table !
                             var threadSafeDb = new DatabaseManager(envSuffix);
                             var dt = await threadSafeDb.GetDataAsync(SqlQueries.Queries[table], new Dictionary<string, object> { { parameterName, parameterValue } }).ConfigureAwait(false);
 
@@ -208,7 +212,8 @@ namespace AutoActivator.Services
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
 
-            foreach (var table in tables)
+            // CORRECTION 3 : Concaténation dans le StringBuilder basée sur l'ordre de la liste originale pour assurer un ordre de sortie fixe
+            foreach (var table in tablesList)
             {
                 if (resultsDictionary.TryGetValue(table, out var content))
                 {
