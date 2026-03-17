@@ -107,7 +107,6 @@ namespace AutoActivator.Services
                 string uniqueId = Guid.NewGuid().ToString("N").Substring(0, 6);
                 string debugFilePath = Path.Combine(Path.GetTempPath(), $"DEBUG_JCL_{jobName}_{uniqueId}.txt");
 
-                // CORRECTION CS0117 ICI : Utilisation de StreamWriter asynchrone
                 using (StreamWriter writer = new StreamWriter(debugFilePath, false, Encoding.UTF8))
                 {
                     await writer.WriteAsync(readyContent).ConfigureAwait(false);
@@ -119,14 +118,14 @@ namespace AutoActivator.Services
             var (Success, JobNum, Error) = await _apiService.SubmitJobAsync(readyContent, cancellationToken).ConfigureAwait(false);
             if (!Success) throw new Exception($"Échec de la soumission de {jobName}. Erreur:\n{Error}");
 
-            // OPTIMISATION 2 : Polling Agressif MAXIMAL (500 ms) + Tolérance augmentée
             bool finished = false;
-            int maxAttempts = 360; // 360 essais de 500ms = 3 minutes maximum d'attente
+            // CORRECTION : 90 essais de 2000ms (2 secondes) = 3 minutes maximum d'attente
+            int maxAttempts = 90;
 
             for (int i = 0; i < maxAttempts; i++)
             {
-                // VITESSE MAXIMALE : Attente d'une demi-seconde entre chaque requête
-                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
+                // CORRECTION VITALE : Polling de 2000ms au lieu de 500ms pour ne pas foudroyer l'API MF
+                await Task.Delay(2000, cancellationToken).ConfigureAwait(false);
 
                 var (Status, ReturnCode) = await _apiService.CheckJobStatusAsync(JobNum, cancellationToken).ConfigureAwait(false);
 

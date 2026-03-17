@@ -23,12 +23,12 @@ namespace AutoActivator.Services
             string filePath, bool isDemandId, string envValue, string cus, string bucp, string cmdpmt,
             string username, string password, string outputDir, Action<string> onProgress, CancellationToken token)
         {
-            // DÉBLOCAGE RÉSEAU. Autorise plus de 2 requêtes HTTP simultanées.
-            ServicePointManager.DefaultConnectionLimit = 100;
+            // DÉBLOCAGE RÉSEAU. Autorise un grand nombre de requêtes HTTP simultanées.
+            ServicePointManager.DefaultConnectionLimit = 500;
             ServicePointManager.Expect100Continue = false;
 
             StringBuilder report = new StringBuilder();
-            report.AppendLine("=== RAPPORT D'ACTIVATION BATCH (MODE PARALLÈLE VITESSE MAXIMALE) ===");
+            report.AppendLine("=== RAPPORT D'ACTIVATION BATCH (MODE PARALLÈLE SÉCURISÉ) ===");
             report.AppendLine($"Date de lancement: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
             report.AppendLine($"Configuration Globale -> Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt}\n");
             report.AppendLine("---------------------------------------------------------------------------------------------------------");
@@ -96,19 +96,19 @@ namespace AutoActivator.Services
 
             // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
 
-            // ACCÉLÉRATION MAXIMALE : On passe de 15 à 50 requêtes simultanées
-            var semaphore = new SemaphoreSlim(50);
+            // CORRECTION : Limite à 10 pour ne pas saturer le Mainframe et la DB simultanément
+            var semaphore = new SemaphoreSlim(10);
 
             // Initialisation des compteurs
             int totalItems = contractsToProcess.Count;
             int processedItems = 0;
 
-            onProgress($"Lancement du traitement parallèle vitesse maximale... (0 / {totalItems} contrats)");
+            onProgress($"Lancement du traitement parallèle sécurisé... (0 / {totalItems} contrats)");
 
             var tasks = contractsToProcess.Select((item, index) => Task.Run(async () =>
             {
-                // Micro-décalage accéléré : 50ms d'écart entre chaque frappe (au lieu de 100ms)
-                await Task.Delay(Math.Min(index * 50, 2000), token).ConfigureAwait(false);
+                // Étale le lancement des tâches (200ms d'écart) pour ne pas foudroyer le serveur à la seconde zéro
+                await Task.Delay(Math.Min(index * 200, 3000), token).ConfigureAwait(false);
 
                 await semaphore.WaitAsync(token).ConfigureAwait(false);
                 try
@@ -190,7 +190,12 @@ namespace AutoActivator.Services
 
                 reportPath = Path.Combine(outputDir, $"Activation_Batch_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
                 File.WriteAllText(reportPath, report.ToString());
-                onProgress("Rapport généré avec succès !");
+            }
+            catch (IOException)
+            {
+                // CORRECTION : Si le fichier plante (ex: ouvert par un autre programme), on génère un nom alternatif
+                reportPath = Path.Combine(outputDir, $"Activation_Batch_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString().Substring(0, 4)}.txt");
+                File.WriteAllText(reportPath, report.ToString());
             }
             catch (Exception ex)
             {
@@ -198,6 +203,7 @@ namespace AutoActivator.Services
                 throw;
             }
 
+            onProgress("Rapport généré avec succès !");
             return (successCount, errorCount, reportPath);
         }
 
