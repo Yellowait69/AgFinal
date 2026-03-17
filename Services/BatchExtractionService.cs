@@ -81,7 +81,7 @@ namespace AutoActivator.Services
                     {
                         string contractNumber = columns[contractIndex].Replace("=", "").Replace("\"", "").Trim();
 
-                        // NOUVEAU : On ignore la ligne parasite générée dans certains exports Excel
+                        // On ignore la ligne parasite générée dans certains exports Excel
                         if (contractNumber.Equals("End of File", StringComparison.OrdinalIgnoreCase))
                         {
                             continue;
@@ -107,10 +107,12 @@ namespace AutoActivator.Services
             int totalItems = contractsToProcess.Count;
             int processedItems = 0;
 
-            // OPTIMISATION : Utilisation de Task.Run pour forcer l'exécution hors de l'UI Thread + ToList() à la fin
-            var tasks = contractsToProcess.Select(item => Task.Run(async () =>
+            // OPTIMISATION : Utilisation de l'Index pour un micro-décalage et de Task.Run pour forcer l'exécution hors de l'UI Thread
+            var tasks = contractsToProcess.Select((item, index) => Task.Run(async () =>
             {
-                // Ajout de ConfigureAwait(false)
+                // Micro-décalage (10ms) pour ne pas assommer le Pool de connexion SQL à la milliseconde 0
+                await Task.Delay(Math.Min(index * 10, 1000)).ConfigureAwait(false);
+
                 await semaphore.WaitAsync().ConfigureAwait(false);
                 try
                 {
