@@ -28,8 +28,8 @@ namespace AutoActivator.Services
             // CORRECTION : Utilisation d'un dictionnaire pour conserver l'ordre STRICT d'origine via l'index de la liste
             ConcurrentDictionary<int, string> globalCombinedResults = new ConcurrentDictionary<int, string>();
 
-            // On garde tous les contrats sans les filtrer, en conservant le Test ID brut complet
-            List<(string contractNumber, string rawTestId)> contractsToProcess = new List<(string, string)>();
+            // NOUVEAU : On ajoute le numéro de ligne (rowNum) dans la liste pour le transmettre plus tard
+            List<(int rowNum, string contractNumber, string rawTestId)> contractsToProcess = new List<(int, string, string)>();
 
             using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             using (var reader = new StreamReader(fs, Encoding.UTF8))
@@ -39,9 +39,13 @@ namespace AutoActivator.Services
                 int contractIndex = -1, testIdIndex = -1;
                 bool headerFound = false;
 
+                int lineNumber = 0; // NOUVEAU : Compteur de ligne globale
+
                 // --- 1. RECHERCHE INTELLIGENTE DE L'EN-TÊTE ---
                 while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
+                    lineNumber++; // NOUVEAU : Incrémente pour les premières lignes jusqu'à l'en-tête
+
                     if (line.StartsWith("\uFEFF")) line = line.Substring(1);
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
@@ -71,6 +75,8 @@ namespace AutoActivator.Services
                 // --- 2. LECTURE DES DONNÉES EN MÉMOIRE ---
                 while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
+                    lineNumber++; // NOUVEAU : Incrémente pour chaque ligne de données
+
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
                     var columns = ParseCsvLine(line, delimiter);
@@ -91,7 +97,8 @@ namespace AutoActivator.Services
 
                         if (!string.IsNullOrEmpty(contractNumber))
                         {
-                            contractsToProcess.Add((contractNumber, rawTestId));
+                            // NOUVEAU : On sauvegarde la ligne exacte
+                            contractsToProcess.Add((lineNumber, contractNumber, rawTestId));
                         }
                     }
                 }
@@ -146,6 +153,7 @@ namespace AutoActivator.Services
 
                     onProgressUpdate?.Invoke(new BatchProgressInfo
                     {
+                        RowNum = item.rowNum, // NOUVEAU : Transmission du numéro de ligne
                         ContractId = displayContract,
                         InternalId = result.InternalId,
                         Product = env,
@@ -162,6 +170,7 @@ namespace AutoActivator.Services
                     int current = Interlocked.Increment(ref processedItems);
                     onProgressUpdate?.Invoke(new BatchProgressInfo
                     {
+                        RowNum = item.rowNum, // NOUVEAU : Transmission du numéro de ligne en cas d'erreur
                         ContractId = $"{item.contractNumber} (FAILED)",
                         InternalId = "Error",
                         Product = env,
