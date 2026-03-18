@@ -202,12 +202,7 @@
                                     <Trigger Property="ItemsControl.AlternationIndex" Value="1">
                                         <Setter Property="Background" Value="#F9F9F9"/>
                                     </Trigger>
-                                    <DataTrigger Binding="{Binding Test}" Value="KO">
-                                        <Setter Property="Background" Value="#FDEDEC"/>
-                                        <Setter Property="Foreground" Value="#C0392B"/>
-                                        <Setter Property="FontWeight" Value="SemiBold"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
+                                    </Style.Triggers>
                             </Style>
                         </ListView.ItemContainerStyle>
                         <ListView.View>
@@ -247,7 +242,26 @@
                                 </GridViewColumn>
                                 <GridViewColumn Header="UCON ID" DisplayMemberBinding="{Binding Ucon}" Width="105"/>
                                 <GridViewColumn Header="Demand ID" DisplayMemberBinding="{Binding Hdmd}" Width="105"/>
-                                <GridViewColumn Header="Result" DisplayMemberBinding="{Binding Test}" Width="120"/>
+
+                                <GridViewColumn Header="Result" Width="120">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock x:Name="Icon" Text="🔴 " Visibility="Collapsed" Margin="0,0,5,0"/>
+                                                <TextBlock x:Name="TxtStatus" Text="{Binding Test}" FontWeight="SemiBold" Foreground="#7F8C8D"/>
+                                            </StackPanel>
+                                            <DataTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding Test}" Value="KO">
+                                                    <Setter TargetName="Icon" Property="Visibility" Value="Visible"/>
+                                                    <Setter TargetName="TxtStatus" Property="Foreground" Value="#D35400"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Test}" Value="OK">
+                                                    <Setter TargetName="TxtStatus" Property="Foreground" Value="#27AE60"/>
+                                                </DataTrigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                             </GridView>
                         </ListView.View>
                     </ListView>
