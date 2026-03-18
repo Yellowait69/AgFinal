@@ -14,16 +14,41 @@ namespace AutoActivator.Gui
 {
     public partial class MainWindow : Window
     {
-        // NOUVEAU : Compteur global des KO
+        // Compteur global des KO
         private int _koExtractionCount = 0;
 
-        // Fonction centralisée pour ordonner la liste d'historique et mettre à jour le compteur
+        // --- NOUVEAU : Fonction utilitaire pour convertir le numéro de ligne en entier ---
+        private int GetRowNumValue(string rowNumStr)
+        {
+            if (int.TryParse(rowNumStr, out int val))
+                return val;
+
+            // Si c'est "-" (extraction unique) ou un texte invalide, on retourne 0
+            // pour qu'il s'affiche tout en haut de son groupe
+            return 0;
+        }
+
+        // --- NOUVEAU : Fonction centralisée avec tri intelligent (Ascendant) ---
         private void AddExtractionItemToHistory(ExtractionItem item)
         {
-            if (item.Test == "KO")
+            int newItemRow = GetRowNumValue(item.RowNum);
+            bool isKo = (item.Test == "KO");
+
+            if (isKo)
             {
-                // Un KO est toujours inséré à l'index 0 (tout en haut)
-                ExtractionHistory.Insert(0, item);
+                // On cherche la bonne position dans le bloc des KO (de l'index 0 jusqu'à _koExtractionCount)
+                int insertIndex = 0;
+                while (insertIndex < _koExtractionCount)
+                {
+                    int currentItemRow = GetRowNumValue(ExtractionHistory[insertIndex].RowNum);
+                    if (currentItemRow > newItemRow)
+                    {
+                        break; // On a trouvé un numéro plus grand, on s'insère juste avant
+                    }
+                    insertIndex++;
+                }
+
+                ExtractionHistory.Insert(insertIndex, item);
                 _koExtractionCount++;
 
                 if (TxtKoCount != null)
@@ -31,10 +56,21 @@ namespace AutoActivator.Gui
                     TxtKoCount.Text = _koExtractionCount.ToString();
                 }
             }
-            else
+            else // Statut OK
             {
-                // Un OK est inséré juste en dessous de tous les KO (pour que le OK le plus récent soit le premier des OK)
-                ExtractionHistory.Insert(_koExtractionCount, item);
+                // On cherche la bonne position dans le bloc des OK (de _koExtractionCount jusqu'à la fin de la liste)
+                int insertIndex = _koExtractionCount;
+                while (insertIndex < ExtractionHistory.Count)
+                {
+                    int currentItemRow = GetRowNumValue(ExtractionHistory[insertIndex].RowNum);
+                    if (currentItemRow > newItemRow)
+                    {
+                        break; // On a trouvé un numéro plus grand, on s'insère juste avant
+                    }
+                    insertIndex++;
+                }
+
+                ExtractionHistory.Insert(insertIndex, item);
             }
         }
 
@@ -114,7 +150,6 @@ namespace AutoActivator.Gui
                 return;
             }
 
-            // NOUVEAU : On passe par la fonction qui gère le classement (KO en haut, OK en dessous)
             IProgress<ExtractionItem> progress = new Progress<ExtractionItem>(item => AddExtractionItemToHistory(item));
 
             await RunProcessAsync(async () =>
@@ -153,7 +188,7 @@ namespace AutoActivator.Gui
                     FilePath = result.FilePath
                 });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 progress.Report(new ExtractionItem
                 {
@@ -249,7 +284,7 @@ namespace AutoActivator.Gui
 
             var batchService = new BatchExtractionService(_extractionService);
 
-            // Progress gère désormais le tri et le comptage des KO
+            // Progress gère désormais le tri et le comptage des KO via la nouvelle fonction AddExtractionItemToHistory
             IProgress<BatchProgressInfo> progress = new Progress<BatchProgressInfo>(info =>
             {
                 TxtStatus.Text = $"Extraction par lot en cours : {info.CurrentItem} / {info.TotalItems} contrats traités...";
