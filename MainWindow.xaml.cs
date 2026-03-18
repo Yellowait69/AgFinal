@@ -32,10 +32,6 @@ namespace AutoActivator.Gui
             // Lier l'historique visuel (DataGrid) à notre collection
             ListHistory.ItemsSource = ExtractionHistory;
 
-            // Trier automatiquement l'historique d'extraction par Environnement (Product)
-            ICollectionView view = CollectionViewSource.GetDefaultView(ExtractionHistory);
-            view.SortDescriptions.Add(new SortDescription("Product", ListSortDirection.Ascending));
-
             _extractionService = new ExtractionService();
 
             // Définir "Activation" comme l'onglet par défaut au démarrage

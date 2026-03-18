@@ -19,7 +19,8 @@ namespace AutoActivator.Services
             _dataService = dataService;
         }
 
-        public async Task<(int successCount, int errorCount, string reportPath)> RunBatchAsync(
+        // NOUVEAUTÉ : Ajout du "alreadyActiveCount" dans la signature de retour
+        public async Task<(int successCount, int alreadyActiveCount, int errorCount, string reportPath)> RunBatchAsync(
             string filePath, bool isDemandId, string envValue, string cus, string bucp, string cmdpmt,
             string username, string password, string outputDir, Action<string> onProgress, CancellationToken token)
         {
@@ -34,6 +35,7 @@ namespace AutoActivator.Services
             report.AppendLine("---------------------------------------------------------------------------------------------------------");
 
             int successCount = 0;
+            int alreadyActiveCount = 0; // NOUVEAU COMPTEUR
             int errorCount = 0;
 
             // Structure Thread-Safe pour stocker les résultats dans le désordre, puis les trier à la fin
@@ -96,8 +98,9 @@ namespace AutoActivator.Services
 
             // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
 
-            // CORRECTION : Limite à 10 pour ne pas saturer le Mainframe et la DB simultanément
-            var semaphore = new SemaphoreSlim(10);
+            // OPTIMISATION : Limite abaissée à 3. Le Mainframe gérant les requêtes séquentiellement,
+            // un chiffre bas garantit la stabilité et évite les Timeouts en chaîne.
+            var semaphore = new SemaphoreSlim(3);
 
             // Initialisation des compteurs
             int totalItems = contractsToProcess.Count;
@@ -107,8 +110,9 @@ namespace AutoActivator.Services
 
             var tasks = contractsToProcess.Select((item, index) => Task.Run(async () =>
             {
-                // Étale le lancement des tâches (200ms d'écart) pour ne pas foudroyer le serveur à la seconde zéro
-                await Task.Delay(Math.Min(index * 200, 3000), token).ConfigureAwait(false);
+                // OPTIMISATION : L'étalement est désormais lissé et géré proprement par le SemaphoreSlim
+                // Cela évite l'effet "troupeau" après 3 secondes
+                await Task.Delay((index % 5) * 500, token).ConfigureAwait(false);
 
                 await semaphore.WaitAsync(token).ConfigureAwait(false);
                 try
@@ -152,11 +156,23 @@ namespace AutoActivator.Services
                 }
                 catch (Exception ex)
                 {
-                    globalReport.Add((item.rowNum, $"[ÉCHEC]  Ligne {item.rowNum,-4} | Input: {item.rawInput} | Erreur: {ex.Message}"));
-                    Interlocked.Increment(ref errorCount);
+                    // NOUVEAUTÉ : Traitement du statut "Déjà Actif"
+                    if (ex.Message == "ALREADY_ACTIVE")
+                    {
+                        globalReport.Add((item.rowNum, $"[DÉJÀ ACTIF] Ligne {item.rowNum,-4} | Input: {item.rawInput} | Le contrat est déjà activé (Erreur 008)."));
+                        Interlocked.Increment(ref alreadyActiveCount);
 
-                    int currentFail = Interlocked.Increment(ref processedItems);
-                    onProgress($"[{currentFail} / {totalItems} terminés] Échec : {item.rawInput}");
+                        int currentAct = Interlocked.Increment(ref processedItems);
+                        onProgress($"[{currentAct} / {totalItems} terminés] Déjà actif : {item.rawInput}");
+                    }
+                    else
+                    {
+                        globalReport.Add((item.rowNum, $"[ÉCHEC]  Ligne {item.rowNum,-4} | Input: {item.rawInput} | Erreur: {ex.Message}"));
+                        Interlocked.Increment(ref errorCount);
+
+                        int currentFail = Interlocked.Increment(ref processedItems);
+                        onProgress($"[{currentFail} / {totalItems} terminés] Échec : {item.rawInput}");
+                    }
                 }
                 finally
                 {
@@ -176,7 +192,8 @@ namespace AutoActivator.Services
             }
 
             report.AppendLine("---------------------------------------------------------------------------------------------------------");
-            report.AppendLine($"FIN DU TRAITEMENT. Succès: {successCount} | Échecs: {errorCount}");
+            // NOUVEAUTÉ : Ajout des "Déjà actifs" dans le bilan final
+            report.AppendLine($"FIN DU TRAITEMENT. Succès: {successCount} | Déjà actifs: {alreadyActiveCount} | Échecs: {errorCount}");
 
             string reportPath = string.Empty;
 
@@ -204,7 +221,9 @@ namespace AutoActivator.Services
             }
 
             onProgress("Rapport généré avec succès !");
-            return (successCount, errorCount, reportPath);
+
+            // NOUVEAUTÉ : Retourne le compteur "alreadyActiveCount" en plus
+            return (successCount, alreadyActiveCount, errorCount, reportPath);
         }
 
         private List<string> ParseCsvLine(string line, char delimiter)

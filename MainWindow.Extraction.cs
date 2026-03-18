@@ -2,19 +2,42 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls; // Nécessaire pour ComboBox, ComboBoxItem
+using System.Windows.Controls;
 using Microsoft.Win32;
 using AutoActivator.Config;
 using AutoActivator.Models;
 using AutoActivator.Services;
-// NOUVEAU : Référence explicite pour piloter Excel en arrière-plan
+// Référence explicite pour piloter Excel en arrière-plan
 using Excel = Microsoft.Office.Interop.Excel;
 
 namespace AutoActivator.Gui
 {
     public partial class MainWindow : Window
     {
-        // Formatage visuel pour l'interface de l'Extraction
+        // NOUVEAU : Compteur global des KO
+        private int _koExtractionCount = 0;
+
+        // Fonction centralisée pour ordonner la liste d'historique et mettre à jour le compteur
+        private void AddExtractionItemToHistory(ExtractionItem item)
+        {
+            if (item.Test == "KO")
+            {
+                // Un KO est toujours inséré à l'index 0 (tout en haut)
+                ExtractionHistory.Insert(0, item);
+                _koExtractionCount++;
+
+                if (TxtKoCount != null)
+                {
+                    TxtKoCount.Text = _koExtractionCount.ToString();
+                }
+            }
+            else
+            {
+                // Un OK est inséré juste en dessous de tous les KO (pour que le OK le plus récent soit le premier des OK)
+                ExtractionHistory.Insert(_koExtractionCount, item);
+            }
+        }
+
         private string FormatContractForDisplay(string contract)
         {
             if (string.IsNullOrWhiteSpace(contract)) return contract;
@@ -91,33 +114,34 @@ namespace AutoActivator.Gui
                 return;
             }
 
-            // On utilise Insert(0, item) pour que le plus récent soit affiché tout en haut
-            IProgress<ExtractionItem> progress = new Progress<ExtractionItem>(item => ExtractionHistory.Insert(0, item));
+            // NOUVEAU : On passe par la fonction qui gère le classement (KO en haut, OK en dessous)
+            IProgress<ExtractionItem> progress = new Progress<ExtractionItem>(item => AddExtractionItemToHistory(item));
 
             await RunProcessAsync(async () =>
             {
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Extracting Environment {envValue}000...");
 
-                // MODIFIÉ : On await directement la nouvelle méthode asynchrone sans bloquer l'UI
                 await PerformSingleExtractionAsync(rawInput, envValue + "000", progress, isDemandId);
 
                 Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Single extraction completed successfully.");
             });
         }
 
-        // MODIFIÉ : Transformé en async Task
         private async Task PerformSingleExtractionAsync(string targetValue, string env, IProgress<ExtractionItem> progress, bool isDemandId)
         {
             try
             {
-                // APPEL ASYNCHRONE OPTIMISÉ
                 ExtractionResult result = await _extractionService.PerformExtractionAsync(targetValue, env, true, isDemandId);
                 _lastGeneratedPath = Settings.OutputDir;
 
                 string displayContract = isDemandId ? FormatContractForDisplay(result.ContractReference) : FormatContractForDisplay(targetValue);
 
+                // Détection de KO si l'internal ID n'est pas trouvé
+                string finalTest = (result.InternalId == "Not found" || result.InternalId == "Error") ? "KO" : "OK";
+
                 progress.Report(new ExtractionItem
                 {
+                    RowNum = "-",
                     ContractId = displayContract,
                     InternalId = result.InternalId,
                     Product = env,
@@ -125,7 +149,7 @@ namespace AutoActivator.Gui
                     Ucon = result.UconId,
                     Hdmd = result.DemandId,
                     Time = DateTime.Now.ToString("HH:mm:ss"),
-                    Test = "OK",
+                    Test = finalTest,
                     FilePath = result.FilePath
                 });
             }
@@ -133,6 +157,7 @@ namespace AutoActivator.Gui
             {
                 progress.Report(new ExtractionItem
                 {
+                    RowNum = "-",
                     ContractId = targetValue,
                     InternalId = "Erreur",
                     Product = env,
@@ -140,7 +165,7 @@ namespace AutoActivator.Gui
                     Ucon = "N/A",
                     Hdmd = "N/A",
                     Time = DateTime.Now.ToString("HH:mm:ss"),
-                    Test = ex.Message.Contains("No associated contract") ? "Non trouvé/Mauvais ID" : "Erreur SQL",
+                    Test = "KO",
                     FilePath = string.Empty
                 });
             }
@@ -224,15 +249,21 @@ namespace AutoActivator.Gui
 
             var batchService = new BatchExtractionService(_extractionService);
 
-            // NOUVEAU : Progress gère désormais l'insertion dans l'historique ET l'affichage du compteur dynamique
+            // Progress gère désormais le tri et le comptage des KO
             IProgress<BatchProgressInfo> progress = new Progress<BatchProgressInfo>(info =>
             {
-                // 1. Mise à jour de la barre de statut avec le compteur en temps réel
                 TxtStatus.Text = $"Extraction par lot en cours : {info.CurrentItem} / {info.TotalItems} contrats traités...";
 
-                // 2. Ajout de la ligne dans le tableau d'historique (toujours en haut)
-                ExtractionHistory.Insert(0, new ExtractionItem
+                // Détection de KO
+                string status = info.Status;
+                if (info.InternalId == "Not found" || info.InternalId == "Error" || status.Contains("Error") || status.Contains("Not found"))
                 {
+                    status = "KO";
+                }
+
+                AddExtractionItemToHistory(new ExtractionItem
+                {
+                    RowNum = info.RowNum.ToString(),
                     ContractId = FormatContractForDisplay(info.ContractId),
                     InternalId = info.InternalId,
                     Product = info.Product,
@@ -240,7 +271,7 @@ namespace AutoActivator.Gui
                     Ucon = info.UconId,
                     Hdmd = info.DemandId,
                     Time = DateTime.Now.ToString("HH:mm:ss"),
-                    Test = info.Status,
+                    Test = status,
                     FilePath = string.Empty
                 });
             });
@@ -275,6 +306,8 @@ namespace AutoActivator.Gui
             if (ExtractionHistory != null)
             {
                 ExtractionHistory.Clear();
+                _koExtractionCount = 0; // Remise à zéro du compteur KO
+                if (TxtKoCount != null) TxtKoCount.Text = "0";
             }
         }
     }

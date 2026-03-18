@@ -125,25 +125,33 @@ namespace AutoActivator.Gui
                 {
                     // L'UI Thread est mis à jour proprement via InvokeAsync (non-bloquant)
                     await _activationDataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, msg => Application.Current.Dispatcher.InvokeAsync(() => TxtStatus.Text = msg), _cts.Token);
+
                     report.AppendLine($"Input Original: {rawInput} | Contrat Trouvé: {resolvedContract} | Contrat JCL: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: SUCCÈS");
+
+                    Application.Current.Dispatcher.Invoke(() => MessageBox.Show("Séquence d'activation terminée avec succès. Consultez le rapport généré.", "Activation Réussie", MessageBoxButton.OK, MessageBoxImage.Information));
+                }
+                catch (Exception ex) when (ex.Message == "ALREADY_ACTIVE") // NOUVEAUTÉ : Attrape spécifiquement l'exception
+                {
+                    report.AppendLine($"Input Original: {rawInput} | Contrat Trouvé: {resolvedContract} | Contrat JCL: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: DÉJÀ ACTIF (Erreur 008)");
+
+                    Application.Current.Dispatcher.Invoke(() => MessageBox.Show("Ce contrat est déjà activé (Erreur 008 de prime déjà attribuée interceptée).", "Contrat Déjà Actif", MessageBoxButton.OK, MessageBoxImage.Information));
                 }
                 catch (Exception ex)
                 {
                     report.AppendLine($"Input Original: {rawInput} | Contrat Trouvé: {resolvedContract} | Contrat JCL: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: ÉCHEC ({ex.Message})");
-                    throw;
+                    throw; // On relance l'erreur pour la gestion globale de l'UI (le RunProcessAsync va l'afficher)
                 }
                 finally
                 {
                     string path = Path.Combine(Settings.OutputDir, $"Activation_Unitaire_{formattedContract}_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
                     File.WriteAllText(path, report.ToString());
                     _lastGeneratedPath = path;
-                }
 
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    if (PrgLoading != null) PrgLoading.Visibility = Visibility.Collapsed;
-                    MessageBox.Show("Séquence d'activation terminée. Consultez le rapport généré.", "Activation", MessageBoxButton.OK, MessageBoxImage.Information);
-                });
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        if (PrgLoading != null) PrgLoading.Visibility = Visibility.Collapsed;
+                    });
+                }
             });
         }
 
@@ -183,7 +191,7 @@ namespace AutoActivator.Gui
 
                 var batchService = new BatchActivationService(_activationDataService);
 
-                // CORRECTION : L'UI Thread est mis à jour proprement via InvokeAsync pour ne pas bloquer les tâches parallèles
+                // CORRECTION : Le tuple de retour prend maintenant en compte alreadyActiveCount
                 var result = await batchService.RunBatchAsync(
                     filePath, isDemandId, envValue, cus, bucp, cmdpmt, username, password, Settings.OutputDir,
                     msg => Application.Current.Dispatcher.InvokeAsync(() => TxtStatus.Text = msg),
@@ -195,7 +203,9 @@ namespace AutoActivator.Gui
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     if (PrgLoading != null) PrgLoading.Visibility = Visibility.Collapsed;
-                    MessageBox.Show($"Batch terminé.\nSuccès: {result.successCount} \nÉchecs: {result.errorCount}\n\nOuvrez le fichier de log pour les détails.", "Activation Batch", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                    // NOUVEAUTÉ : Ajout du compteur "Déjà Actifs" dans la popup de résultat final
+                    MessageBox.Show($"Batch terminé.\nSuccès: {result.successCount} \nDéjà Actifs: {result.alreadyActiveCount} \nÉchecs: {result.errorCount}\n\nOuvrez le fichier de log pour les détails.", "Activation Batch", MessageBoxButton.OK, MessageBoxImage.Information);
                 });
             });
         }

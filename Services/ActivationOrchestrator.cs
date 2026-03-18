@@ -48,6 +48,9 @@ namespace AutoActivator.Services
             }
             catch (Exception ex)
             {
+                // NOUVEAUTÉ : Si l'exception est ALREADY_ACTIVE, on la laisse remonter telle quelle pour ne pas la traiter comme une erreur critique
+                if (ex.Message == "ALREADY_ACTIVE") throw;
+
                 onProgress($"[ERREUR CRITIQUE] Chaîne interrompue: {ex.Message}");
                 throw;
             }
@@ -119,8 +122,9 @@ namespace AutoActivator.Services
             if (!Success) throw new Exception($"Échec de la soumission de {jobName}. Erreur:\n{Error}");
 
             bool finished = false;
-            // CORRECTION : 90 essais de 2000ms (2 secondes) = 3 minutes maximum d'attente
-            int maxAttempts = 90;
+
+            // CORRECTION : 300 essais de 2000ms = 10 minutes maximum d'attente pour supporter la file d'attente
+            int maxAttempts = 300;
 
             for (int i = 0; i < maxAttempts; i++)
             {
@@ -144,6 +148,12 @@ namespace AutoActivator.Services
                     // Code d'erreur métier
                     if (cleanRC != "0" && cleanRC != "4")
                     {
+                        // NOUVEAUTÉ : Interception du code 008 (prime déjà attribuée) sur ADDPRCT
+                        if (jobName == "ADDPRCT" && cleanRC == "8")
+                        {
+                            throw new Exception("ALREADY_ACTIVE");
+                        }
+
                         throw new Exception($"Erreur métier sur le job {jobName} (Return code: {ReturnCode}). Séquence annulée.");
                     }
 

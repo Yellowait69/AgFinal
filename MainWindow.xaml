@@ -173,7 +173,11 @@
                     </Grid.RowDefinitions>
 
                     <Grid Grid.Row="0" Margin="0,0,0,10">
-                        <TextBlock Text="Session History" FontWeight="Bold" Foreground="#7F8C8D" VerticalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Session History" FontWeight="Bold" Foreground="#7F8C8D" Margin="0,0,30,0"/>
+                            <TextBlock Text="Nb Contrats pas actif (KO) : " FontWeight="SemiBold" Foreground="#2C3E50"/>
+                            <TextBlock x:Name="TxtKoCount" Text="0" FontWeight="Bold" Foreground="#E74C3C" FontSize="15"/>
+                        </StackPanel>
 
                         <Button x:Name="BtnClearHistory" Content="🗑️ Clear History"
                                 HorizontalAlignment="Right" Padding="12,5"
@@ -198,27 +202,33 @@
                                     <Trigger Property="ItemsControl.AlternationIndex" Value="1">
                                         <Setter Property="Background" Value="#F9F9F9"/>
                                     </Trigger>
+                                    <DataTrigger Binding="{Binding Test}" Value="KO">
+                                        <Setter Property="Background" Value="#FDEDEC"/>
+                                        <Setter Property="Foreground" Value="#C0392B"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </ListView.ItemContainerStyle>
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Time" DisplayMemberBinding="{Binding Time}" Width="75"/>
-                                <GridViewColumn Header="Environment" Width="100">
+                                <GridViewColumn Header="Ligne" DisplayMemberBinding="{Binding RowNum}" Width="45"/>
+                                <GridViewColumn Header="Time" DisplayMemberBinding="{Binding Time}" Width="70"/>
+                                <GridViewColumn Header="Env" Width="55">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding Product}" FontWeight="Bold" Foreground="#8E44AD"/>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="Contract ID" Width="140">
+                                <GridViewColumn Header="Contract ID" Width="135">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding ContractId}" FontWeight="Bold"/>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="Internal ID" Width="100">
+                                <GridViewColumn Header="Internal ID" Width="95">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding InternalId}" Foreground="#2980B9" FontWeight="SemiBold"/>
@@ -235,8 +245,8 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="UCON ID" DisplayMemberBinding="{Binding Ucon}" Width="115"/>
-                                <GridViewColumn Header="Demand ID" DisplayMemberBinding="{Binding Hdmd}" Width="115"/>
+                                <GridViewColumn Header="UCON ID" DisplayMemberBinding="{Binding Ucon}" Width="105"/>
+                                <GridViewColumn Header="Demand ID" DisplayMemberBinding="{Binding Hdmd}" Width="105"/>
                                 <GridViewColumn Header="Result" DisplayMemberBinding="{Binding Test}" Width="120"/>
                             </GridView>
                         </ListView.View>

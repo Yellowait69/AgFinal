@@ -25,6 +25,9 @@ namespace AutoActivator.Models
 
     public class BatchProgressInfo
     {
+        // NOUVEAU : Ligne dans le fichier source (Excel/CSV)
+        public int RowNum { get; set; }
+
         public string ContractId { get; set; }
         public string InternalId { get; set; }
         public string Product { get; set; }
@@ -44,6 +47,9 @@ namespace AutoActivator.Models
 
     public class ExtractionItem
     {
+        // NOUVEAU : Affichage de la ligne dans la vue historique (ex: "12", "45", "-")
+        public string RowNum { get; set; }
+
         public string ContractId { get; set; }
         public string InternalId { get; set; }
         public string Product { get; set; }
