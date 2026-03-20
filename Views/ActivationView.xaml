@@ -78,7 +78,7 @@
                         <StackPanel Margin="0,0,0,15" Orientation="Horizontal">
                             <TextBlock Text="Input Type:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,10,0" VerticalAlignment="Center"/>
                             <RadioButton x:Name="RbActSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="ActInputType_Checked"/>
-                            <RadioButton x:Name="RbActSearchDemand" Content="For Testing Team Only!" VerticalAlignment="Center" Cursor="Hand" Checked="ActInputType_Checked"/>
+                            <RadioButton x:Name="RbActSearchDemand" Content="Demand ID" VerticalAlignment="Center" Cursor="Hand" Checked="ActInputType_Checked"/>
                         </StackPanel>
 
                         <TextBlock Text="Contract Number / Demand ID:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
@@ -100,7 +100,7 @@
                         <StackPanel Margin="0,0,0,15" Orientation="Horizontal">
                             <TextBlock Text="Input Type:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,10,0" VerticalAlignment="Center"/>
                             <RadioButton x:Name="RbBatchActSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="BatchActInputType_Checked"/>
-                            <RadioButton x:Name="RbBatchActSearchDemand" Content="Demand ID" VerticalAlignment="Center" Cursor="Hand" Checked="BatchActInputType_Checked"/>
+                            <RadioButton x:Name="RbBatchActSearchDemand" Content="For Testing Team Only!" VerticalAlignment="Center" Cursor="Hand" Checked="BatchActInputType_Checked"/>
                         </StackPanel>
 
                         <TextBlock Text="Data File path (CSV/XLS):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>

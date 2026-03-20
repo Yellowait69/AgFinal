@@ -46,7 +46,8 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <!-- AJOUT DU MINHEIGHT ICI POUR FORCER L'AFFICHAGE DU TABLEAU -->
+            <RowDefinition Height="*" MinHeight="250"/>
         </Grid.RowDefinitions>
 
         <!-- HEADER -->
@@ -231,8 +232,10 @@
                 </Button>
             </Grid>
 
-            <!-- LISTVIEW -->
-            <ListView x:Name="ListHistory" Grid.Row="1" Background="White" BorderBrush="{StaticResource BorderDefault}" BorderThickness="1" AlternationCount="2">
+            <!-- LISTVIEW AVEC SCROLLVIEWER ACTIVÉ -->
+            <ListView x:Name="ListHistory" Grid.Row="1" Background="White" BorderBrush="{StaticResource BorderDefault}" BorderThickness="1" AlternationCount="2"
+                      ScrollViewer.VerticalScrollBarVisibility="Auto"
+                      ScrollViewer.CanContentScroll="True">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="Padding" Value="5"/>

@@ -2,9 +2,12 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:AutoActivator.Gui.Views"
-        Title="E.T.L COMPARISON TOOL" Height="800" Width="1100" Background="#F3F3F3" WindowStartupLocation="CenterScreen">
+        Title="E.T.L COMPARISON TOOL" Height="800" Width="1100"
+        Background="#F3F3F3" WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
+
+        <!-- Style principal pour les boutons d'action (Run, etc.) avec effet de survol -->
         <Style TargetType="Button" x:Key="ActionButtonStyle">
             <Setter Property="Background" Value="#27AE60"/>
             <Setter Property="Foreground" Value="White"/>
@@ -15,20 +18,25 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" CornerRadius="4">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Border x:Name="BtnBorder" Background="{TemplateBinding Background}" CornerRadius="4">
+                            <!-- Ajout de Margin="{TemplateBinding Padding}" pour que le Padding fonctionne -->
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
                         </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#2ECC71"/> <!-- Vert plus clair -->
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#BDC3C7"/>
+                                <Setter Property="Foreground" Value="#7F8C8D"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsEnabled" Value="False">
-                    <Setter Property="Background" Value="#BDC3C7"/>
-                    <Setter Property="Foreground" Value="#7F8C8D"/>
-                </Trigger>
-            </Style.Triggers>
         </Style>
 
+        <!-- Style pour le bouton Annuler avec effet de survol -->
         <Style TargetType="Button" x:Key="CancelButtonStyle">
             <Setter Property="Background" Value="#E74C3C"/>
             <Setter Property="Foreground" Value="White"/>
@@ -39,19 +47,48 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" CornerRadius="4">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Border x:Name="BtnBorder" Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
                         </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#E67E22"/> <!-- Orange au survol -->
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#BDC3C7"/>
+                                <Setter Property="Foreground" Value="#7F8C8D"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsEnabled" Value="False">
-                    <Setter Property="Background" Value="#BDC3C7"/>
-                    <Setter Property="Foreground" Value="#7F8C8D"/>
-                </Trigger>
-            </Style.Triggers>
         </Style>
+
+        <!-- NOUVEAU : Style dédié pour les boutons du menu latéral -->
+        <Style TargetType="Button" x:Key="MenuButtonStyle">
+            <Setter Property="Background" Value="#34495E"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="15,12"/>
+            <Setter Property="Margin" Value="10,5"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="MenuBorder" Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="MenuBorder" Property="Background" Value="#3D566E"/> <!-- Bleu légèrement plus clair -->
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
     </Window.Resources>
 
     <Grid>
@@ -60,32 +97,51 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
+        <!-- SIDEBAR -->
         <StackPanel Grid.Column="0" Background="#2C3E50">
-            <TextBlock Text="E.T.L" Foreground="White" FontSize="26" Margin="20,30,20,10" FontWeight="Bold" HorizontalAlignment="Center"/>
-            <TextBlock Text="COMPARISON TOOL" Foreground="#BDC3C7" FontSize="12" Margin="0,0,0,30" HorizontalAlignment="Center"/>
+            <TextBlock Text="E.T.L" Foreground="White" FontSize="26" Margin="20,30,20,5" FontWeight="Bold" HorizontalAlignment="Center"/>
+            <TextBlock Text="COMPARISON TOOL" Foreground="#1ABC9C" FontSize="12" Margin="0,0,0,30" FontWeight="SemiBold" HorizontalAlignment="Center"/>
 
-            <Button x:Name="BtnActivation" Content="⚡ Activation" Padding="12" Margin="10,5" Click="BtnMenu_Click" Background="#1ABC9C" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
-            <Button x:Name="BtnExtraction" Content="📥 Extraction" Padding="12" Margin="10,5" Click="BtnMenu_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
-            <Button x:Name="BtnComparison" Content="📊 Comparison" Padding="12" Margin="10,5" Click="BtnMenu_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
-            <Button x:Name="BtnHelp" Content="❓ Help &amp; Docs" Padding="12" Margin="10,5" Click="BtnMenu_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
+            <!-- Utilisation du nouveau MenuButtonStyle pour alléger le code -->
+            <!-- Note: On surcharge dynamiquement le Background du bouton actif depuis le code-behind ou directement ici -->
+            <Button x:Name="BtnActivation" Content="⚡ Activation" Style="{StaticResource MenuButtonStyle}" Background="#1ABC9C" Click="BtnMenu_Click"/>
+            <Button x:Name="BtnExtraction" Content="📥 Extraction" Style="{StaticResource MenuButtonStyle}" Click="BtnMenu_Click"/>
+            <Button x:Name="BtnComparison" Content="📊 Comparison" Style="{StaticResource MenuButtonStyle}" Click="BtnMenu_Click"/>
+
+            <Border BorderBrush="#3D566E" BorderThickness="0,1,0,0" Margin="20,15,20,15"/> <!-- Ligne de séparation -->
+
+            <Button x:Name="BtnHelp" Content="❓ Help &amp; Docs" Style="{StaticResource MenuButtonStyle}" Click="BtnMenu_Click"/>
         </StackPanel>
 
+        <!-- MAIN CONTENT -->
         <Grid Grid.Column="1" Margin="25">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
+            <!-- ZONE DES VUES -->
             <views:ActivationView x:Name="ViewActivation" Grid.Row="0" Visibility="Visible"/>
             <views:ExtractionView x:Name="ViewExtraction" Grid.Row="0" Visibility="Collapsed"/>
             <views:ComparisonView x:Name="ViewComparison" Grid.Row="0" Visibility="Collapsed"/>
             <views:HelpView x:Name="ViewHelp" Grid.Row="0" Visibility="Collapsed"/>
 
+            <!-- ZONE DE STATUT EN BAS -->
             <StackPanel Grid.Row="1" Margin="0,15,0,0">
-                <ProgressBar x:Name="PrgLoading" IsIndeterminate="True" Height="4" Margin="0,0,0,10" Visibility="Collapsed" Foreground="#3498DB"/>
-                <TextBlock x:Name="TxtStatus" FontSize="14" TextWrapping="Wrap" Foreground="#2F3640" FontWeight="SemiBold" Text="Ready."/>
+                <ProgressBar x:Name="PrgLoading" IsIndeterminate="True" Height="4" Margin="0,0,0,10" Visibility="Collapsed" Foreground="#3498DB" BorderThickness="0" Background="#DCDDE1"/>
+                <TextBlock x:Name="TxtStatus" FontSize="14" TextWrapping="Wrap" Foreground="#2C3E50" FontWeight="SemiBold" Text="Ready."/>
                 <TextBlock x:Name="LnkFile" Visibility="Collapsed" Margin="0,5,0,0" FontSize="14">
-                    <Hyperlink Click="Hyperlink_Click" Foreground="#2980B9" FontWeight="Bold">
+                    <Hyperlink Click="Hyperlink_Click" Foreground="#3498DB" FontWeight="Bold" TextDecorations="None">
+                        <!-- Ajout d'un Trigger pour souligner le lien au survol -->
+                        <Hyperlink.Style>
+                            <Style TargetType="Hyperlink">
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="TextDecorations" Value="Underline"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Hyperlink.Style>
                         <Run Text="📁 Click here to open generated file/report"/>
                     </Hyperlink>
                 </TextBlock>
