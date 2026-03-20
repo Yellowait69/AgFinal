@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace AutoActivator.Models
@@ -65,6 +66,14 @@ namespace AutoActivator.Models
     // COMPARISON MODELS
     // ==========================================
 
+    // NOUVEAU : Modèle pour stocker et calculer les métriques spécifiques (Produit, Test)
+    public class ComparisonMetrics
+    {
+        public int TotalRows { get; set; }
+        public int ErrorRows { get; set; }
+        public double SuccessPercentage => TotalRows == 0 ? 100.0 : Math.Round(((double)(TotalRows - ErrorRows) / TotalRows) * 100, 2);
+    }
+
     public class ComparisonReport
     {
         /// <summary>
@@ -89,6 +98,11 @@ namespace AutoActivator.Models
         public List<string> MissingInTarget { get; set; } = new List<string>();
         public List<string> MissingInBase { get; set; } = new List<string>();
         // ----------------------------------------------------------------
+
+        // --- NOUVELLES PROPRIÉTÉS POUR LE SCORE DETAILLÉ PAR TEST ET PAR PRODUIT ---
+        public Dictionary<string, ComparisonMetrics> TestMetrics { get; set; } = new Dictionary<string, ComparisonMetrics>();
+        public Dictionary<string, ComparisonMetrics> ProductMetrics { get; set; } = new Dictionary<string, ComparisonMetrics>();
+        // ---------------------------------------------------------------------------
 
         /// <summary>
         /// Detailed list of results file by file, table by table.

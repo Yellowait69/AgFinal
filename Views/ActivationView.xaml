@@ -1,0 +1,116 @@
+<UserControl x:Class="AutoActivator.Gui.Views.ActivationView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="Activation Module" FontSize="24" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
+        </StackPanel>
+
+        <Border Grid.Row="1" Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,15">
+            <StackPanel>
+                <TextBlock Text="Global Activation Settings" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="30"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Environment:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                        <ComboBox x:Name="CmbActEnv" Margin="0,0,0,15" Padding="6" FontSize="14" BorderBrush="#DCDDE1" SelectedIndex="0" SelectionChanged="CmbActEnv_SelectionChanged">
+                            <ComboBoxItem Content="D000 (D)" Tag="D"/>
+                            <ComboBoxItem Content="Q000 (Q)" Tag="Q"/>
+                        </ComboBox>
+
+                        <TextBlock Text="Channel:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                        <ComboBox x:Name="CmbActChannel" Margin="0,0,0,15" Padding="6" FontSize="14" BorderBrush="#DCDDE1" SelectedIndex="0" SelectionChanged="CmbActChannel_SelectionChanged">
+                            <ComboBoxItem Content="C01" Tag="C01"/>
+                            <ComboBoxItem Content="C03" Tag="C03"/>
+                            <ComboBoxItem Content="C05" Tag="C05"/>
+                        </ComboBox>
+
+                        <TextBlock Text="CUS Code:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                        <TextBox x:Name="TxtActCus" Margin="0,0,0,15" Padding="8" FontSize="14" BorderBrush="#DCDDE1" Text="XXX"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Bureau Number (BUCP):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                        <ComboBox x:Name="CmbActBucp" Margin="0,0,0,15" Padding="6" FontSize="14" BorderBrush="#DCDDE1" SelectedIndex="0">
+                            <ComboBoxItem Content="382"/>
+                            <ComboBoxItem Content="49797"/>
+                        </ComboBox>
+
+                        <TextBlock Text="Payment Command (CMDPMT):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                        <ComboBox x:Name="CmbActCmdpmt" Margin="0,0,0,15" Padding="6" FontSize="14" BorderBrush="#DCDDE1" SelectedIndex="0">
+                            <ComboBoxItem Content="8"/>
+                            <ComboBoxItem Content="X"/>
+                            <ComboBoxItem Content="H"/>
+                            <ComboBoxItem Content="G"/>
+                            <ComboBoxItem Content="Z"/>
+                        </ComboBox>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <TabControl Grid.Row="2" Background="Transparent" BorderThickness="0" Margin="0,0,0,15">
+            <TabItem Header="📄 Single Activation" FontSize="14" FontWeight="SemiBold">
+                <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,10,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Provide the contract number or Demand ID. The system will auto-format it and fetch the premium amount from the database." Margin="0,0,0,15" Foreground="#7F8C8D" TextWrapping="Wrap"/>
+
+                        <StackPanel Margin="0,0,0,15" Orientation="Horizontal">
+                            <TextBlock Text="Input Type:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                            <RadioButton x:Name="RbActSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="ActInputType_Checked"/>
+                            <RadioButton x:Name="RbActSearchDemand" Content="For Testing Team Only!" VerticalAlignment="Center" Cursor="Hand" Checked="ActInputType_Checked"/>
+                        </StackPanel>
+
+                        <TextBlock Text="Contract Number / Demand ID:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                        <TextBox x:Name="TxtActContract" Margin="0,0,0,25" Padding="8" FontSize="14" BorderBrush="#DCDDE1"/>
+
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="BtnCancelSingleAct" Content="🛑 Cancel" Click="BtnCancelActivation_Click" Style="{DynamicResource CancelButtonStyle}" Width="120" Margin="0,0,10,0" IsEnabled="False"/>
+                            <Button x:Name="BtnRunSingleAct" Content="🚀 Run Single Activation" Click="BtnRunSingleActivation_Click" Style="{DynamicResource ActionButtonStyle}" Width="220"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="📁 Batch Activation (CSV)" FontSize="14" FontWeight="SemiBold">
+                <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,10,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Select a CSV or Excel file containing multiple contracts or demands to activate them sequentially." Margin="0,0,0,15" Foreground="#7F8C8D" TextWrapping="Wrap"/>
+
+                        <StackPanel Margin="0,0,0,15" Orientation="Horizontal">
+                            <TextBlock Text="Input Type:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                            <RadioButton x:Name="RbBatchActSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="BatchActInputType_Checked"/>
+                            <RadioButton x:Name="RbBatchActSearchDemand" Content="Demand ID" VerticalAlignment="Center" Cursor="Hand" Checked="BatchActInputType_Checked"/>
+                        </StackPanel>
+
+                        <TextBlock Text="Data File path (CSV/XLS):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                        <Grid Margin="0,0,0,25">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="TxtBatchActCsv" IsReadOnly="True" Padding="8" FontSize="14" BorderBrush="#DCDDE1" Margin="0,0,10,0"/>
+                            <Button Content="Browse..." Grid.Column="1" Padding="15,8" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnBrowseActCsv_Click"/>
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="BtnCancelBatchAct" Content="🛑 Cancel" Click="BtnCancelActivation_Click" Style="{DynamicResource CancelButtonStyle}" Width="120" Margin="0,0,10,0" IsEnabled="False"/>
+                            <Button x:Name="BtnRunBatchAct" Content="🚀 Run Batch Activation" Click="BtnRunBatchActivation_Click" Style="{DynamicResource ActionButtonStyle}" Width="220"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>

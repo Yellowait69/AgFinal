@@ -1,4 +1,5 @@
 using System;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
@@ -10,12 +11,27 @@ using AutoActivator.Services;
 // Référence explicite pour piloter Excel en arrière-plan
 using Excel = Microsoft.Office.Interop.Excel;
 
-namespace AutoActivator.Gui
+namespace AutoActivator.Gui.Views
 {
-    public partial class MainWindow : Window
+    public partial class ExtractionView : UserControl
     {
+        private readonly ExtractionService _extractionService;
+
+        // Collection observable pour mettre à jour l'UI en temps réel
+        public ObservableCollection<ExtractionItem> ExtractionHistory { get; set; } = new ObservableCollection<ExtractionItem>();
+
         // Compteur global des KO
         private int _koExtractionCount = 0;
+
+        public ExtractionView()
+        {
+            InitializeComponent();
+
+            // Lier l'historique visuel (ListView) à notre collection
+            ListHistory.ItemsSource = ExtractionHistory;
+
+            _extractionService = new ExtractionService();
+        }
 
         // --- NOUVEAU : Fonction utilitaire pour convertir le numéro de ligne en entier ---
         private int GetRowNumValue(string rowNumStr)
@@ -34,44 +50,48 @@ namespace AutoActivator.Gui
             int newItemRow = GetRowNumValue(item.RowNum);
             bool isKo = (item.Test == "KO");
 
-            if (isKo)
+            // On s'assure que la modification de la collection se fait bien sur le thread de l'interface graphique
+            Application.Current.Dispatcher.Invoke(() =>
             {
-                // On cherche la bonne position dans le bloc des KO (de l'index 0 jusqu'à _koExtractionCount)
-                int insertIndex = 0;
-                while (insertIndex < _koExtractionCount)
+                if (isKo)
                 {
-                    int currentItemRow = GetRowNumValue(ExtractionHistory[insertIndex].RowNum);
-                    if (currentItemRow > newItemRow)
+                    // On cherche la bonne position dans le bloc des KO (de l'index 0 jusqu'à _koExtractionCount)
+                    int insertIndex = 0;
+                    while (insertIndex < _koExtractionCount)
                     {
-                        break; // On a trouvé un numéro plus grand, on s'insère juste avant
+                        int currentItemRow = GetRowNumValue(ExtractionHistory[insertIndex].RowNum);
+                        if (currentItemRow > newItemRow)
+                        {
+                            break; // On a trouvé un numéro plus grand, on s'insère juste avant
+                        }
+                        insertIndex++;
                     }
-                    insertIndex++;
-                }
 
-                ExtractionHistory.Insert(insertIndex, item);
-                _koExtractionCount++;
+                    ExtractionHistory.Insert(insertIndex, item);
+                    _koExtractionCount++;
 
-                if (TxtKoCount != null)
-                {
-                    TxtKoCount.Text = _koExtractionCount.ToString();
-                }
-            }
-            else // Statut OK
-            {
-                // On cherche la bonne position dans le bloc des OK (de _koExtractionCount jusqu'à la fin de la liste)
-                int insertIndex = _koExtractionCount;
-                while (insertIndex < ExtractionHistory.Count)
-                {
-                    int currentItemRow = GetRowNumValue(ExtractionHistory[insertIndex].RowNum);
-                    if (currentItemRow > newItemRow)
+                    if (TxtKoCount != null)
                     {
-                        break; // On a trouvé un numéro plus grand, on s'insère juste avant
+                        TxtKoCount.Text = _koExtractionCount.ToString();
                     }
-                    insertIndex++;
                 }
+                else // Statut OK
+                {
+                    // On cherche la bonne position dans le bloc des OK (de _koExtractionCount jusqu'à la fin de la liste)
+                    int insertIndex = _koExtractionCount;
+                    while (insertIndex < ExtractionHistory.Count)
+                    {
+                        int currentItemRow = GetRowNumValue(ExtractionHistory[insertIndex].RowNum);
+                        if (currentItemRow > newItemRow)
+                        {
+                            break; // On a trouvé un numéro plus grand, on s'insère juste avant
+                        }
+                        insertIndex++;
+                    }
 
-                ExtractionHistory.Insert(insertIndex, item);
-            }
+                    ExtractionHistory.Insert(insertIndex, item);
+                }
+            });
         }
 
         private string FormatContractForDisplay(string contract)
@@ -134,6 +154,8 @@ namespace AutoActivator.Gui
 
         private async void BtnRunSingle_Click(object sender, RoutedEventArgs e)
         {
+            if (!(Window.GetWindow(this) is MainWindow mainWindow)) return;
+
             string rawInput = TxtExtContract?.Text.Trim();
             string envValue = "D";
 
@@ -145,29 +167,31 @@ namespace AutoActivator.Gui
 
             if (string.IsNullOrEmpty(rawInput))
             {
-                TxtStatus.Text = "Please enter a value.";
-                TxtStatus.Foreground = System.Windows.Media.Brushes.Orange;
+                mainWindow.TxtStatus.Text = "Please enter a value.";
+                mainWindow.TxtStatus.Foreground = System.Windows.Media.Brushes.Orange;
                 return;
             }
 
             IProgress<ExtractionItem> progress = new Progress<ExtractionItem>(item => AddExtractionItemToHistory(item));
 
-            await RunProcessAsync(async () =>
+            await mainWindow.RunProcessAsync(async () =>
             {
-                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Extracting Environment {envValue}000...");
+                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = $"Extracting Environment {envValue}000...");
 
-                await PerformSingleExtractionAsync(rawInput, envValue + "000", progress, isDemandId);
+                await PerformSingleExtractionAsync(rawInput, envValue + "000", progress, isDemandId, mainWindow);
 
-                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Single extraction completed successfully.");
+                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Single extraction completed successfully.");
             });
         }
 
-        private async Task PerformSingleExtractionAsync(string targetValue, string env, IProgress<ExtractionItem> progress, bool isDemandId)
+        private async Task PerformSingleExtractionAsync(string targetValue, string env, IProgress<ExtractionItem> progress, bool isDemandId, MainWindow mainWindow)
         {
             try
             {
                 ExtractionResult result = await _extractionService.PerformExtractionAsync(targetValue, env, true, isDemandId);
-                _lastGeneratedPath = Settings.OutputDir;
+
+                // Mettre à jour le chemin global sur la MainWindow
+                mainWindow.LastGeneratedPath = Settings.OutputDir;
 
                 string displayContract = isDemandId ? FormatContractForDisplay(result.ContractReference) : FormatContractForDisplay(targetValue);
 
@@ -221,7 +245,7 @@ namespace AutoActivator.Gui
             return openFileDialog.ShowDialog() == true ? openFileDialog.FileName : string.Empty;
         }
 
-        private string PrepareCsvFromExcel(string excelFilePath, string env)
+        public string PrepareCsvFromExcel(string excelFilePath, string env)
         {
             if (!File.Exists(excelFilePath))
                 throw new FileNotFoundException($"Le fichier Excel est introuvable sur le réseau ou en local : {excelFilePath}");
@@ -268,6 +292,8 @@ namespace AutoActivator.Gui
 
         private async void BtnRunBatch_Click(object sender, RoutedEventArgs e)
         {
+            if (!(Window.GetWindow(this) is MainWindow mainWindow)) return;
+
             string filePath = TxtBatchExtCsv?.Text.Trim();
             string envValue = "D";
 
@@ -277,8 +303,8 @@ namespace AutoActivator.Gui
 
             if (string.IsNullOrEmpty(filePath))
             {
-                TxtStatus.Text = "Please select a file or use the default network paths.";
-                TxtStatus.Foreground = System.Windows.Media.Brushes.Orange;
+                mainWindow.TxtStatus.Text = "Please select a file or use the default network paths.";
+                mainWindow.TxtStatus.Foreground = System.Windows.Media.Brushes.Orange;
                 return;
             }
 
@@ -287,7 +313,7 @@ namespace AutoActivator.Gui
             // Progress gère désormais le tri et le comptage des KO via la nouvelle fonction AddExtractionItemToHistory
             IProgress<BatchProgressInfo> progress = new Progress<BatchProgressInfo>(info =>
             {
-                TxtStatus.Text = $"Extraction par lot en cours : {info.CurrentItem} / {info.TotalItems} contrats traités...";
+                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = $"Extraction par lot en cours : {info.CurrentItem} / {info.TotalItems} contrats traités...");
 
                 // Détection de KO
                 string status = info.Status;
@@ -311,27 +337,29 @@ namespace AutoActivator.Gui
                 });
             });
 
-            await RunProcessAsync(async () =>
+            await mainWindow.RunProcessAsync(async () =>
             {
                 string actualFile = filePath;
-                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Preparing Environment {envValue}000...");
+                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = $"Preparing Environment {envValue}000...");
 
                 if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                 {
-                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Converting Network Excel to CSV for {envValue}000...");
+                    Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = $"Converting Network Excel to CSV for {envValue}000...");
                     // Excel COM object creation doit rester dans un Task.Run car synchrone et très lourd
                     actualFile = await Task.Run(() => PrepareCsvFromExcel(filePath, envValue + "000"));
                 }
 
-                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = $"Lancement de l'extraction par lot ({envValue}000)...");
+                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = $"Lancement de l'extraction par lot ({envValue}000)...");
 
                 // APPEL ASYNCHRONE DU BATCH (Parallélisme massif)
                 await batchService.PerformBatchExtractionAsync(actualFile, envValue + "000", progress.Report, isDemandId);
 
-                _lastGeneratedPath = Settings.OutputDir;
+                // Mettre à jour le chemin global sur la MainWindow
+                mainWindow.LastGeneratedPath = Settings.OutputDir;
+
                 Application.Current.Dispatcher.Invoke(() => {
-                    TxtStatus.Text = "Batch extraction completed! Global files saved in Output folder.";
-                    TxtStatus.Foreground = System.Windows.Media.Brushes.Green;
+                    mainWindow.TxtStatus.Text = "Batch extraction completed! Global files saved in Output folder.";
+                    mainWindow.TxtStatus.Foreground = System.Windows.Media.Brushes.Green;
                 });
             });
         }

@@ -1,0 +1,140 @@
+<UserControl x:Class="AutoActivator.Gui.Views.ComparisonView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="Comparison Module" FontSize="24" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
+        </StackPanel>
+
+        <Border Grid.Row="1" Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,20">
+            <StackPanel>
+                <TextBlock Text="Select the base and target CSV files to compare. All tables within the files will be analyzed automatically." Margin="0,0,0,15" Foreground="#7F8C8D" TextWrapping="Wrap"/>
+
+                <TextBlock Text="Base Extraction File:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                <Grid Margin="0,0,0,15">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="TxtBaseFile" IsReadOnly="True" Padding="8" FontSize="14" BorderBrush="#DCDDE1" Margin="0,0,10,0" Background="#F9F9F9"/>
+                    <Button Content="Browse..." Grid.Column="1" Padding="15,8" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnBrowseBase_Click"/>
+                </Grid>
+
+                <TextBlock Text="Target Extraction File (to compare against):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                <Grid Margin="0,0,0,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="TxtTargetFile" IsReadOnly="True" Padding="8" FontSize="14" BorderBrush="#DCDDE1" Margin="0,0,10,0" Background="#F9F9F9"/>
+                    <Button Content="Browse..." Grid.Column="1" Padding="15,8" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnBrowseTarget_Click"/>
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="BtnOpenComparisonFolder" Content="📁 Open Report Folder" Click="BtnOpenFolder_Click" Background="#3498DB" Foreground="White" Padding="15,10" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <Button x:Name="BtnRunComparison" Content="🚀 Run Deep Comparison" Click="BtnRunComparisonAction_Click" Style="{DynamicResource ActionButtonStyle}" Width="240" IsEnabled="False"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="2" Margin="0,10,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border x:Name="PanelDashboard" Grid.Row="0" Background="White" CornerRadius="8" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,15" Visibility="Collapsed">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Grid Grid.Column="0" Width="140" Height="140" Margin="0,0,30,0">
+                        <Ellipse Stroke="#ECF0F1" StrokeThickness="12" Fill="Transparent"/>
+                        <Ellipse x:Name="CircleProgress" Stroke="#2ECC71" StrokeThickness="12" Fill="Transparent" StrokeDashCap="Round" RenderTransformOrigin="0.5,0.5">
+                            <Ellipse.RenderTransform>
+                                <RotateTransform Angle="-90"/>
+                            </Ellipse.RenderTransform>
+                        </Ellipse>
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock x:Name="TxtScorePercentage" Text="0%" FontSize="32" FontWeight="Bold" Foreground="#2C3E50" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Match" FontSize="14" Foreground="#7F8C8D" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock x:Name="TxtDashboardTitle" Text="Analyse terminée avec succès !" FontSize="20" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Lignes analysées" FontSize="13" Foreground="#7F8C8D"/>
+                                <TextBlock x:Name="TxtTotalRows" Text="0" FontSize="22" FontWeight="Bold" Foreground="#34495E"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="Erreurs trouvées" FontSize="13" Foreground="#7F8C8D"/>
+                                <TextBlock x:Name="TxtTotalErrors" Text="0" FontSize="22" FontWeight="Bold" Foreground="#E74C3C"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <DataGrid x:Name="GridResults" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True"
+                      Background="White" BorderBrush="#DCDDE1" BorderThickness="1" HeadersVisibility="Column"
+                      RowBackground="White" AlternatingRowBackground="#F9F9F9" GridLinesVisibility="Horizontal"
+                      HorizontalGridLinesBrush="#ECF0F1" Visibility="Collapsed">
+                <DataGrid.Resources>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Background" Value="#2C3E50"/>
+                        <Setter Property="Foreground" Value="White"/>
+                        <Setter Property="Padding" Value="10"/>
+                        <Setter Property="FontWeight" Value="Bold"/>
+                    </Style>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="Padding" Value="5"/>
+                    </Style>
+                </DataGrid.Resources>
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="Status" Width="80">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border Background="{Binding StatusColor}" CornerRadius="4" Padding="5,2" Margin="5" HorizontalAlignment="Center">
+                                    <TextBlock Text="{Binding StatusIcon}" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Test ID &amp; Table" Binding="{Binding TableName}" Width="200" FontWeight="SemiBold"/>
+                    <DataGridTemplateColumn Header="Détails" Width="*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding ErrorDetails}" TextWrapping="Wrap" Foreground="#7F8C8D" Margin="5"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <TextBlock x:Name="TxtComparisonWaiting" Grid.Row="1" Text="Sélectionnez vos fichiers et lancez la comparaison."
+                       Foreground="#BDC3C7" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"/>
+        </Grid>
+    </Grid>
+</UserControl>

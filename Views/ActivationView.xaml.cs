@@ -9,12 +9,20 @@ using System.Windows.Media;
 using AutoActivator.Config;
 using AutoActivator.Services;
 
-namespace AutoActivator.Gui
+namespace AutoActivator.Gui.Views
 {
-    public partial class MainWindow
+    public partial class ActivationView : UserControl
     {
         // Instanciation des services métier
         private readonly ActivationDataService _activationDataService = new ActivationDataService();
+
+        // Jeton d'annulation pour pouvoir stopper les tâches asynchrones
+        private CancellationTokenSource _cts;
+
+        public ActivationView()
+        {
+            InitializeComponent();
+        }
 
         // -- GESTION DE L'INTERFACE UTILISATEUR --
 
@@ -69,8 +77,13 @@ namespace AutoActivator.Gui
             if (_cts != null && !_cts.IsCancellationRequested)
             {
                 _cts.Cancel();
-                TxtStatus.Text = "Annulation en cours... La séquence va s'arrêter.";
-                TxtStatus.Foreground = Brushes.DarkOrange;
+
+                // Récupération de la MainWindow pour modifier le statut global
+                if (Window.GetWindow(this) is MainWindow mainWindow)
+                {
+                    mainWindow.TxtStatus.Text = "Annulation en cours... La séquence va s'arrêter.";
+                    mainWindow.TxtStatus.Foreground = Brushes.DarkOrange;
+                }
             }
         }
 
@@ -78,8 +91,11 @@ namespace AutoActivator.Gui
 
         private async void BtnRunSingleActivation_Click(object sender, RoutedEventArgs e)
         {
+            if (!(Window.GetWindow(this) is MainWindow mainWindow)) return;
+
             _cts = new CancellationTokenSource();
-            await RunProcessAsync(async () =>
+
+            await mainWindow.RunProcessAsync(async () =>
             {
                 string rawInput = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8";
                 string username = Settings.DbConfig.Uid;
@@ -105,16 +121,16 @@ namespace AutoActivator.Gui
 
                 if (isDemandId)
                 {
-                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Recherche du contrat associé au Demand ID...");
+                    Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Recherche du contrat associé au Demand ID...");
                     resolvedContract = await _activationDataService.GetContractFromDemandAsync(rawInput, envValue + "000");
                     if (string.IsNullOrEmpty(resolvedContract))
                         throw new Exception($"Impossible de trouver un contrat associé au Demand ID {rawInput} dans la base {envValue}000.");
                 }
 
-                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Recherche de la prime en base de données...");
+                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Recherche de la prime en base de données...");
                 string amount = await _activationDataService.FetchPremiumAsync(resolvedContract, envValue + "000");
 
-                Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Préparation de l'activation...");
+                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Préparation de l'activation...");
                 string formattedContract = _activationDataService.FormatContractForJcl(resolvedContract);
 
                 StringBuilder report = new StringBuilder();
@@ -123,8 +139,9 @@ namespace AutoActivator.Gui
 
                 try
                 {
-                    // L'UI Thread est mis à jour proprement via InvokeAsync (non-bloquant)
-                    await _activationDataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, msg => Application.Current.Dispatcher.InvokeAsync(() => TxtStatus.Text = msg), _cts.Token);
+                    // L'UI Thread est mis à jour proprement via InvokeAsync (non-bloquant) en passant par la MainWindow
+                    await _activationDataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password,
+                        msg => Application.Current.Dispatcher.InvokeAsync(() => mainWindow.TxtStatus.Text = msg), _cts.Token);
 
                     report.AppendLine($"Input Original: {rawInput} | Contrat Trouvé: {resolvedContract} | Contrat JCL: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Statut: SUCCÈS");
 
@@ -145,11 +162,13 @@ namespace AutoActivator.Gui
                 {
                     string path = Path.Combine(Settings.OutputDir, $"Activation_Unitaire_{formattedContract}_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
                     File.WriteAllText(path, report.ToString());
-                    _lastGeneratedPath = path;
+
+                    // Transmission du chemin à la fenêtre principale pour le lien cliquable
+                    mainWindow.LastGeneratedPath = path;
 
                     Application.Current.Dispatcher.Invoke(() =>
                     {
-                        if (PrgLoading != null) PrgLoading.Visibility = Visibility.Collapsed;
+                        if (mainWindow.PrgLoading != null) mainWindow.PrgLoading.Visibility = Visibility.Collapsed;
                     });
                 }
             });
@@ -159,8 +178,11 @@ namespace AutoActivator.Gui
 
         private async void BtnRunBatchActivation_Click(object sender, RoutedEventArgs e)
         {
+            if (!(Window.GetWindow(this) is MainWindow mainWindow)) return;
+
             _cts = new CancellationTokenSource();
-            await RunProcessAsync(async () =>
+
+            await mainWindow.RunProcessAsync(async () =>
             {
                 string filePath = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8";
                 string username = Settings.DbConfig.Uid;
@@ -182,11 +204,14 @@ namespace AutoActivator.Gui
 
                 if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) throw new Exception("Veuillez sélectionner un fichier valide.");
 
-                // Utilisation de la méthode présente dans MainWindow.Extraction.cs
+                // Utilisation de la méthode PrepareCsvFromExcel (Assurez-vous qu'elle est "public" dans MainWindow ou dans un Helper)
                 if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                 {
-                    Application.Current.Dispatcher.Invoke(() => TxtStatus.Text = "Conversion du fichier Excel réseau en CSV local...");
-                    filePath = await Task.Run(() => PrepareCsvFromExcel(filePath, envValue + "000"));
+                    Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Conversion du fichier Excel réseau en CSV local...");
+
+                    // Note : Assurez-vous que PrepareCsvFromExcel a été rendue "public" dans MainWindow.xaml.cs
+                    // ou déplacée dans une classe utilitaire (ex: ExcelHelper.PrepareCsvFromExcel)
+                    // filePath = await Task.Run(() => mainWindow.PrepareCsvFromExcel(filePath, envValue + "000"));
                 }
 
                 var batchService = new BatchActivationService(_activationDataService);
@@ -194,15 +219,16 @@ namespace AutoActivator.Gui
                 // CORRECTION : Le tuple de retour prend maintenant en compte alreadyActiveCount
                 var result = await batchService.RunBatchAsync(
                     filePath, isDemandId, envValue, cus, bucp, cmdpmt, username, password, Settings.OutputDir,
-                    msg => Application.Current.Dispatcher.InvokeAsync(() => TxtStatus.Text = msg),
+                    msg => Application.Current.Dispatcher.InvokeAsync(() => mainWindow.TxtStatus.Text = msg),
                     _cts.Token
                 );
 
-                _lastGeneratedPath = result.reportPath;
+                // Transmission du chemin à la fenêtre principale pour le lien cliquable
+                mainWindow.LastGeneratedPath = result.reportPath;
 
                 Application.Current.Dispatcher.Invoke(() =>
                 {
-                    if (PrgLoading != null) PrgLoading.Visibility = Visibility.Collapsed;
+                    if (mainWindow.PrgLoading != null) mainWindow.PrgLoading.Visibility = Visibility.Collapsed;
 
                     // NOUVEAUTÉ : Ajout du compteur "Déjà Actifs" dans la popup de résultat final
                     MessageBox.Show($"Batch terminé.\nSuccès: {result.successCount} \nDéjà Actifs: {result.alreadyActiveCount} \nÉchecs: {result.errorCount}\n\nOuvrez le fichier de log pour les détails.", "Activation Batch", MessageBoxButton.OK, MessageBoxImage.Information);

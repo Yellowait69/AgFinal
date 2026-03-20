@@ -92,6 +92,24 @@ namespace AutoActivator.Services
                 string baseContent = baseBlocks[testId];
                 string targetContent = targetBlocks[testId];
 
+                // --- NOUVEAU : Récupération du Produit depuis la table FJ1.TB5UCON ---
+                string product = "INCONNU";
+                try
+                {
+                    DataTable uconTable = CsvFormatter.LoadTableFromContent(baseContent, "FJ1.TB5UCON");
+                    if (uconTable != null && uconTable.Rows.Count > 0 && uconTable.Columns.Contains("IT5UCONCASU"))
+                    {
+                        product = uconTable.Rows[0]["IT5UCONCASU"]?.ToString();
+                        if (string.IsNullOrWhiteSpace(product)) product = "INCONNU";
+                    }
+                }
+                catch { /* Ignorer si la table n'existe pas ou n'a pas la colonne */ }
+
+                // Initialisation des métriques
+                if (!report.TestMetrics.ContainsKey(testId)) report.TestMetrics[testId] = new ComparisonMetrics();
+                if (!report.ProductMetrics.ContainsKey(product)) report.ProductMetrics[product] = new ComparisonMetrics();
+                // ---------------------------------------------------------------------
+
                 // Obtenir toutes les tables impliquées pour ce contrat précis
                 List<string> tablesToCompare = CsvFormatter.GetAllTableNamesFromContent(baseContent);
 
@@ -103,7 +121,8 @@ namespace AutoActivator.Services
                     // Nom formaté pour l'affichage (ex: "[ID501] LV.PCONT0")
                     string displayTableName = $"[{testId}] {tableName}";
 
-                    CompareAndAppendToReport(baseContent, targetContent, tableName, displayTableName, tableType, report, Path.GetFileName(baseFile), Path.GetFileName(targetFile));
+                    // Ajout de testId et product dans les paramètres de l'appel
+                    CompareAndAppendToReport(baseContent, targetContent, tableName, displayTableName, tableType, report, Path.GetFileName(baseFile), Path.GetFileName(targetFile), testId, product);
                 }
             }
 
@@ -113,7 +132,7 @@ namespace AutoActivator.Services
             return report;
         }
 
-        private void CompareAndAppendToReport(string baseContent, string targetContent, string actualTableName, string displayTableName, string type, ComparisonReport report, string baseFileName, string targetFileName)
+        private void CompareAndAppendToReport(string baseContent, string targetContent, string actualTableName, string displayTableName, string type, ComparisonReport report, string baseFileName, string targetFileName, string testId, string product)
         {
             // Charge la table spécifiée depuis les textes filtrés en mémoire
             DataTable df1 = CsvFormatter.LoadTableFromContent(baseContent, actualTableName);
@@ -136,7 +155,7 @@ namespace AutoActivator.Services
 
             // Mise à jour des compteurs pour le score global
             int rowsCount = Math.Max(df1?.Rows.Count ?? 0, df2?.Rows.Count ?? 0);
-            report.TotalRowsCompared += rowsCount;
+            int currentErrors = 0; // Variable pour compter spécifiquement les erreurs de cette table
 
             if (Status != "OK" && Status != "OK_EMPTY")
             {
@@ -146,12 +165,26 @@ namespace AutoActivator.Services
                     int diffCount = Details.Split(new[] { "Row #" }, StringSplitOptions.None).Length - 1;
 
                     // Si aucune ligne spécifique n'est pointée, on considère que toute la table a échoué
-                    report.TotalDifferencesFound += diffCount > 0 ? diffCount : rowsCount;
+                    currentErrors = diffCount > 0 ? diffCount : rowsCount;
                 }
                 else
                 {
-                    report.TotalDifferencesFound += rowsCount;
+                    currentErrors = rowsCount;
                 }
+            }
+
+            // Mise à jour des scores globaux du rapport
+            report.TotalRowsCompared += rowsCount;
+            report.TotalDifferencesFound += currentErrors;
+
+            // --- NOUVEAU : Mise à jour des statistiques ciblées (Test & Produit) ---
+            if (rowsCount > 0)
+            {
+                report.TestMetrics[testId].TotalRows += rowsCount;
+                report.TestMetrics[testId].ErrorRows += currentErrors;
+
+                report.ProductMetrics[product].TotalRows += rowsCount;
+                report.ProductMetrics[product].ErrorRows += currentErrors;
             }
         }
 
