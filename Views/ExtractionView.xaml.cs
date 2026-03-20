@@ -91,9 +91,9 @@ namespace AutoActivator.Gui.Views
 
             string clean = contract.Replace("-", "").Replace(" ", "");
 
-            // Utilisation des "Ranges" C# 8+ pour une syntaxe plus propre
+            // Compatibilité C# 7.3 : Utilisation classique de Substring
             return clean.Length == 12
-                ? $"{clean[..3]}-{clean[3..10]}-{clean[10..]}"
+                ? $"{clean.Substring(0, 3)}-{clean.Substring(3, 7)}-{clean.Substring(10, 2)}"
                 : contract;
         }
 
@@ -114,8 +114,9 @@ namespace AutoActivator.Gui.Views
             }
             else if (RbBatchSearchDemand?.IsChecked == true)
             {
-                string envValue = CmbExtEnv?.SelectedItem is ComboBoxItem { Tag: string eTag } ? eTag : "D";
-                string channelValue = CmbExtChannel?.SelectedItem is ComboBoxItem { Tag: string cTag } ? cTag : "C01";
+                // Compatibilité C# 7.3 : Cast "as" au lieu du pattern matching
+                string envValue = (CmbExtEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "D";
+                string channelValue = (CmbExtChannel?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "C01";
 
                 TxtBatchExtCsv.Text = $@"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_{channelValue}ComparisonsDB_URL_ELIA_LoginPage_{envValue}000.xls";
             }
@@ -174,7 +175,9 @@ namespace AutoActivator.Gui.Views
 
             string rawInput = TxtExtContract?.Text.Trim();
             bool isDemandId = RbSearchDemand?.IsChecked == true;
-            string envValue = CmbExtEnv?.SelectedItem is ComboBoxItem { Tag: string tag } ? tag : "D";
+
+            // Compatibilité C# 7.3
+            string envValue = (CmbExtEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "D";
 
             if (string.IsNullOrEmpty(rawInput))
             {
@@ -201,7 +204,9 @@ namespace AutoActivator.Gui.Views
                 mainWindow.LastGeneratedPath = Settings.OutputDir;
 
                 string displayContract = isDemandId ? FormatContractForDisplay(result.ContractReference) : FormatContractForDisplay(targetValue);
-                string finalTest = (result.InternalId is "Not found" or "Error") ? "KO" : "OK";
+
+                // Compatibilité C# 7.3 : "==" au lieu de "is" et "or"
+                string finalTest = (result.InternalId == "Not found" || result.InternalId == "Error") ? "KO" : "OK";
 
                 progress.Report(new ExtractionItem
                 {
@@ -316,7 +321,9 @@ namespace AutoActivator.Gui.Views
 
             string filePath = TxtBatchExtCsv?.Text.Trim();
             bool isDemandId = RbBatchSearchDemand?.IsChecked == true;
-            string envValue = CmbExtEnv?.SelectedItem is ComboBoxItem { Tag: string tag } ? tag : "D";
+
+            // Compatibilité C# 7.3
+            string envValue = (CmbExtEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "D";
 
             if (string.IsNullOrEmpty(filePath))
             {
@@ -330,7 +337,8 @@ namespace AutoActivator.Gui.Views
             {
                 mainWindow.TxtStatus.Text = $"Batch extraction in progress: {info.CurrentItem} / {info.TotalItems} contracts processed...";
 
-                string status = (info.InternalId is "Not found" or "Error" || info.Status.Contains("Error") || info.Status.Contains("Not found"))
+                // Compatibilité C# 7.3
+                string status = (info.InternalId == "Not found" || info.InternalId == "Error" || info.Status.Contains("Error") || info.Status.Contains("Not found"))
                                 ? "KO" : info.Status;
 
                 AddExtractionItemToHistory(new ExtractionItem
