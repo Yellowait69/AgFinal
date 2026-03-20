@@ -1,14 +1,15 @@
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using Microsoft.Win32;
 using AutoActivator.Config;
 using AutoActivator.Models;
 using AutoActivator.Services;
-// Explicit reference to drive Excel in the background
 using Excel = Microsoft.Office.Interop.Excel;
 
 namespace AutoActivator.Gui.Views
@@ -17,147 +18,110 @@ namespace AutoActivator.Gui.Views
     {
         private readonly ExtractionService _extractionService;
 
-        // Observable collection to update the UI in real-time
+        // ObservableCollection pour mettre à jour l'UI en temps réel
         public ObservableCollection<ExtractionItem> ExtractionHistory { get; set; } = new ObservableCollection<ExtractionItem>();
 
-        // Global KO counter
         private int _koExtractionCount = 0;
+        private int _totalExtractionCount = 0;
 
         public ExtractionView()
         {
             InitializeComponent();
-
-            // Bind the visual history (ListView) to our collection
             ListHistory.ItemsSource = ExtractionHistory;
-
             _extractionService = new ExtractionService();
         }
 
         // -- UI NAVIGATION & MANAGEMENT --
 
-        private void BtnHelp_Click(object sender, System.Windows.RoutedEventArgs e)
+        private void BtnHelp_Click(object sender, RoutedEventArgs e)
         {
             if (Window.GetWindow(this) is MainWindow mainWindow)
             {
-                // 0 corresponds to the Extraction Tab index in the Help module
                 mainWindow.OpenHelpTargetingTab(0);
             }
         }
 
-        // --- NEW: Utility function to convert row number to integer ---
         private int GetRowNumValue(string rowNumStr)
         {
-            if (int.TryParse(rowNumStr, out int val))
-                return val;
-
-            // If it is "-" (single extraction) or invalid text, return 0
-            // so it stays at the top of its group
-            return 0;
+            return int.TryParse(rowNumStr, out int val) ? val : 0;
         }
 
-        // --- NEW: Centralized function with smart sorting (Ascending) ---
+        // Ajout intelligent avec tri ascendant (OK en bas, KO en haut)
         private void AddExtractionItemToHistory(ExtractionItem item)
         {
-            int newItemRow = GetRowNumValue(item.RowNum);
-            bool isKo = (item.Test == "KO");
-
-            // Ensure collection modification happens on the UI thread
-            Application.Current.Dispatcher.Invoke(() =>
+            // Vérifie si on est déjà sur le thread UI (Progress<T> le fait automatiquement,
+            // mais c'est une sécurité supplémentaire si appelé d'ailleurs).
+            if (!Dispatcher.CheckAccess())
             {
-                if (isKo)
+                Dispatcher.Invoke(() => AddExtractionItemToHistory(item));
+                return;
+            }
+
+            int newItemRow = GetRowNumValue(item.RowNum);
+            bool isKo = item.Test == "KO";
+
+            _totalExtractionCount++;
+            TxtTotalCount.Text = _totalExtractionCount.ToString();
+
+            int insertIndex = isKo ? 0 : _koExtractionCount;
+            int limit = isKo ? _koExtractionCount : ExtractionHistory.Count;
+
+            // Trouver la bonne position pour garder l'ordre
+            while (insertIndex < limit)
+            {
+                if (GetRowNumValue(ExtractionHistory[insertIndex].RowNum) > newItemRow)
                 {
-                    // Find the correct position in the KO block (from index 0 to _koExtractionCount)
-                    int insertIndex = 0;
-                    while (insertIndex < _koExtractionCount)
-                    {
-                        int currentItemRow = GetRowNumValue(ExtractionHistory[insertIndex].RowNum);
-                        if (currentItemRow > newItemRow)
-                        {
-                            break; // Found a larger number, insert just before it
-                        }
-                        insertIndex++;
-                    }
-
-                    ExtractionHistory.Insert(insertIndex, item);
-                    _koExtractionCount++;
-
-                    if (TxtKoCount != null)
-                    {
-                        TxtKoCount.Text = _koExtractionCount.ToString();
-                    }
+                    break;
                 }
-                else // Status OK
-                {
-                    // Find the correct position in the OK block (from _koExtractionCount to the end of the list)
-                    int insertIndex = _koExtractionCount;
-                    while (insertIndex < ExtractionHistory.Count)
-                    {
-                        int currentItemRow = GetRowNumValue(ExtractionHistory[insertIndex].RowNum);
-                        if (currentItemRow > newItemRow)
-                        {
-                            break; // Found a larger number, insert just before it
-                        }
-                        insertIndex++;
-                    }
+                insertIndex++;
+            }
 
-                    ExtractionHistory.Insert(insertIndex, item);
-                }
-            });
+            ExtractionHistory.Insert(insertIndex, item);
+
+            if (isKo)
+            {
+                _koExtractionCount++;
+                TxtKoCount.Text = _koExtractionCount.ToString();
+            }
         }
 
         private string FormatContractForDisplay(string contract)
         {
             if (string.IsNullOrWhiteSpace(contract)) return contract;
 
-            // Clean up any existing dashes or spaces
             string clean = contract.Replace("-", "").Replace(" ", "");
 
-            // If it's a standard 12-digit number, format it as XXX-XXXXXXX-XX
-            if (clean.Length == 12)
-            {
-                return $"{clean.Substring(0, 3)}-{clean.Substring(3, 7)}-{clean.Substring(10, 2)}";
-            }
-
-            // Otherwise (e.g., longer Demand ID or non-standard format), return as is
-            return contract;
+            // Utilisation des "Ranges" C# 8+ pour une syntaxe plus propre
+            return clean.Length == 12
+                ? $"{clean[..3]}-{clean[3..10]}-{clean[10..]}"
+                : contract;
         }
 
         // -- USER INTERFACE MANAGEMENT --
 
         private void InputType_Checked(object sender, RoutedEventArgs e)
         {
-            // Ensure the UI element is initialized before clearing text
-            if (TxtExtContract != null)
-            {
-                TxtExtContract.Text = string.Empty;
-            }
+            if (TxtExtContract != null) TxtExtContract.Text = string.Empty;
         }
 
-        // Updates or clears the network path based on the selected radio button, environment, and channel
         private void UpdateBatchExtCsvPath()
         {
-            if (TxtBatchExtCsv != null)
-            {
-                // If searching by Contract Number, clear the field
-                if (RbBatchSearchContract != null && RbBatchSearchContract.IsChecked == true)
-                {
-                    TxtBatchExtCsv.Text = string.Empty;
-                }
-                // If searching by Demand ID, set the default network paths
-                else if (RbBatchSearchDemand != null && RbBatchSearchDemand.IsChecked == true)
-                {
-                    string envValue = CmbExtEnv?.SelectedItem is ComboBoxItem eItem ? eItem.Tag?.ToString() ?? "D" : "D";
-                    string channelValue = CmbExtChannel?.SelectedItem is ComboBoxItem cItem ? cItem.Tag?.ToString() ?? "C01" : "C01";
+            if (TxtBatchExtCsv == null) return;
 
-                    // Dynamic path generation using the channel and environment
-                    TxtBatchExtCsv.Text = $@"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_{channelValue}ComparisonsDB_URL_ELIA_LoginPage_{envValue}000.xls";
-                }
+            if (RbBatchSearchContract?.IsChecked == true)
+            {
+                TxtBatchExtCsv.Text = string.Empty;
+            }
+            else if (RbBatchSearchDemand?.IsChecked == true)
+            {
+                string envValue = CmbExtEnv?.SelectedItem is ComboBoxItem { Tag: string eTag } ? eTag : "D";
+                string channelValue = CmbExtChannel?.SelectedItem is ComboBoxItem { Tag: string cTag } ? cTag : "C01";
+
+                TxtBatchExtCsv.Text = $@"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_{channelValue}ComparisonsDB_URL_ELIA_LoginPage_{envValue}000.xls";
             }
         }
 
         private void BatchInputType_Checked(object sender, RoutedEventArgs e) => UpdateBatchExtCsvPath();
-
-        // Events triggered on dropdown menu changes
         private void CmbExtEnv_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
         private void CmbExtChannel_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
 
@@ -165,7 +129,7 @@ namespace AutoActivator.Gui.Views
 
         private void BtnAddBaseline_Click(object sender, RoutedEventArgs e)
         {
-            var openFileDialog = new Microsoft.Win32.OpenFileDialog
+            var openFileDialog = new OpenFileDialog
             {
                 Filter = "CSV/Excel Files (*.csv;*.xls;*.xlsx)|*.csv;*.xls;*.xlsx|All Files (*.*)|*.*",
                 Title = "Select a file to copy to the Baseline folder"
@@ -175,16 +139,12 @@ namespace AutoActivator.Gui.Views
             {
                 try
                 {
-                    if (!Directory.Exists(Settings.BaselineDir))
-                        Directory.CreateDirectory(Settings.BaselineDir);
-
-                    string sourcePath = openFileDialog.FileName;
-                    string fileName = Path.GetFileName(sourcePath);
+                    Directory.CreateDirectory(Settings.BaselineDir);
+                    string fileName = Path.GetFileName(openFileDialog.FileName);
                     string destPath = Path.Combine(Settings.BaselineDir, fileName);
 
-                    // Copy the file into the Baseline directory (overwrite if exists)
-                    File.Copy(sourcePath, destPath, true);
-                    MessageBox.Show($"File '{fileName}' was successfully added to your baselines!", "Baseline Added", MessageBoxButton.OK, MessageBoxImage.Information);
+                    File.Copy(openFileDialog.FileName, destPath, true);
+                    MessageBox.Show($"File '{fileName}' was successfully added to your baselines!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 catch (Exception ex)
                 {
@@ -197,9 +157,7 @@ namespace AutoActivator.Gui.Views
         {
             try
             {
-                if (!Directory.Exists(Settings.BaselineDir))
-                    Directory.CreateDirectory(Settings.BaselineDir);
-
+                Directory.CreateDirectory(Settings.BaselineDir);
                 System.Diagnostics.Process.Start("explorer.exe", Settings.BaselineDir);
             }
             catch (Exception ex)
@@ -208,37 +166,30 @@ namespace AutoActivator.Gui.Views
             }
         }
 
-        // SINGLE EXTRACTION TAB LOGIC
+        // --- SINGLE EXTRACTION TAB LOGIC ---
 
         private async void BtnRunSingle_Click(object sender, RoutedEventArgs e)
         {
             if (!(Window.GetWindow(this) is MainWindow mainWindow)) return;
 
             string rawInput = TxtExtContract?.Text.Trim();
-            string envValue = "D";
-
-            // Check if the search is by Demand ID via the radio button
             bool isDemandId = RbSearchDemand?.IsChecked == true;
-
-            // Retrieve the environment value from the ComboBox
-            if (CmbExtEnv?.SelectedItem is ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
+            string envValue = CmbExtEnv?.SelectedItem is ComboBoxItem { Tag: string tag } ? tag : "D";
 
             if (string.IsNullOrEmpty(rawInput))
             {
-                mainWindow.TxtStatus.Text = "Please enter a value.";
-                mainWindow.TxtStatus.Foreground = System.Windows.Media.Brushes.Orange;
+                UpdateMainWindowStatus(mainWindow, "Please enter a value.", Brushes.Orange);
                 return;
             }
 
-            IProgress<ExtractionItem> progress = new Progress<ExtractionItem>(item => AddExtractionItemToHistory(item));
+            // Progress<T> s'exécute automatiquement sur le thread UI
+            IProgress<ExtractionItem> progress = new Progress<ExtractionItem>(AddExtractionItemToHistory);
 
             await mainWindow.RunProcessAsync(async () =>
             {
-                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = $"Extracting Environment {envValue}000...");
-
-                await PerformSingleExtractionAsync(rawInput, envValue + "000", progress, isDemandId, mainWindow);
-
-                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Single extraction completed successfully.");
+                UpdateMainWindowStatus(mainWindow, $"Extracting Environment {envValue}000...");
+                await PerformSingleExtractionAsync(rawInput, $"{envValue}000", progress, isDemandId, mainWindow);
+                UpdateMainWindowStatus(mainWindow, "Single extraction completed successfully.", Brushes.Green);
             });
         }
 
@@ -247,14 +198,10 @@ namespace AutoActivator.Gui.Views
             try
             {
                 ExtractionResult result = await _extractionService.PerformExtractionAsync(targetValue, env, true, isDemandId);
-
-                // Update the global path on the MainWindow
                 mainWindow.LastGeneratedPath = Settings.OutputDir;
 
                 string displayContract = isDemandId ? FormatContractForDisplay(result.ContractReference) : FormatContractForDisplay(targetValue);
-
-                // KO detection if the internal ID is not found
-                string finalTest = (result.InternalId == "Not found" || result.InternalId == "Error") ? "KO" : "OK";
+                string finalTest = (result.InternalId is "Not found" or "Error") ? "KO" : "OK";
 
                 progress.Report(new ExtractionItem
                 {
@@ -288,49 +235,52 @@ namespace AutoActivator.Gui.Views
             }
         }
 
-        // BATCH EXTRACTION TAB LOGIC
+        // --- BATCH EXTRACTION TAB LOGIC ---
 
-        private void BtnBrowseExtCsv_Click(object sender, RoutedEventArgs e) => TxtBatchExtCsv.Text = OpenFileDialogHybrid();
-
-        private string OpenFileDialogHybrid()
+        private void BtnBrowseExtCsv_Click(object sender, RoutedEventArgs e)
         {
             var openFileDialog = new OpenFileDialog
             {
-                Filter = "Data Files (*.csv;*.xls;*.xlsx)|*.csv;*.xls;*.xlsx|CSV Files (*.csv)|*.csv|Excel Files (*.xls;*.xlsx)|*.xls;*.xlsx",
+                Filter = "Data Files (*.csv;*.xls;*.xlsx)|*.csv;*.xls;*.xlsx",
                 Title = "Select a file containing contracts",
                 InitialDirectory = Path.GetFullPath(Settings.InputDir)
             };
-            return openFileDialog.ShowDialog() == true ? openFileDialog.FileName : string.Empty;
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                TxtBatchExtCsv.Text = openFileDialog.FileName;
+            }
         }
 
-        public string PrepareCsvFromExcel(string excelFilePath, string env)
+        public string PrepareCsvFromExcel(string excelFilePath)
         {
             if (!File.Exists(excelFilePath))
-                throw new FileNotFoundException($"The Excel file cannot be found on the network or locally: {excelFilePath}");
+                throw new FileNotFoundException($"Excel file not found: {excelFilePath}");
 
             Directory.CreateDirectory(Settings.OutputDir);
 
             string originalFileName = Path.GetFileNameWithoutExtension(excelFilePath);
-            string csvFileName = $"Converted_{originalFileName}_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
-            string savedCsvPath = Path.Combine(Settings.OutputDir, csvFileName);
+            string savedCsvPath = Path.Combine(Settings.OutputDir, $"Converted_{originalFileName}_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
 
-            Excel.Application excelApp = new Excel.Application();
-            excelApp.Visible = false;
-            excelApp.DisplayAlerts = false;
-
+            Excel.Application excelApp = null;
             Excel.Workbook workbook = null;
+            Excel.Worksheet worksheet = null;
+            Excel.Range firstRow = null;
+            Excel.Range searchRange = null;
+            Excel.Range valueCol = null;
+
             try
             {
+                excelApp = new Excel.Application { Visible = false, DisplayAlerts = false };
                 workbook = excelApp.Workbooks.Open(excelFilePath, ReadOnly: true);
-                Excel.Worksheet worksheet = workbook.Sheets[1];
+                worksheet = workbook.Sheets[1];
 
-                Excel.Range firstRow = worksheet.Rows[2];
-                Excel.Range searchRange = firstRow.Find("Value");
+                firstRow = worksheet.Rows[2];
+                searchRange = firstRow.Find("Value");
 
                 if (searchRange != null)
                 {
-                    int colIndex = searchRange.Column;
-                    Excel.Range valueCol = worksheet.Columns[colIndex];
+                    valueCol = worksheet.Columns[searchRange.Column];
                     valueCol.NumberFormat = "0";
                 }
 
@@ -340,9 +290,21 @@ namespace AutoActivator.Gui.Views
             }
             finally
             {
-                if (workbook != null) workbook.Close(false);
-                excelApp.Quit();
-                System.Runtime.InteropServices.Marshal.ReleaseComObject(excelApp);
+                // Libération EXPLICITE des objets COM pour éviter les processus Excel fantômes
+                if (valueCol != null) Marshal.ReleaseComObject(valueCol);
+                if (searchRange != null) Marshal.ReleaseComObject(searchRange);
+                if (firstRow != null) Marshal.ReleaseComObject(firstRow);
+                if (worksheet != null) Marshal.ReleaseComObject(worksheet);
+                if (workbook != null)
+                {
+                    workbook.Close(false);
+                    Marshal.ReleaseComObject(workbook);
+                }
+                if (excelApp != null)
+                {
+                    excelApp.Quit();
+                    Marshal.ReleaseComObject(excelApp);
+                }
             }
 
             return savedCsvPath;
@@ -353,32 +315,23 @@ namespace AutoActivator.Gui.Views
             if (!(Window.GetWindow(this) is MainWindow mainWindow)) return;
 
             string filePath = TxtBatchExtCsv?.Text.Trim();
-            string envValue = "D";
-
             bool isDemandId = RbBatchSearchDemand?.IsChecked == true;
-
-            if (CmbExtEnv?.SelectedItem is ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
+            string envValue = CmbExtEnv?.SelectedItem is ComboBoxItem { Tag: string tag } ? tag : "D";
 
             if (string.IsNullOrEmpty(filePath))
             {
-                mainWindow.TxtStatus.Text = "Please select a file or use the default network paths.";
-                mainWindow.TxtStatus.Foreground = System.Windows.Media.Brushes.Orange;
+                UpdateMainWindowStatus(mainWindow, "Please select a file or use the default network paths.", Brushes.Orange);
                 return;
             }
 
             var batchService = new BatchExtractionService(_extractionService);
 
-            // Progress now handles sorting and KO counting via the new AddExtractionItemToHistory function
             IProgress<BatchProgressInfo> progress = new Progress<BatchProgressInfo>(info =>
             {
-                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = $"Batch extraction in progress: {info.CurrentItem} / {info.TotalItems} contracts processed...");
+                mainWindow.TxtStatus.Text = $"Batch extraction in progress: {info.CurrentItem} / {info.TotalItems} contracts processed...";
 
-                // KO Detection
-                string status = info.Status;
-                if (info.InternalId == "Not found" || info.InternalId == "Error" || status.Contains("Error") || status.Contains("Not found"))
-                {
-                    status = "KO";
-                }
+                string status = (info.InternalId is "Not found" or "Error" || info.Status.Contains("Error") || info.Status.Contains("Not found"))
+                                ? "KO" : info.Status;
 
                 AddExtractionItemToHistory(new ExtractionItem
                 {
@@ -397,39 +350,47 @@ namespace AutoActivator.Gui.Views
 
             await mainWindow.RunProcessAsync(async () =>
             {
-                string actualFile = filePath;
-                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = $"Preparing Environment {envValue}000...");
-
-                if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                try
                 {
-                    Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = $"Converting Network Excel to CSV for {envValue}000...");
-                    // Excel COM object creation must remain in a Task.Run because it is synchronous and heavy
-                    actualFile = await Task.Run(() => PrepareCsvFromExcel(filePath, envValue + "000"));
+                    string actualFile = filePath;
+                    UpdateMainWindowStatus(mainWindow, $"Preparing Environment {envValue}000...");
+
+                    if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                    {
+                        UpdateMainWindowStatus(mainWindow, $"Converting Network Excel to CSV for {envValue}000...");
+                        actualFile = await Task.Run(() => PrepareCsvFromExcel(filePath));
+                    }
+
+                    UpdateMainWindowStatus(mainWindow, $"Launching batch extraction ({envValue}000)...");
+                    await batchService.PerformBatchExtractionAsync(actualFile, $"{envValue}000", progress.Report, isDemandId);
+
+                    mainWindow.LastGeneratedPath = Settings.OutputDir;
+                    UpdateMainWindowStatus(mainWindow, "Batch extraction completed! Files saved in Output folder.", Brushes.Green);
                 }
-
-                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = $"Launching batch extraction ({envValue}000)...");
-
-                // ASYNCHRONOUS BATCH CALL (Massive parallelism)
-                await batchService.PerformBatchExtractionAsync(actualFile, envValue + "000", progress.Report, isDemandId);
-
-                // Update the global path on the MainWindow
-                mainWindow.LastGeneratedPath = Settings.OutputDir;
-
-                Application.Current.Dispatcher.Invoke(() => {
-                    mainWindow.TxtStatus.Text = "Batch extraction completed! Global files saved in Output folder.";
-                    mainWindow.TxtStatus.Foreground = System.Windows.Media.Brushes.Green;
-                });
+                catch (Exception ex)
+                {
+                    UpdateMainWindowStatus(mainWindow, $"Batch Error: {ex.Message}", Brushes.Red);
+                }
             });
         }
 
         private void BtnClearHistory_Click(object sender, RoutedEventArgs e)
         {
-            if (ExtractionHistory != null)
+            ExtractionHistory?.Clear();
+            _koExtractionCount = 0;
+            _totalExtractionCount = 0;
+            if (TxtKoCount != null) TxtKoCount.Text = "0";
+            if (TxtTotalCount != null) TxtTotalCount.Text = "0";
+        }
+
+        // Utilitaire pour nettoyer le code de mise à jour du statut UI
+        private void UpdateMainWindowStatus(MainWindow mainWindow, string text, Brush color = null)
+        {
+            Dispatcher.Invoke(() =>
             {
-                ExtractionHistory.Clear();
-                _koExtractionCount = 0; // Reset KO counter
-                if (TxtKoCount != null) TxtKoCount.Text = "0";
-            }
+                mainWindow.TxtStatus.Text = text;
+                mainWindow.TxtStatus.Foreground = color ?? Brushes.Black;
+            });
         }
     }
 }
