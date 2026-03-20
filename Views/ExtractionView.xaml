@@ -6,7 +6,6 @@
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="700">
 
     <UserControl.Resources>
-        <!-- Palette de couleurs (Thème) -->
         <SolidColorBrush x:Key="TextPrimary" Color="#2C3E50"/>
         <SolidColorBrush x:Key="TextSecondary" Color="#7F8C8D"/>
         <SolidColorBrush x:Key="BorderDefault" Color="#DCDDE1"/>
@@ -18,7 +17,6 @@
         <SolidColorBrush x:Key="Success" Color="#27AE60"/>
         <SolidColorBrush x:Key="BackgroundLight" Color="#F4F6F6"/>
 
-        <!-- Styles partagés -->
         <Style x:Key="CardStyle" TargetType="Border">
             <Setter Property="Background" Value="White"/>
             <Setter Property="CornerRadius" Value="5"/>
@@ -41,93 +39,80 @@
         </Style>
     </UserControl.Resources>
 
-    <Grid Margin="10">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/> <!-- Header -->
-            <RowDefinition Height="Auto"/> <!-- Global Settings -->
-            <!-- CORRECTION : Remplacement de "Auto" par "*" pour que l'onglet s'adapte à l'espace restant -->
-            <RowDefinition Height="*"/>
-            <!-- CORRECTION : Utilisation d'une proportion dynamique et d'une hauteur minimale pour l'historique -->
-            <RowDefinition Height="1.5*" MinHeight="250"/>
-        </Grid.RowDefinitions>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid Margin="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> </Grid.RowDefinitions>
 
-        <!-- HEADER -->
-        <Grid Grid.Row="0" Margin="0,0,0,20">
-            <TextBlock Text="Extraction Module" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Left"/>
+            <Grid Grid.Row="0" Margin="0,0,0,20">
+                <TextBlock Text="Extraction Module" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Left"/>
 
-            <Button Content="❓ Help &amp; Docs" Background="Transparent" Foreground="{StaticResource PrimaryAction}" BorderThickness="0" Cursor="Hand" HorizontalAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold" Click="BtnHelp_Click">
-                <Button.Template>
-                    <ControlTemplate TargetType="Button">
-                        <TextBlock Text="{TemplateBinding Content}" TextDecorations="Underline"/>
-                    </ControlTemplate>
-                </Button.Template>
-            </Button>
-        </Grid>
+                <Button Content="❓ Help &amp; Docs" Background="Transparent" Foreground="{StaticResource PrimaryAction}" BorderThickness="0" Cursor="Hand" HorizontalAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold" Click="BtnHelp_Click">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <TextBlock Text="{TemplateBinding Content}" TextDecorations="Underline"/>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </Grid>
 
-        <!-- GLOBAL SETTINGS -->
-        <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,0,0,15">
-            <StackPanel>
-                <TextBlock Text="Global Extraction Settings" FontWeight="Bold" FontSize="16" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,15"/>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="20"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
+            <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,0,0,15">
+                <StackPanel>
+                    <TextBlock Text="Global Extraction Settings" FontWeight="Bold" FontSize="16" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,15"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="Environment:" Style="{StaticResource LabelStyle}"/>
-                        <ComboBox x:Name="CmbExtEnv" Style="{StaticResource InputStyle}" Margin="0" SelectedIndex="0" SelectionChanged="CmbExtEnv_SelectionChanged">
-                            <ComboBoxItem Content="D000 (D)" Tag="D"/>
-                            <ComboBoxItem Content="Q000 (Q)" Tag="Q"/>
-                        </ComboBox>
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="2">
-                        <TextBlock Text="Channel:" Style="{StaticResource LabelStyle}"/>
-                        <ComboBox x:Name="CmbExtChannel" Style="{StaticResource InputStyle}" Margin="0" SelectedIndex="0" SelectionChanged="CmbExtChannel_SelectionChanged">
-                            <ComboBoxItem Content="C01" Tag="C01"/>
-                            <ComboBoxItem Content="C03" Tag="C03"/>
-                            <ComboBoxItem Content="C05" Tag="C05"/>
-                        </ComboBox>
-                    </StackPanel>
-                </Grid>
-            </StackPanel>
-        </Border>
-
-        <!-- TABS -->
-        <TabControl Grid.Row="2" Background="Transparent" BorderThickness="0" Margin="0,0,0,15">
-
-            <!-- TAB 1: SINGLE -->
-            <TabItem Header="📄 Single Contract" FontSize="14" FontWeight="SemiBold">
-                <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0">
-                    <StackPanel>
-                        <TextBlock Text="Extract a specific contract or demand from the selected environment." Margin="0,0,0,15" Foreground="{StaticResource TextSecondary}"/>
-
-                        <StackPanel Margin="0,0,0,15" Orientation="Horizontal">
-                            <TextBlock Text="Input Type:" Style="{StaticResource LabelStyle}" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                            <RadioButton x:Name="RbSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="InputType_Checked"/>
-                            <RadioButton x:Name="RbSearchDemand" Content="Demand ID" VerticalAlignment="Center" Cursor="Hand" Checked="InputType_Checked"/>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Environment:" Style="{StaticResource LabelStyle}"/>
+                            <ComboBox x:Name="CmbExtEnv" Style="{StaticResource InputStyle}" Margin="0" SelectedIndex="0" SelectionChanged="CmbExtEnv_SelectionChanged">
+                                <ComboBoxItem Content="D000 (D)" Tag="D"/>
+                                <ComboBoxItem Content="Q000 (Q)" Tag="Q"/>
+                            </ComboBox>
                         </StackPanel>
 
-                        <TextBlock Text="Contract Number / Demand ID:" Style="{StaticResource LabelStyle}"/>
-                        <TextBox x:Name="TxtExtContract" Style="{StaticResource InputStyle}"/>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="Channel:" Style="{StaticResource LabelStyle}"/>
+                            <ComboBox x:Name="CmbExtChannel" Style="{StaticResource InputStyle}" Margin="0" SelectedIndex="0" SelectionChanged="CmbExtChannel_SelectionChanged">
+                                <ComboBoxItem Content="C01" Tag="C01"/>
+                                <ComboBoxItem Content="C03" Tag="C03"/>
+                                <ComboBoxItem Content="C05" Tag="C05"/>
+                            </ComboBox>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
 
-                        <Button x:Name="BtnRunSingle" Content="Run Single Extraction" Click="BtnRunSingle_Click" Style="{DynamicResource ActionButtonStyle}" HorizontalAlignment="Right" Width="220"/>
-                    </StackPanel>
-                </Border>
-            </TabItem>
+            <TabControl Grid.Row="2" Background="Transparent" BorderThickness="0" Margin="0,0,0,15">
 
-            <!-- TAB 2: BATCH -->
-            <TabItem Header="📁 Batch Extraction (CSV)" FontSize="14" FontWeight="SemiBold">
-                <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0">
+                <TabItem Header="📄 Single Contract" FontSize="14" FontWeight="SemiBold">
+                    <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0">
+                        <StackPanel>
+                            <TextBlock Text="Extract a specific contract or demand from the selected environment." Margin="0,0,0,15" Foreground="{StaticResource TextSecondary}"/>
 
-                    <!-- CORRECTION : Ajout du ScrollViewer pour gérer le contenu long du batch -->
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,10,0">
+                            <StackPanel Margin="0,0,0,15" Orientation="Horizontal">
+                                <TextBlock Text="Input Type:" Style="{StaticResource LabelStyle}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                <RadioButton x:Name="RbSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="InputType_Checked"/>
+                                <RadioButton x:Name="RbSearchDemand" Content="Demand ID" VerticalAlignment="Center" Cursor="Hand" Checked="InputType_Checked"/>
+                            </StackPanel>
+
+                            <TextBlock Text="Contract Number / Demand ID:" Style="{StaticResource LabelStyle}"/>
+                            <TextBox x:Name="TxtExtContract" Style="{StaticResource InputStyle}"/>
+
+                            <Button x:Name="BtnRunSingle" Content="Run Single Extraction" Click="BtnRunSingle_Click" Style="{DynamicResource ActionButtonStyle}" HorizontalAlignment="Right" Width="220"/>
+                        </StackPanel>
+                    </Border>
+                </TabItem>
+
+                <TabItem Header="📁 Batch Extraction (CSV)" FontSize="14" FontWeight="SemiBold">
+                    <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0">
+
                         <StackPanel>
                             <TextBlock Text="Select a CSV or Excel file to extract multiple contracts for the selected environment." Margin="0,0,0,15" Foreground="{StaticResource TextSecondary}"/>
 
-                            <!-- Baseline Management Area -->
                             <Border Background="{StaticResource BackgroundLight}" CornerRadius="4" Padding="12" Margin="0,0,0,20" BorderBrush="{StaticResource BorderDefault}" BorderThickness="1">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -181,136 +166,134 @@
 
                             <Button x:Name="BtnRunBatch" Content="Run Batch Extraction" Click="BtnRunBatch_Click" Style="{DynamicResource ActionButtonStyle}" HorizontalAlignment="Right" Width="220"/>
                         </StackPanel>
-                    </ScrollViewer>
-                </Border>
-            </TabItem>
-        </TabControl>
 
-        <!-- HISTORY ZONE -->
-        <Grid Grid.Row="3" Margin="0,15,0,0">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-
-            <Grid Grid.Row="0" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Session History" FontSize="16" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" Margin="0,0,20,0"/>
-
-                    <!-- Badge KO -->
-                    <Border Background="{StaticResource DangerLight}" BorderBrush="{StaticResource DangerBorder}" BorderThickness="1" CornerRadius="12" Padding="10,4" ToolTip="Number of inactive/erroneous contracts over total extracted">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="Inactive (KO):" FontWeight="SemiBold" Foreground="#C0392B" FontSize="13" Margin="0,0,8,0"/>
-                            <Border Background="{StaticResource Danger}" CornerRadius="10" Padding="8,2" MinWidth="35">
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                    <TextBlock x:Name="TxtKoCount" Text="0" FontWeight="Bold" Foreground="White" FontSize="13"/>
-                                    <TextBlock Text=" / " FontWeight="Bold" Foreground="#FADBD8" FontSize="13"/>
-                                    <TextBlock x:Name="TxtTotalCount" Text="0" FontWeight="Bold" Foreground="White" FontSize="13"/>
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
                     </Border>
-                </StackPanel>
+                </TabItem>
+            </TabControl>
 
-                <!-- Bouton Clear History -->
-                <Button x:Name="BtnClearHistory" Grid.Column="1" Click="BtnClearHistory_Click" Cursor="Hand" BorderThickness="0" Background="Transparent" VerticalAlignment="Center">
-                    <Button.Template>
-                        <ControlTemplate TargetType="Button">
-                            <Border x:Name="BtnBorder" Background="White" BorderBrush="{StaticResource Danger}" BorderThickness="1" CornerRadius="5" Padding="12,6">
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="🗑️" Margin="0,0,6,0" FontSize="14"/>
-                                    <TextBlock x:Name="BtnText" Text="Clear History" Foreground="{StaticResource Danger}" FontWeight="Bold" FontSize="13"/>
-                                </StackPanel>
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="BtnBorder" Property="Background" Value="{StaticResource Danger}"/>
-                                    <Setter TargetName="BtnText" Property="Foreground" Value="White"/>
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Button.Template>
-                </Button>
-            </Grid>
+            <Grid Grid.Row="3" Margin="0,15,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-            <!-- LISTVIEW AVEC SCROLLVIEWER ACTIVÉ -->
-            <ListView x:Name="ListHistory" Grid.Row="1" Background="White" BorderBrush="{StaticResource BorderDefault}" BorderThickness="1" AlternationCount="2"
-                      ScrollViewer.VerticalScrollBarVisibility="Auto"
-                      ScrollViewer.CanContentScroll="True">
-                <ListView.ItemContainerStyle>
-                    <Style TargetType="ListViewItem">
-                        <Setter Property="Padding" Value="5"/>
-                        <Style.Triggers>
-                            <Trigger Property="ItemsControl.AlternationIndex" Value="1">
-                                <Setter Property="Background" Value="#F9F9F9"/>
-                            </Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </ListView.ItemContainerStyle>
-                <ListView.View>
-                    <GridView>
-                        <GridViewColumn Header="Row" DisplayMemberBinding="{Binding RowNum}" Width="45"/>
-                        <GridViewColumn Header="Time" DisplayMemberBinding="{Binding Time}" Width="70"/>
-                        <GridViewColumn Header="Env" Width="55">
-                            <GridViewColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Product}" FontWeight="Bold" Foreground="{StaticResource SecondaryAction}"/>
-                                </DataTemplate>
-                            </GridViewColumn.CellTemplate>
-                        </GridViewColumn>
-                        <GridViewColumn Header="Contract ID" Width="135">
-                            <GridViewColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding ContractId}" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
-                                </DataTemplate>
-                            </GridViewColumn.CellTemplate>
-                        </GridViewColumn>
-                        <GridViewColumn Header="Internal ID" Width="95">
-                            <GridViewColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding InternalId}" Foreground="{StaticResource PrimaryAction}" FontWeight="SemiBold"/>
-                                </DataTemplate>
-                            </GridViewColumn.CellTemplate>
-                        </GridViewColumn>
-                        <GridViewColumn Header="Premium" Width="95">
-                            <GridViewColumn.CellTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="{Binding Premium}" FontWeight="SemiBold" Foreground="#E67E22"/>
-                                        <TextBlock Text=" €" Foreground="#E67E22"/>
+                <Grid Grid.Row="0" Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="Session History" FontSize="16" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" Margin="0,0,20,0"/>
+
+                        <Border Background="{StaticResource DangerLight}" BorderBrush="{StaticResource DangerBorder}" BorderThickness="1" CornerRadius="12" Padding="10,4" ToolTip="Number of inactive/erroneous contracts over total extracted">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Inactive (KO):" FontWeight="SemiBold" Foreground="#C0392B" FontSize="13" Margin="0,0,8,0"/>
+                                <Border Background="{StaticResource Danger}" CornerRadius="10" Padding="8,2" MinWidth="35">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <TextBlock x:Name="TxtKoCount" Text="0" FontWeight="Bold" Foreground="White" FontSize="13"/>
+                                        <TextBlock Text=" / " FontWeight="Bold" Foreground="#FADBD8" FontSize="13"/>
+                                        <TextBlock x:Name="TxtTotalCount" Text="0" FontWeight="Bold" Foreground="White" FontSize="13"/>
                                     </StackPanel>
-                                </DataTemplate>
-                            </GridViewColumn.CellTemplate>
-                        </GridViewColumn>
-                        <GridViewColumn Header="UCON ID" DisplayMemberBinding="{Binding Ucon}" Width="105"/>
-                        <GridViewColumn Header="Demand ID" DisplayMemberBinding="{Binding Hdmd}" Width="105"/>
-                        <GridViewColumn Header="Result" Width="120">
-                            <GridViewColumn.CellTemplate>
-                                <DataTemplate>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <Button x:Name="BtnClearHistory" Grid.Column="1" Click="BtnClearHistory_Click" Cursor="Hand" BorderThickness="0" Background="Transparent" VerticalAlignment="Center">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="BtnBorder" Background="White" BorderBrush="{StaticResource Danger}" BorderThickness="1" CornerRadius="5" Padding="12,6">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock x:Name="Icon" Text="🔴 " Visibility="Collapsed" Margin="0,0,5,0"/>
-                                        <TextBlock x:Name="TxtStatus" Text="{Binding Test}" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}"/>
+                                        <TextBlock Text="🗑️" Margin="0,0,6,0" FontSize="14"/>
+                                        <TextBlock x:Name="BtnText" Text="Clear History" Foreground="{StaticResource Danger}" FontWeight="Bold" FontSize="13"/>
                                     </StackPanel>
-                                    <DataTemplate.Triggers>
-                                        <DataTrigger Binding="{Binding Test}" Value="KO">
-                                            <Setter TargetName="Icon" Property="Visibility" Value="Visible"/>
-                                            <Setter TargetName="TxtStatus" Property="Foreground" Value="#D35400"/>
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding Test}" Value="OK">
-                                            <Setter TargetName="TxtStatus" Property="Foreground" Value="{StaticResource Success}"/>
-                                        </DataTrigger>
-                                    </DataTemplate.Triggers>
-                                </DataTemplate>
-                            </GridViewColumn.CellTemplate>
-                        </GridViewColumn>
-                    </GridView>
-                </ListView.View>
-            </ListView>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="BtnBorder" Property="Background" Value="{StaticResource Danger}"/>
+                                        <Setter TargetName="BtnText" Property="Foreground" Value="White"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </Grid>
+
+                <ListView x:Name="ListHistory" Grid.Row="1" Background="White" BorderBrush="{StaticResource BorderDefault}" BorderThickness="1" AlternationCount="2"
+                          MinHeight="250" MaxHeight="500"
+                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                          ScrollViewer.CanContentScroll="True">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Padding" Value="5"/>
+                            <Style.Triggers>
+                                <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                                    <Setter Property="Background" Value="#F9F9F9"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="Row" DisplayMemberBinding="{Binding RowNum}" Width="45"/>
+                            <GridViewColumn Header="Time" DisplayMemberBinding="{Binding Time}" Width="70"/>
+                            <GridViewColumn Header="Env" Width="55">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Product}" FontWeight="Bold" Foreground="{StaticResource SecondaryAction}"/>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Contract ID" Width="135">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding ContractId}" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Internal ID" Width="95">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding InternalId}" Foreground="{StaticResource PrimaryAction}" FontWeight="SemiBold"/>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Premium" Width="95">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Premium}" FontWeight="SemiBold" Foreground="#E67E22"/>
+                                            <TextBlock Text=" €" Foreground="#E67E22"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="UCON ID" DisplayMemberBinding="{Binding Ucon}" Width="105"/>
+                            <GridViewColumn Header="Demand ID" DisplayMemberBinding="{Binding Hdmd}" Width="105"/>
+                            <GridViewColumn Header="Result" Width="120">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock x:Name="Icon" Text="🔴 " Visibility="Collapsed" Margin="0,0,5,0"/>
+                                            <TextBlock x:Name="TxtStatus" Text="{Binding Test}" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}"/>
+                                        </StackPanel>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding Test}" Value="KO">
+                                                <Setter TargetName="Icon" Property="Visibility" Value="Visible"/>
+                                                <Setter TargetName="TxtStatus" Property="Foreground" Value="#D35400"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Test}" Value="OK">
+                                                <Setter TargetName="TxtStatus" Property="Foreground" Value="{StaticResource Success}"/>
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+            </Grid>
         </Grid>
-    </Grid>
+    </ScrollViewer>
 </UserControl>
