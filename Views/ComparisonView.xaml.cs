@@ -131,6 +131,56 @@ namespace AutoActivator.Gui.Views
             return null;
         }
 
+        // --- BASELINE MANAGEMENT LOGIC ---
+
+        private void BtnAddBaseline_Click(object sender, RoutedEventArgs e)
+        {
+            var openFileDialog = new OpenFileDialog
+            {
+                Filter = "CSV/Excel Files (*.csv;*.xls;*.xlsx)|*.csv;*.xls;*.xlsx|All Files (*.*)|*.*",
+                Title = "Select a file to copy to the Baseline folder"
+            };
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                try
+                {
+                    if (!Directory.Exists(Settings.BaselineDir))
+                        Directory.CreateDirectory(Settings.BaselineDir);
+
+                    string sourcePath = openFileDialog.FileName;
+                    string fileName = Path.GetFileName(sourcePath);
+                    string destPath = Path.Combine(Settings.BaselineDir, fileName);
+
+                    // Copy the file into the Baseline directory (overwrite if exists)
+                    File.Copy(sourcePath, destPath, true);
+                    MessageBox.Show($"File '{fileName}' was successfully added to your baselines!", "Baseline Added", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                    // Reload the smart matcher combo box to include the newly added file
+                    LoadBaselines();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error copying file: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void BtnOpenBaselineFolder_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (!Directory.Exists(Settings.BaselineDir))
+                    Directory.CreateDirectory(Settings.BaselineDir);
+
+                System.Diagnostics.Process.Start("explorer.exe", Settings.BaselineDir);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error opening Baseline folder: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         // --- COMPARISON MODULE LOGIC (MANUAL BROWSING) ---
 
         private void BtnBrowseBase_Click(object sender, RoutedEventArgs e)
@@ -259,9 +309,14 @@ namespace AutoActivator.Gui.Views
             TxtTotalErrors.Text = report.TotalDifferencesFound.ToString("N0");
             TxtScorePercentage.Text = $"{report.GlobalSuccessPercentage}%";
 
-            // --- NEW: Clean, user-friendly Test Scores format in English ---
+            // --- NEW: Clean, user-friendly Test & Product Scores format in English ---
             string testSummary = string.Join(" | ", report.TestMetrics.Select(t => $"{t.Key}: {t.Value.SuccessPercentage}%"));
             string cleanTestScores = $"\n🎯 Test Scores: {testSummary}";
+
+            string productSummary = string.Join(" | ", report.ProductMetrics.Select(p => $"{p.Key}: {p.Value.SuccessPercentage}%"));
+            string cleanProductScores = report.ProductMetrics.Any() ? $"\n📦 Product Scores: {productSummary}" : "";
+
+            string combinedScores = cleanTestScores + cleanProductScores;
             // ---------------------------------------------------------------------------------
 
             // 2. Animate Progress Circle
@@ -275,19 +330,19 @@ namespace AutoActivator.Gui.Views
             if (report.GlobalSuccessPercentage == 100)
             {
                 CircleProgress.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2ECC71")); // Green
-                TxtDashboardTitle.Text = "🎉 Perfect Match!" + cleanTestScores;
+                TxtDashboardTitle.Text = "🎉 Perfect Match!" + combinedScores;
                 TxtDashboardTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2ECC71"));
             }
             else if (report.GlobalSuccessPercentage >= 95)
             {
                 CircleProgress.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F1C40F")); // Yellow
-                TxtDashboardTitle.Text = "⚠️ Minor Discrepancies" + cleanTestScores;
+                TxtDashboardTitle.Text = "⚠️ Minor Discrepancies" + combinedScores;
                 TxtDashboardTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F39C12"));
             }
             else
             {
                 CircleProgress.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E74C3C")); // Red
-                TxtDashboardTitle.Text = "❌ Differences Detected" + cleanTestScores;
+                TxtDashboardTitle.Text = "❌ Differences Detected" + combinedScores;
                 TxtDashboardTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E74C3C"));
             }
 

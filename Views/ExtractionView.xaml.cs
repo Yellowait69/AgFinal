@@ -161,6 +161,53 @@ namespace AutoActivator.Gui.Views
         private void CmbExtEnv_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
         private void CmbExtChannel_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
 
+        // --- BASELINE MANAGEMENT LOGIC ---
+
+        private void BtnAddBaseline_Click(object sender, RoutedEventArgs e)
+        {
+            var openFileDialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "CSV/Excel Files (*.csv;*.xls;*.xlsx)|*.csv;*.xls;*.xlsx|All Files (*.*)|*.*",
+                Title = "Select a file to copy to the Baseline folder"
+            };
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                try
+                {
+                    if (!Directory.Exists(Settings.BaselineDir))
+                        Directory.CreateDirectory(Settings.BaselineDir);
+
+                    string sourcePath = openFileDialog.FileName;
+                    string fileName = Path.GetFileName(sourcePath);
+                    string destPath = Path.Combine(Settings.BaselineDir, fileName);
+
+                    // Copy the file into the Baseline directory (overwrite if exists)
+                    File.Copy(sourcePath, destPath, true);
+                    MessageBox.Show($"File '{fileName}' was successfully added to your baselines!", "Baseline Added", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error copying file: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void BtnOpenBaselineFolder_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (!Directory.Exists(Settings.BaselineDir))
+                    Directory.CreateDirectory(Settings.BaselineDir);
+
+                System.Diagnostics.Process.Start("explorer.exe", Settings.BaselineDir);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error opening Baseline folder: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         // SINGLE EXTRACTION TAB LOGIC
 
         private async void BtnRunSingle_Click(object sender, RoutedEventArgs e)

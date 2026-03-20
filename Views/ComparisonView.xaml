@@ -24,6 +24,7 @@
         <Border Grid.Row="1" Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,20">
             <StackPanel>
 
+                <!-- SMART BASELINE MATCHER -->
                 <Border Background="#F0F8FF" CornerRadius="5" Padding="15" BorderBrush="#3498DB" BorderThickness="1" Margin="0,0,0,20">
                     <StackPanel>
                         <TextBlock Text="💡 Smart Baseline Matcher" FontWeight="Bold" Foreground="#2980B9" Margin="0,0,0,5" FontSize="15"/>
@@ -43,8 +44,28 @@
                                 <ComboBoxItem Content="Q000 (Q)" Tag="Q"/>
                             </ComboBox>
                         </Grid>
+
+                        <!-- NOUVEAU : BOUTONS DE GESTION DES BASELINES -->
+                        <StackPanel Orientation="Horizontal" Margin="0,15,0,0" HorizontalAlignment="Right">
+                            <Button x:Name="BtnAddBaselineComp" Content="➕ Add Baseline" Click="BtnAddBaseline_Click" Background="#9B59B6" Foreground="White" Padding="10,5" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0" FontWeight="SemiBold">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="4"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                            <Button x:Name="BtnOpenBaselineComp" Content="📂 Open Folder" Click="BtnOpenBaselineFolder_Click" Background="#3498DB" Foreground="White" Padding="10,5" BorderThickness="0" Cursor="Hand" FontWeight="SemiBold">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="4"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
+
+                <!-- SÉLECTION MANUELLE -->
                 <TextBlock Text="Or select the base and target CSV files manually below:" Margin="0,0,0,15" Foreground="#7F8C8D" TextWrapping="Wrap"/>
 
                 <TextBlock Text="Base Extraction File:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
@@ -82,6 +103,7 @@
             </StackPanel>
         </Border>
 
+        <!-- DASHBOARD ET RÉSULTATS -->
         <Grid Grid.Row="2" Margin="0,10,0,0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
