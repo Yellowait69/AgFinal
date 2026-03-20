@@ -5,7 +5,7 @@ namespace AutoActivator.Config
 {
     /// <summary>
     /// This file contains the global configuration settings for the AutoActivator application.
-    /// It centrally manages directory paths for input, output, and snapshot files.
+    /// It centrally manages directory paths for input, output, baseline, and snapshot files.
     /// It also handles database connection parameters, including the logic to dynamically
     /// generate the correct connection string based on the target environment (e.g., D000 for Dev, Q000 for Test).
     /// </summary>
@@ -18,6 +18,9 @@ namespace AutoActivator.Config
 
         public static readonly string InputDir = Path.Combine(BaseDir, "data", "input");
         public static readonly string OutputDir = Path.Combine(BaseDir, "data", "output");
+
+        // NOUVEAU : Dossier Baseline pour les fichiers de référence (Smart Matcher)
+        public static readonly string BaselineDir = Path.Combine(BaseDir, "data", "baseline");
 
         public static readonly string SnapshotDir = Path.Combine(OutputDir, "snapshots");
 

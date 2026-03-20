@@ -11,7 +11,7 @@ namespace AutoActivator.Gui
 {
     public partial class MainWindow : Window
     {
-        // Variable partagée pour savoir quel dossier ouvrir quand on clique sur le lien
+        // Shared variable to know which folder/file to open when clicking the hyperlink
         public string LastGeneratedPath { get; set; } = "";
 
         public MainWindow()
@@ -19,7 +19,7 @@ namespace AutoActivator.Gui
             InitializeComponent();
             InitializeDirectories();
 
-            // Définir "Activation" comme l'onglet par défaut au démarrage
+            // Set "Activation" as the default tab on startup
             BtnMenu_Click(BtnActivation, null);
         }
 
@@ -30,6 +30,9 @@ namespace AutoActivator.Gui
                 if (!Directory.Exists(Settings.OutputDir)) Directory.CreateDirectory(Settings.OutputDir);
                 if (!Directory.Exists(Settings.SnapshotDir)) Directory.CreateDirectory(Settings.SnapshotDir);
                 if (!Directory.Exists(Settings.InputDir)) Directory.CreateDirectory(Settings.InputDir);
+
+                // NEW: Create Baseline directory for the Smart Matcher feature
+                if (!Directory.Exists(Settings.BaselineDir)) Directory.CreateDirectory(Settings.BaselineDir);
             }
             catch (Exception ex)
             {
@@ -37,25 +40,35 @@ namespace AutoActivator.Gui
             }
         }
 
-        // --- GESTION DU MENU ET DE LA NAVIGATION ---
+        // --- NEW: Method to route user to the exact Help tab they need ---
+        public void OpenHelpTargetingTab(int tabIndex)
+        {
+            // 1. Simulate a click on the sidebar "Help" button to switch the UI view
+            BtnMenu_Click(BtnHelp, null);
+
+            // 2. Instruct the HelpView to switch to the correct internal tab
+            ViewHelp.SelectTab(tabIndex);
+        }
+
+        // --- SIDEBAR MENU NAVIGATION ---
         private void BtnMenu_Click(object sender, RoutedEventArgs e)
         {
-            // 1. Cacher toutes les vues
+            // 1. Hide all views
             if (ViewActivation != null) ViewActivation.Visibility = Visibility.Collapsed;
             if (ViewExtraction != null) ViewExtraction.Visibility = Visibility.Collapsed;
             if (ViewComparison != null) ViewComparison.Visibility = Visibility.Collapsed;
             if (ViewHelp != null) ViewHelp.Visibility = Visibility.Collapsed;
 
-            // 2. Réinitialiser les couleurs de tous les boutons du menu
+            // 2. Reset colors for all menu buttons to the default dark blue
             var inactiveColor = (SolidColorBrush)new BrushConverter().ConvertFrom("#34495E");
             if (BtnActivation != null) BtnActivation.Background = inactiveColor;
             if (BtnExtraction != null) BtnExtraction.Background = inactiveColor;
             if (BtnComparison != null) BtnComparison.Background = inactiveColor;
             if (BtnHelp != null) BtnHelp.Background = inactiveColor;
 
-            // 3. Afficher la vue demandée et colorer le bouton
-            var activeColor = (SolidColorBrush)new BrushConverter().ConvertFrom("#1ABC9C");
-            var helpColor = (SolidColorBrush)new BrushConverter().ConvertFrom("#8E44AD");
+            // 3. Set the active theme colors
+            var activeColor = (SolidColorBrush)new BrushConverter().ConvertFrom("#1ABC9C"); // Green/Teal
+            var helpColor = (SolidColorBrush)new BrushConverter().ConvertFrom("#8E44AD");   // Purple
 
             var clickedButton = sender as System.Windows.Controls.Button;
 
@@ -81,66 +94,66 @@ namespace AutoActivator.Gui
             }
         }
 
-        // --- MOTEUR ASYNCHRONE GLOBAL (Gère la barre de chargement pour toutes les vues) ---
-        // Cette méthode est "public" pour que les Vues (UserControls) puissent l'appeler.
+        // --- GLOBAL ASYNC ENGINE (Manages progress bar for all views) ---
+        // This method is public so the specific Views (UserControls) can call it.
         public async Task RunProcessAsync(Func<Task> action)
         {
-            // Afficher la barre de chargement et cacher le lien
+            // Show loading bar and hide link
             PrgLoading.Visibility = Visibility.Visible;
             LnkFile.Visibility = Visibility.Collapsed;
             TxtStatus.Foreground = Brushes.Blue;
 
             try
             {
-                // Exécuter l'action asynchrone (demandée par la Vue)
+                // Execute the requested async task
                 await action();
 
-                // Si réussi
+                // On success
                 LnkFile.Visibility = Visibility.Visible;
                 TxtStatus.Foreground = Brushes.Green;
             }
             catch (OperationCanceledException)
             {
-                TxtStatus.Text = "Opération annulée par l'utilisateur.";
+                TxtStatus.Text = "Operation canceled by user.";
                 TxtStatus.Foreground = Brushes.DarkOrange;
             }
             catch (Exception ex)
             {
-                TxtStatus.Text = $"Erreur critique : {ex.Message}";
+                TxtStatus.Text = $"Critical Error: {ex.Message}";
                 TxtStatus.Foreground = Brushes.Red;
-                MessageBox.Show(ex.Message, "Erreur d'exécution", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(ex.Message, "Execution Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 LnkFile.Visibility = Visibility.Visible;
             }
             finally
             {
-                // Cacher la barre de chargement une fois l'opération terminée
+                // Hide loading bar when done
                 PrgLoading.Visibility = Visibility.Collapsed;
             }
         }
 
-        // --- GESTION DU LIEN CLIQUABLE EN BAS DE LA FENETRE ---
+        // --- GLOBAL HYPERLINK CLICK HANDLER ---
         private void Hyperlink_Click(object sender, RoutedEventArgs e)
         {
             try
             {
                 if (Directory.Exists(LastGeneratedPath))
                 {
-                    // Ouvre le dossier
+                    // Open folder
                     Process.Start("explorer.exe", LastGeneratedPath);
                 }
                 else if (File.Exists(LastGeneratedPath))
                 {
-                    // Ouvre le dossier ET sélectionne le fichier spécifique
+                    // Open folder AND select the specific generated file
                     Process.Start("explorer.exe", $"/select,\"{LastGeneratedPath}\"");
                 }
                 else
                 {
-                    MessageBox.Show("Le fichier ou le dossier est introuvable. Il a peut-être été déplacé.", "Introuvable", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show("File or folder not found. It might have been moved or deleted.", "Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Erreur lors de l'ouverture du chemin : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Error opening path: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }

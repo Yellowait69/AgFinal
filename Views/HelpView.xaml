@@ -4,60 +4,153 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0">
-            <TextBlock Text="Help &amp; Documentation Center" FontSize="24" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
+        <StackPanel Grid.Row="0" Margin="0,0,0,15">
+            <TextBlock Text="Help &amp; Documentation Center" FontSize="26" FontWeight="Bold" Foreground="#2C3E50"/>
+            <TextBlock Text="Welcome to the E.T.L Comparison Tool. Discover how to activate, extract, and compare contractual data."
+                       FontSize="14" Foreground="#7F8C8D" Margin="0,5,0,0"/>
         </StackPanel>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,0,0,10">
-            <StackPanel Margin="0,0,15,0">
-                <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,15">
-                    <StackPanel>
-                        <TextBlock Text="Welcome to the E.T.L Comparison Tool" FontWeight="Bold" FontSize="18" Foreground="#2C3E50" Margin="0,0,0,10"/>
-                        <TextBlock Text="This software allows you to activate, extract, and compare contractual data individually or in batches. Please read the instructions below carefully to format your data files correctly and understand potential error codes." TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20"/>
-                    </StackPanel>
-                </Border>
+        <Border Grid.Row="1" Background="#F0F8FF" CornerRadius="5" Padding="15" BorderBrush="#3498DB" BorderThickness="1" Margin="0,0,0,15">
+            <StackPanel>
+                <TextBlock Text="💡 Standard E.T.L Workflow" FontWeight="Bold" FontSize="16" Foreground="#2980B9" Margin="0,0,0,5"/>
+                <TextBlock Text="1. Run a Batch Extraction to get your Base state. 2. Run a Batch Activation to process the contracts. 3. Run another Extraction to get your Target state. 4. Use the Comparison module's Smart Matcher to detect regressions." TextWrapping="Wrap" Foreground="#34495E" LineHeight="20"/>
+            </StackPanel>
+        </Border>
 
-                <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#3498DB" BorderThickness="2" Margin="0,0,0,15">
-                    <StackPanel>
-                        <TextBlock Text="📥 Extraction Module &amp; File Rules (Batch)" FontWeight="Bold" FontSize="18" Foreground="#2C3E50" Margin="0,0,0,10"/>
-                        <TextBlock Text="The extraction module allows you to retrieve data from D000 or Q000 environments. When using batch extraction, your Excel or CSV files MUST adhere to the following templates:" TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,15"/>
-                        <TextBlock Text="1. Search by Contract ID:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,5"/>
-                        <TextBlock Text="The program scans your file looking for a column named exactly 'LISA Contract'. Ensure that your column header has this name, with no extra spaces." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
-                        <Border BorderBrush="#DCDDE1" BorderThickness="1" CornerRadius="4" Margin="20,0,0,15" HorizontalAlignment="Left">
-                            <Image Source="/Images/TemplateContractLisa.png" Width="400" Stretch="Uniform"/>
-                        </Border>
-                        <TextBlock Text="2. Search by Demand ID:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,5"/>
-                        <TextBlock Text="The program looks for a column named 'Value'. Note: the system expects this column to be located on the second row (Row 2) of your Excel file to find all Demand IDs." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
-                        <Border BorderBrush="#DCDDE1" BorderThickness="1" CornerRadius="4" Margin="20,0,0,15" HorizontalAlignment="Left">
-                            <Image Source="/Images/TemplateDemandValue.png" Width="400" Stretch="Uniform"/>
-                        </Border>
-                    </StackPanel>
-                </Border>
+        <TabControl x:Name="HelpTabControl" Grid.Row="2" Background="White" BorderBrush="#DCDDE1" BorderThickness="1">
+            <TabControl.Resources>
+                <Style TargetType="TabItem">
+                    <Setter Property="Padding" Value="20,10"/>
+                    <Setter Property="FontSize" Value="16"/>
+                    <Setter Property="FontWeight" Value="SemiBold"/>
+                    <Setter Property="Foreground" Value="#34495E"/>
+                    <Setter Property="Background" Value="#F8F9FA"/>
+                    <Setter Property="BorderBrush" Value="#DCDDE1"/>
+                    <Style.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="Foreground" Value="#3498DB"/>
+                            <Setter Property="BorderThickness" Value="1,1,1,0"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </TabControl.Resources>
 
-                <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#1ABC9C" BorderThickness="2" Margin="0,0,0,15">
+            <TabItem Header="📥 1. Extraction">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
                     <StackPanel>
-                        <TextBlock Text="⚡ Activation Module &amp; Troubleshooting" FontWeight="Bold" FontSize="18" Foreground="#2C3E50" Margin="0,0,0,10"/>
-                        <TextBlock Text="This module allows you to send payment or activation commands to the target environment. You must set the CUS Code, bureau number (BUCP), and the command (CMDPMT)." TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,15"/>
-                        <TextBlock Text="Common Errors:" FontWeight="Bold" Foreground="#E74C3C" Margin="0,0,0,5"/>
-                        <Border Background="#FDEDEC" CornerRadius="4" Padding="15" BorderBrush="#E74C3C" BorderThickness="1">
+                        <TextBlock Text="Extraction Module &amp; Data Retrieval" FontSize="20" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#34495E" FontSize="14" LineHeight="22" Margin="0,0,0,20">
+                            The extraction module allows you to connect and retrieve data directly from target environments such as <Run FontWeight="Bold">D000</Run> or <Run FontWeight="Bold">Q000</Run>.
+                            It queries specific tables related to your contracts and generates consolidated CSV files ready for deep analysis. All generated files are safely stored in your <Run FontStyle="Italic">data/output</Run> folder.
+                        </TextBlock>
+
+                        <Border Background="#F9F9F9" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,20">
                             <StackPanel>
-                                <TextBlock Text="❌ Error 008 (Job 'addprct')" FontWeight="Bold" Foreground="#C0392B"/>
-                                <TextBlock Text="If during activation, the console or report returns a specific 008 error for the addprct job, it is highly likely that a premium has already been assigned to this contract/demand. The activation is therefore blocked by the central system to prevent duplicates." TextWrapping="Wrap" Foreground="#C0392B" Margin="0,5,0,0"/>
+                                <TextBlock Text="Batch Input File Rules (Excel / CSV)" FontWeight="Bold" FontSize="18" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                                <TextBlock Text="When using the Batch Extraction feature, your input files MUST strictly adhere to the following templates based on your search criteria. If you provide an Excel (.xls/.xlsx) file, the engine will automatically convert it to CSV in the background." TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,15"/>
+
+                                <TextBlock Text="1. Search by Contract ID:" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                                <TextBlock Text="The program scans your file looking for a column named exactly 'LISA Contract'. Ensure that your column header matches this name precisely, without any leading or trailing spaces." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
+                                <Border BorderBrush="#DCDDE1" BorderThickness="1" CornerRadius="4" Margin="20,0,0,20" HorizontalAlignment="Left" Padding="2" Background="White">
+                                    <Image Source="/Images/TemplateContractLisa.png" Width="400" Stretch="Uniform" ToolTip="Example of the LISA Contract column format"/>
+                                </Border>
+
+                                <TextBlock Text="2. Search by Demand ID:" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                                <TextBlock Text="The program looks for a column named 'Value'. Important: The system expects this column header to be located specifically on the second row (Row 2) of your Excel/CSV file to accurately retrieve all Demand IDs." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
+                                <Border BorderBrush="#DCDDE1" BorderThickness="1" CornerRadius="4" Margin="20,0,0,10" HorizontalAlignment="Left" Padding="2" Background="White">
+                                    <Image Source="/Images/TemplateDemandValue.png" Width="400" Stretch="Uniform" ToolTip="Example of the Value column on Row 2"/>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="Session History Tracking" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,15">
+                            At the bottom of the Extraction view, the <Run FontWeight="Bold">Session History</Run> grid allows you to monitor extractions in real-time. Contracts that are not found or raise SQL errors are marked as <Run Foreground="#E74C3C" FontWeight="Bold">KO (Inactive)</Run> and are automatically grouped at the top of the list for quick debugging.
+                        </TextBlock>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="⚡ 2. Activation">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                    <StackPanel>
+                        <TextBlock Text="Activation Module &amp; Job Submission" FontSize="20" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#34495E" FontSize="14" LineHeight="22" Margin="0,0,0,20">
+                            The Activation module acts as the core processor. It allows you to send payment or activation commands directly to the mainframe or target server via MicroFocus REST APIs.
+                        </TextBlock>
+
+                        <TextBlock Text="Required Parameters" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                        <Border Background="#F9F9F9" BorderBrush="#ECF0F1" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock Text="To successfully trigger an activation job, you must properly configure the following values in the UI:" TextWrapping="Wrap" Margin="0,0,0,10" FontSize="14" Foreground="#34495E"/>
+                                <TextBlock Text="• CUS Code: The unique customer or system code." Margin="10,0,0,5" FontSize="14" FontWeight="SemiBold"/>
+                                <TextBlock Text="• BUCP (Bureau Number): Specifies the operational bureau." Margin="10,0,0,5" FontSize="14" FontWeight="SemiBold"/>
+                                <TextBlock Text="• CMDPMT (Command): The specific command string required to execute the payment/activation routine (e.g., 8, X, H)." Margin="10,0,0,5" FontSize="14" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="Background Polling &amp; Safe Cancel" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,20">
+                            Once a batch is launched, the engine continuously polls the Mainframe to check the Job Status (Running, Complete, Failed). You can interrupt this process at any time using the <Run Foreground="#E74C3C" FontWeight="Bold">🛑 Cancel</Run> button. The system will cleanly abort pending jobs without corrupting data.
+                        </TextBlock>
+
+                        <TextBlock Text="Troubleshooting &amp; Common Errors" FontWeight="Bold" FontSize="18" Foreground="#E74C3C" Margin="0,0,0,10"/>
+                        <Border Background="#FDEDEC" CornerRadius="5" Padding="20" BorderBrush="#E74C3C" BorderThickness="1">
+                            <StackPanel>
+                                <TextBlock Text="❌ Error 008 (Job 'addprct')" FontWeight="Bold" FontSize="16" Foreground="#C0392B" Margin="0,0,0,5"/>
+                                <TextBlock Text="If during the activation polling phase the console or report returns a specific '008' error for the 'addprct' job, it indicates a business-rule conflict." TextWrapping="Wrap" Foreground="#C0392B" Margin="0,0,0,10"/>
+                                <TextBlock Text="Cause: It is highly likely that a premium has already been assigned to this contract or demand. The activation is therefore deliberately blocked by the central system to prevent duplicate payments or overriding existing data. These will be logged as 'Already Active' in your final report." TextWrapping="Wrap" Foreground="#C0392B" FontStyle="Italic"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
-                </Border>
+                </ScrollViewer>
+            </TabItem>
 
-                <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#9B59B6" BorderThickness="2" Margin="0,0,0,15">
+            <TabItem Header="📊 3. Comparison">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
                     <StackPanel>
-                        <TextBlock Text="📊 Comparison Module" FontWeight="Bold" FontSize="18" Foreground="#2C3E50" Margin="0,0,0,10"/>
-                        <TextBlock Text="This module analyzes two extracted CSV/Excel files. It automatically detects the tables present in the base file and compares them against the target file. The final report generated in the folder (which can be opened via the blue button) will highlight discrepancies, missing rows, or premium differences." TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20"/>
+                        <TextBlock Text="Deep Comparison Module" FontSize="20" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#34495E" FontSize="14" LineHeight="22" Margin="0,0,0,20">
+                            The Comparison module is your final quality-assurance step. It analyzes two previously extracted CSV files (Base vs. Target) to guarantee that system modifications or activations did not introduce regressions or data corruption.
+                        </TextBlock>
+
+                        <TextBlock Text="🧠 Smart Baseline Matcher (NEW)" FontWeight="Bold" FontSize="18" Foreground="#8E44AD" Margin="0,0,0,10"/>
+                        <Border Background="#F5EEF8" BorderBrush="#9B59B6" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock Text="You no longer need to search for your files manually!" FontWeight="Bold" Foreground="#8E44AD" Margin="0,0,0,10"/>
+                                <TextBlock Text="1. Place your 'golden' baseline CSV files (e.g., Baseline_C01.csv) in the 'data/baseline' folder." TextWrapping="Wrap" Margin="0,0,0,8" FontSize="14" Foreground="#4A235A"/>
+                                <TextBlock Text="2. Select your Baseline and your Target Environment (D or Q) in the blue top menu." TextWrapping="Wrap" Margin="0,0,0,8" FontSize="14" Foreground="#4A235A"/>
+                                <TextBlock Text="3. The engine will instantly scan your output folder and automatically pair your baseline with the MOST RECENT extraction matching your channel and environment!" TextWrapping="Wrap" FontSize="14" Foreground="#4A235A"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="How does the Deep Comparison work?" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                        <Border Background="#F9F9F9" BorderBrush="#ECF0F1" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock Text="1. Smart Filtering: The system scans both files and automatically isolates the MOST RECENT contract entry per Test ID, avoiding false positives from historical data." TextWrapping="Wrap" Margin="0,0,0,10" FontSize="14"/>
+                                <TextBlock Text="2. Data Normalization: Spaces, decimal formats, and null values are standardized so that the engine only compares actual business values." TextWrapping="Wrap" Margin="0,0,0,10" FontSize="14"/>
+                                <TextBlock Text="3. Cell-by-Cell Check: Every row and column is meticulously aligned and compared. Highly volatile columns (like generation timestamps) are safely ignored via the internal Exclusions dictionary." TextWrapping="Wrap" Margin="0,0,0,10" FontSize="14"/>
+                                <TextBlock Text="4. Report Generation: A detailed text report is generated and saved in the output folder. You can open it instantly using the blue 'Open Report Folder' button." TextWrapping="Wrap" FontSize="14"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="Understanding the Dashboard Scores" FontWeight="Bold" FontSize="16" Foreground="#27AE60" Margin="0,0,0,5"/>
+                        <Border Background="#EAFAF1" BorderBrush="#2ECC71" BorderThickness="1" CornerRadius="5" Padding="15">
+                            <StackPanel>
+                                <TextBlock Text="• 🎉 Perfect Match (100%): All tables are identical. No discrepancies were found." Foreground="#27AE60" Margin="0,0,0,8" FontWeight="SemiBold"/>
+                                <TextBlock Text="• ⚠️ Minor Discrepancies (≥ 95%): A few differences were spotted. Check the DataGrid details to see exactly which row/column changed." Foreground="#D35400" Margin="0,0,0,8" FontWeight="SemiBold"/>
+                                <TextBlock Text="• ❌ Differences Detected: Major regressions found. The system calculates success rates per Product and per Test ID so you can pinpoint the exact origin of the failure." Foreground="#C0392B" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-                </Border>
-            </StackPanel>
-        </ScrollViewer>
+                </ScrollViewer>
+            </TabItem>
+
+        </TabControl>
     </Grid>
 </UserControl>

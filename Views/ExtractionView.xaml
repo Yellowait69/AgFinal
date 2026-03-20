@@ -9,9 +9,17 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0">
-            <TextBlock Text="Extraction Module" FontSize="24" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
-        </StackPanel>
+        <Grid Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="Extraction Module" FontSize="24" FontWeight="Bold" Foreground="#2C3E50" HorizontalAlignment="Left"/>
+
+            <Button Content="❓ Help &amp; Docs" Background="Transparent" Foreground="#3498DB" BorderThickness="0" Cursor="Hand" HorizontalAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold" Click="BtnHelp_Click">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <TextBlock Text="{TemplateBinding Content}" TextDecorations="Underline"/>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+        </Grid>
 
         <Border Grid.Row="1" Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,15">
             <StackPanel>
@@ -93,7 +101,7 @@
             <Grid Grid.Row="0" Margin="0,0,0,10">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="Session History" FontWeight="Bold" Foreground="#7F8C8D" Margin="0,0,30,0"/>
-                    <TextBlock Text="Nb Contrats pas actif (KO) : " FontWeight="SemiBold" Foreground="#2C3E50"/>
+                    <TextBlock Text="Inactive Contracts (KO): " FontWeight="SemiBold" Foreground="#2C3E50"/>
                     <TextBlock x:Name="TxtKoCount" Text="0" FontWeight="Bold" Foreground="#E74C3C" FontSize="15"/>
                 </StackPanel>
                 <Button x:Name="BtnClearHistory" Content="🗑️ Clear History" HorizontalAlignment="Right" Padding="12,5" Background="#E74C3C" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold" Click="BtnClearHistory_Click">
@@ -120,7 +128,7 @@
                 </ListView.ItemContainerStyle>
                 <ListView.View>
                     <GridView>
-                        <GridViewColumn Header="Ligne" DisplayMemberBinding="{Binding RowNum}" Width="45"/>
+                        <GridViewColumn Header="Row" DisplayMemberBinding="{Binding RowNum}" Width="45"/>
                         <GridViewColumn Header="Time" DisplayMemberBinding="{Binding Time}" Width="70"/>
                         <GridViewColumn Header="Env" Width="55">
                             <GridViewColumn.CellTemplate>

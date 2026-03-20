@@ -8,7 +8,7 @@ using Microsoft.Win32;
 using AutoActivator.Config;
 using AutoActivator.Models;
 using AutoActivator.Services;
-// Référence explicite pour piloter Excel en arrière-plan
+// Explicit reference to drive Excel in the background
 using Excel = Microsoft.Office.Interop.Excel;
 
 namespace AutoActivator.Gui.Views
@@ -17,52 +17,63 @@ namespace AutoActivator.Gui.Views
     {
         private readonly ExtractionService _extractionService;
 
-        // Collection observable pour mettre à jour l'UI en temps réel
+        // Observable collection to update the UI in real-time
         public ObservableCollection<ExtractionItem> ExtractionHistory { get; set; } = new ObservableCollection<ExtractionItem>();
 
-        // Compteur global des KO
+        // Global KO counter
         private int _koExtractionCount = 0;
 
         public ExtractionView()
         {
             InitializeComponent();
 
-            // Lier l'historique visuel (ListView) à notre collection
+            // Bind the visual history (ListView) to our collection
             ListHistory.ItemsSource = ExtractionHistory;
 
             _extractionService = new ExtractionService();
         }
 
-        // --- NOUVEAU : Fonction utilitaire pour convertir le numéro de ligne en entier ---
+        // -- UI NAVIGATION & MANAGEMENT --
+
+        private void BtnHelp_Click(object sender, System.Windows.RoutedEventArgs e)
+        {
+            if (Window.GetWindow(this) is MainWindow mainWindow)
+            {
+                // 0 corresponds to the Extraction Tab index in the Help module
+                mainWindow.OpenHelpTargetingTab(0);
+            }
+        }
+
+        // --- NEW: Utility function to convert row number to integer ---
         private int GetRowNumValue(string rowNumStr)
         {
             if (int.TryParse(rowNumStr, out int val))
                 return val;
 
-            // Si c'est "-" (extraction unique) ou un texte invalide, on retourne 0
-            // pour qu'il s'affiche tout en haut de son groupe
+            // If it is "-" (single extraction) or invalid text, return 0
+            // so it stays at the top of its group
             return 0;
         }
 
-        // --- NOUVEAU : Fonction centralisée avec tri intelligent (Ascendant) ---
+        // --- NEW: Centralized function with smart sorting (Ascending) ---
         private void AddExtractionItemToHistory(ExtractionItem item)
         {
             int newItemRow = GetRowNumValue(item.RowNum);
             bool isKo = (item.Test == "KO");
 
-            // On s'assure que la modification de la collection se fait bien sur le thread de l'interface graphique
+            // Ensure collection modification happens on the UI thread
             Application.Current.Dispatcher.Invoke(() =>
             {
                 if (isKo)
                 {
-                    // On cherche la bonne position dans le bloc des KO (de l'index 0 jusqu'à _koExtractionCount)
+                    // Find the correct position in the KO block (from index 0 to _koExtractionCount)
                     int insertIndex = 0;
                     while (insertIndex < _koExtractionCount)
                     {
                         int currentItemRow = GetRowNumValue(ExtractionHistory[insertIndex].RowNum);
                         if (currentItemRow > newItemRow)
                         {
-                            break; // On a trouvé un numéro plus grand, on s'insère juste avant
+                            break; // Found a larger number, insert just before it
                         }
                         insertIndex++;
                     }
@@ -75,16 +86,16 @@ namespace AutoActivator.Gui.Views
                         TxtKoCount.Text = _koExtractionCount.ToString();
                     }
                 }
-                else // Statut OK
+                else // Status OK
                 {
-                    // On cherche la bonne position dans le bloc des OK (de _koExtractionCount jusqu'à la fin de la liste)
+                    // Find the correct position in the OK block (from _koExtractionCount to the end of the list)
                     int insertIndex = _koExtractionCount;
                     while (insertIndex < ExtractionHistory.Count)
                     {
                         int currentItemRow = GetRowNumValue(ExtractionHistory[insertIndex].RowNum);
                         if (currentItemRow > newItemRow)
                         {
-                            break; // On a trouvé un numéro plus grand, on s'insère juste avant
+                            break; // Found a larger number, insert just before it
                         }
                         insertIndex++;
                     }
@@ -98,47 +109,47 @@ namespace AutoActivator.Gui.Views
         {
             if (string.IsNullOrWhiteSpace(contract)) return contract;
 
-            // On nettoie les éventuels tirets ou espaces déjà présents
+            // Clean up any existing dashes or spaces
             string clean = contract.Replace("-", "").Replace(" ", "");
 
-            // Si c'est un numéro standard à 12 chiffres, on le formate en XXX-XXXXXXX-XX
+            // If it's a standard 12-digit number, format it as XXX-XXXXXXX-XX
             if (clean.Length == 12)
             {
                 return $"{clean.Substring(0, 3)}-{clean.Substring(3, 7)}-{clean.Substring(10, 2)}";
             }
 
-            // Sinon (ex: Demand ID plus long ou format non standard), on le retourne tel quel
+            // Otherwise (e.g., longer Demand ID or non-standard format), return as is
             return contract;
         }
 
-        // -- GESTION DE L'INTERFACE UTILISATEUR --
+        // -- USER INTERFACE MANAGEMENT --
 
         private void InputType_Checked(object sender, RoutedEventArgs e)
         {
-            // On s'assure que l'élément visuel est bien initialisé avant de vider le texte
+            // Ensure the UI element is initialized before clearing text
             if (TxtExtContract != null)
             {
                 TxtExtContract.Text = string.Empty;
             }
         }
 
-        // Met à jour ou vide le chemin réseau selon le bouton radio, l'environnement et le canal choisis
+        // Updates or clears the network path based on the selected radio button, environment, and channel
         private void UpdateBatchExtCsvPath()
         {
             if (TxtBatchExtCsv != null)
             {
-                // Si la recherche par Contract Number est sélectionnée, on vide le champ
+                // If searching by Contract Number, clear the field
                 if (RbBatchSearchContract != null && RbBatchSearchContract.IsChecked == true)
                 {
                     TxtBatchExtCsv.Text = string.Empty;
                 }
-                // Si la recherche par Demand ID est sélectionnée, on met les chemins réseau par défaut
+                // If searching by Demand ID, set the default network paths
                 else if (RbBatchSearchDemand != null && RbBatchSearchDemand.IsChecked == true)
                 {
                     string envValue = CmbExtEnv?.SelectedItem is ComboBoxItem eItem ? eItem.Tag?.ToString() ?? "D" : "D";
                     string channelValue = CmbExtChannel?.SelectedItem is ComboBoxItem cItem ? cItem.Tag?.ToString() ?? "C01" : "C01";
 
-                    // Génération dynamique du chemin avec le canal et l'environnement
+                    // Dynamic path generation using the channel and environment
                     TxtBatchExtCsv.Text = $@"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_{channelValue}ComparisonsDB_URL_ELIA_LoginPage_{envValue}000.xls";
                 }
             }
@@ -146,7 +157,7 @@ namespace AutoActivator.Gui.Views
 
         private void BatchInputType_Checked(object sender, RoutedEventArgs e) => UpdateBatchExtCsvPath();
 
-        // Événements liés au changement des menus déroulants
+        // Events triggered on dropdown menu changes
         private void CmbExtEnv_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
         private void CmbExtChannel_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
 
@@ -159,10 +170,10 @@ namespace AutoActivator.Gui.Views
             string rawInput = TxtExtContract?.Text.Trim();
             string envValue = "D";
 
-            // On regarde si la recherche se fait par Demand ID via le bouton radio de l'interface
+            // Check if the search is by Demand ID via the radio button
             bool isDemandId = RbSearchDemand?.IsChecked == true;
 
-            // Récupère la valeur de l'environnement depuis la ComboBox
+            // Retrieve the environment value from the ComboBox
             if (CmbExtEnv?.SelectedItem is ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
 
             if (string.IsNullOrEmpty(rawInput))
@@ -190,12 +201,12 @@ namespace AutoActivator.Gui.Views
             {
                 ExtractionResult result = await _extractionService.PerformExtractionAsync(targetValue, env, true, isDemandId);
 
-                // Mettre à jour le chemin global sur la MainWindow
+                // Update the global path on the MainWindow
                 mainWindow.LastGeneratedPath = Settings.OutputDir;
 
                 string displayContract = isDemandId ? FormatContractForDisplay(result.ContractReference) : FormatContractForDisplay(targetValue);
 
-                // Détection de KO si l'internal ID n'est pas trouvé
+                // KO detection if the internal ID is not found
                 string finalTest = (result.InternalId == "Not found" || result.InternalId == "Error") ? "KO" : "OK";
 
                 progress.Report(new ExtractionItem
@@ -218,7 +229,7 @@ namespace AutoActivator.Gui.Views
                 {
                     RowNum = "-",
                     ContractId = targetValue,
-                    InternalId = "Erreur",
+                    InternalId = "Error",
                     Product = env,
                     Premium = "0",
                     Ucon = "N/A",
@@ -248,12 +259,12 @@ namespace AutoActivator.Gui.Views
         public string PrepareCsvFromExcel(string excelFilePath, string env)
         {
             if (!File.Exists(excelFilePath))
-                throw new FileNotFoundException($"Le fichier Excel est introuvable sur le réseau ou en local : {excelFilePath}");
+                throw new FileNotFoundException($"The Excel file cannot be found on the network or locally: {excelFilePath}");
 
             Directory.CreateDirectory(Settings.OutputDir);
 
             string originalFileName = Path.GetFileNameWithoutExtension(excelFilePath);
-            string csvFileName = $"Converti_{originalFileName}_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+            string csvFileName = $"Converted_{originalFileName}_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
             string savedCsvPath = Path.Combine(Settings.OutputDir, csvFileName);
 
             Excel.Application excelApp = new Excel.Application();
@@ -310,12 +321,12 @@ namespace AutoActivator.Gui.Views
 
             var batchService = new BatchExtractionService(_extractionService);
 
-            // Progress gère désormais le tri et le comptage des KO via la nouvelle fonction AddExtractionItemToHistory
+            // Progress now handles sorting and KO counting via the new AddExtractionItemToHistory function
             IProgress<BatchProgressInfo> progress = new Progress<BatchProgressInfo>(info =>
             {
-                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = $"Extraction par lot en cours : {info.CurrentItem} / {info.TotalItems} contrats traités...");
+                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = $"Batch extraction in progress: {info.CurrentItem} / {info.TotalItems} contracts processed...");
 
-                // Détection de KO
+                // KO Detection
                 string status = info.Status;
                 if (info.InternalId == "Not found" || info.InternalId == "Error" || status.Contains("Error") || status.Contains("Not found"))
                 {
@@ -345,16 +356,16 @@ namespace AutoActivator.Gui.Views
                 if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                 {
                     Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = $"Converting Network Excel to CSV for {envValue}000...");
-                    // Excel COM object creation doit rester dans un Task.Run car synchrone et très lourd
+                    // Excel COM object creation must remain in a Task.Run because it is synchronous and heavy
                     actualFile = await Task.Run(() => PrepareCsvFromExcel(filePath, envValue + "000"));
                 }
 
-                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = $"Lancement de l'extraction par lot ({envValue}000)...");
+                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = $"Launching batch extraction ({envValue}000)...");
 
-                // APPEL ASYNCHRONE DU BATCH (Parallélisme massif)
+                // ASYNCHRONOUS BATCH CALL (Massive parallelism)
                 await batchService.PerformBatchExtractionAsync(actualFile, envValue + "000", progress.Report, isDemandId);
 
-                // Mettre à jour le chemin global sur la MainWindow
+                // Update the global path on the MainWindow
                 mainWindow.LastGeneratedPath = Settings.OutputDir;
 
                 Application.Current.Dispatcher.Invoke(() => {
@@ -369,7 +380,7 @@ namespace AutoActivator.Gui.Views
             if (ExtractionHistory != null)
             {
                 ExtractionHistory.Clear();
-                _koExtractionCount = 0; // Remise à zéro du compteur KO
+                _koExtractionCount = 0; // Reset KO counter
                 if (TxtKoCount != null) TxtKoCount.Text = "0";
             }
         }

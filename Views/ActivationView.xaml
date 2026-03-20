@@ -8,9 +8,18 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0">
-            <TextBlock Text="Activation Module" FontSize="24" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
-        </StackPanel>
+        <!-- NOUVEAU HEADER AVEC LE LIEN VERS HELP & DOCS -->
+        <Grid Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="Activation Module" FontSize="24" FontWeight="Bold" Foreground="#2C3E50" HorizontalAlignment="Left"/>
+
+            <Button Content="❓ Help &amp; Docs" Background="Transparent" Foreground="#3498DB" BorderThickness="0" Cursor="Hand" HorizontalAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold" Click="BtnHelp_Click">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <TextBlock Text="{TemplateBinding Content}" TextDecorations="Underline"/>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+        </Grid>
 
         <Border Grid.Row="1" Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,15">
             <StackPanel>

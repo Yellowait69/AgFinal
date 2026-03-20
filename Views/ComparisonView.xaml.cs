@@ -14,7 +14,7 @@ using AutoActivator.Services;
 
 namespace AutoActivator.Gui.Views
 {
-    // Petite classe pour formater l'affichage dans le DataGrid de l'interface
+    // Helper class to format the DataGrid display in the UI
     public class UIComparisonResult
     {
         public string TableName { get; set; }
@@ -33,7 +33,105 @@ namespace AutoActivator.Gui.Views
             InitializeComponent();
         }
 
-        // COMPARISON MODULE LOGIC
+        // -- UI NAVIGATION & MANAGEMENT --
+
+        private void BtnHelp_Click(object sender, RoutedEventArgs e)
+        {
+            if (Window.GetWindow(this) is MainWindow mainWindow)
+            {
+                // 2 corresponds to the Comparison Tab index in the Help module
+                mainWindow.OpenHelpTargetingTab(2);
+            }
+        }
+
+        // --- NEW: SMART BASELINE MATCHER LOGIC ---
+
+        // Reloads the baseline list every time the user opens the Comparison tab
+        private void UserControl_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if (e.NewValue is bool isVisible && isVisible)
+            {
+                LoadBaselines();
+            }
+        }
+
+        private void LoadBaselines()
+        {
+            if (Directory.Exists(Settings.BaselineDir))
+            {
+                var files = Directory.GetFiles(Settings.BaselineDir, "*.csv").Select(f => Path.GetFileName(f)).ToList();
+                files.Insert(0, "-- Select a Baseline --"); // Default placeholder
+
+                // Unhook event to prevent firing during initialization
+                CmbBaselineSelector.SelectionChanged -= SmartMatcher_Changed;
+                CmbBaselineSelector.ItemsSource = files;
+                CmbBaselineSelector.SelectedIndex = 0;
+                CmbBaselineSelector.SelectionChanged += SmartMatcher_Changed;
+            }
+        }
+
+        // Triggered when changing either the Baseline file OR the Environment (D/Q)
+        private void SmartMatcher_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            // Safety check to prevent crashes during UI initialization
+            if (CmbBaselineSelector == null || CmbSmartEnv == null || TxtBaseFile == null || TxtTargetFile == null) return;
+
+            if (CmbBaselineSelector.SelectedIndex > 0 && CmbBaselineSelector.SelectedItem is string selectedFileName)
+            {
+                // 1. Set the Base File (Baseline)
+                string basePath = Path.Combine(Settings.BaselineDir, selectedFileName);
+                TxtBaseFile.Text = basePath;
+
+                // 2. Get the selected target environment (D or Q)
+                string envLetter = CmbSmartEnv.SelectedItem is ComboBoxItem item ? item.Tag?.ToString() ?? "D" : "D";
+
+                // 3. Automatically find the latest matching extraction for THIS channel and THIS environment
+                string targetPath = FindLatestMatchingExtraction(selectedFileName, envLetter);
+
+                if (!string.IsNullOrEmpty(targetPath))
+                {
+                    TxtTargetFile.Text = targetPath;
+                }
+                else
+                {
+                    TxtTargetFile.Text = "";
+                    MessageBox.Show($"No recent extraction found for {selectedFileName} in environment {envLetter}000.\nPlease ensure you have run an extraction recently.", "No Match Found", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+
+                CheckEnableRunButton();
+            }
+            else if (CmbBaselineSelector.SelectedIndex == 0)
+            {
+                // Clear fields if the default placeholder is selected
+                TxtBaseFile.Text = "";
+                TxtTargetFile.Text = "";
+                CheckEnableRunButton();
+            }
+        }
+
+        private string FindLatestMatchingExtraction(string baselineName, string envLetter)
+        {
+            // Detect the Channel in the baseline filename
+            string[] channels = { "C01", "C03", "C05" };
+            string foundChannel = channels.FirstOrDefault(c => baselineName.IndexOf(c, StringComparison.OrdinalIgnoreCase) >= 0);
+
+            if (foundChannel != null && Directory.Exists(Settings.OutputDir))
+            {
+                // We search specifically for files containing the channel AND the environment letter
+                // e.g., Extraction_Baseline_C01_D_20231026_143000.csv
+                string searchPattern = $"*{foundChannel}*_{envLetter}_*.csv";
+
+                var files = Directory.GetFiles(Settings.OutputDir, searchPattern);
+                if (files.Any())
+                {
+                    // Sort by creation time descending (newest first)
+                    return files.OrderByDescending(f => File.GetCreationTime(f)).First();
+                }
+            }
+            return null;
+        }
+
+        // --- COMPARISON MODULE LOGIC (MANUAL BROWSING) ---
 
         private void BtnBrowseBase_Click(object sender, RoutedEventArgs e)
         {
@@ -41,11 +139,16 @@ namespace AutoActivator.Gui.Views
             {
                 Filter = "CSV Files|*.csv",
                 Title = "Select the base extraction CSV file",
-                InitialDirectory = Path.GetFullPath(Settings.OutputDir)
+                InitialDirectory = Directory.Exists(Settings.BaselineDir) ? Path.GetFullPath(Settings.BaselineDir) : Path.GetFullPath(Settings.OutputDir)
             };
 
             if (openFileDialog.ShowDialog() == true)
             {
+                // Reset the smart matcher to default without triggering the event to avoid clearing the manual selection
+                CmbBaselineSelector.SelectionChanged -= SmartMatcher_Changed;
+                CmbBaselineSelector.SelectedIndex = 0;
+                CmbBaselineSelector.SelectionChanged += SmartMatcher_Changed;
+
                 TxtBaseFile.Text = openFileDialog.FileName;
                 CheckEnableRunButton();
             }
@@ -62,6 +165,11 @@ namespace AutoActivator.Gui.Views
 
             if (openFileDialog.ShowDialog() == true)
             {
+                // Reset the smart matcher to default without triggering the event to avoid clearing the manual selection
+                CmbBaselineSelector.SelectionChanged -= SmartMatcher_Changed;
+                CmbBaselineSelector.SelectedIndex = 0;
+                CmbBaselineSelector.SelectionChanged += SmartMatcher_Changed;
+
                 TxtTargetFile.Text = openFileDialog.FileName;
                 CheckEnableRunButton();
             }
@@ -84,13 +192,13 @@ namespace AutoActivator.Gui.Views
 
             BtnRunComparison.IsEnabled = false;
 
-            // Cacher le tableau de bord précédent et afficher le message d'attente
+            // Hide the dashboard and show the waiting message
             PanelDashboard.Visibility = Visibility.Collapsed;
             GridResults.Visibility = Visibility.Collapsed;
             TxtComparisonWaiting.Visibility = Visibility.Visible;
-            TxtComparisonWaiting.Text = "Analyse approfondie en cours...\n(Filtrage du contrat le plus récent par Test ID). Veuillez patienter.";
+            TxtComparisonWaiting.Text = "Deep analysis in progress...\n(Filtering the latest contract by Test ID). Please wait.";
 
-            // Appel de la méthode de chargement asynchrone sur la MainWindow
+            // Async call to the main window
             await mainWindow.RunProcessAsync(async () =>
             {
                 await Task.Run(async () =>
@@ -98,13 +206,13 @@ namespace AutoActivator.Gui.Views
                     var orchestrator = new ComparisonOrchestrator();
                     try
                     {
-                        // Lancer la comparaison (Filtrage intelligent inclus)
+                        // Run comparison
                         var report = orchestrator.RunFullComparison(baseFile, targetFile);
 
-                        // Générer le texte du rapport (pour la sauvegarde fichier texte classique)
+                        // Generate report text for saving
                         string reportContent = GenerateReportText(report);
 
-                        // Créer un nom de fichier avec un ID unique
+                        // Generate unique file name
                         string[] fileIds = orchestrator.GetFileIds(baseFile);
                         string uniqueId = fileIds.Length >= 3 ? fileIds[2] : "UnknownID";
                         string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
@@ -112,16 +220,15 @@ namespace AutoActivator.Gui.Views
                         Directory.CreateDirectory(Settings.OutputDir);
                         string reportFilePath = Path.Combine(Settings.OutputDir, $"ComparisonReport_{uniqueId}_{timestamp}.txt");
 
-                        // Sauvegarder le rapport complet sur le disque en mode Asynchrone
+                        // Save the full report asynchronously
                         using (StreamWriter writer = new StreamWriter(reportFilePath, false, Encoding.UTF8))
                         {
                             await writer.WriteAsync(reportContent);
                         }
 
-                        // METTRE À JOUR LA NOUVELLE INTERFACE VISUELLE SUR LE THREAD UI
+                        // UPDATE UI ON THE MAIN THREAD
                         Application.Current.Dispatcher.Invoke(() =>
                         {
-                            // Transmission du chemin à la MainWindow pour le lien global
                             mainWindow.LastGeneratedPath = Settings.OutputDir;
                             UpdateDashboardUI(report);
                         });
@@ -130,7 +237,7 @@ namespace AutoActivator.Gui.Views
                     {
                         Application.Current.Dispatcher.Invoke(() =>
                         {
-                            TxtComparisonWaiting.Text = $"ERREUR CRITIQUE:\n{ex.Message}\n\n{ex.StackTrace}";
+                            TxtComparisonWaiting.Text = $"CRITICAL ERROR:\n{ex.Message}\n\n{ex.StackTrace}";
                             TxtComparisonWaiting.Foreground = new SolidColorBrush(Colors.Red);
                         });
                     }
@@ -142,64 +249,49 @@ namespace AutoActivator.Gui.Views
 
         private void UpdateDashboardUI(ComparisonReport report)
         {
-            // Basculer l'affichage
+            // Toggle visibility
             TxtComparisonWaiting.Visibility = Visibility.Collapsed;
             PanelDashboard.Visibility = Visibility.Visible;
             GridResults.Visibility = Visibility.Visible;
 
-            // 1. Mettre à jour les textes des statistiques
+            // 1. Update stats texts
             TxtTotalRows.Text = report.TotalRowsCompared.ToString("N0");
             TxtTotalErrors.Text = report.TotalDifferencesFound.ToString("N0");
             TxtScorePercentage.Text = $"{report.GlobalSuccessPercentage}%";
 
-            // --- NOUVEAU : Préparation du message informatif sur les tests et les produits ---
-            string infoTests = "";
-            string productSummary = string.Join(" | ", report.ProductMetrics.Select(p => $"Produit {p.Key} : {p.Value.SuccessPercentage}%"));
-
-            if (report.MissingInBase.Any() || report.MissingInTarget.Any())
-            {
-                infoTests = $"\n(Info: {report.ComparedTestsCount} tests comparés. {report.MissingInTarget.Count} absents cible, {report.MissingInBase.Count} absents base)";
-            }
-            else
-            {
-                infoTests = $"\n({report.ComparedTestsCount} tests comparés)";
-            }
-
-            infoTests += $"\n📊 Scores Produits : {productSummary}";
+            // --- NEW: Clean, user-friendly Test Scores format in English ---
+            string testSummary = string.Join(" | ", report.TestMetrics.Select(t => $"{t.Key}: {t.Value.SuccessPercentage}%"));
+            string cleanTestScores = $"\n🎯 Test Scores: {testSummary}";
             // ---------------------------------------------------------------------------------
 
-            // 2. Animer le Cercle de Progression
-            // L'Ellipse fait 140 de largeur, StrokeThickness = 12. Rayon = (140 - 12) / 2 = 64
+            // 2. Animate Progress Circle
             double radius = 64.0;
             double circumference = 2 * Math.PI * radius;
-
-            // Calculer la longueur du trait en fonction du pourcentage
             double dashLength = (report.GlobalSuccessPercentage / 100.0) * circumference;
 
-            // Appliquer au cercle (DashLength, EspaceVide) divisé par StrokeThickness
             CircleProgress.StrokeDashArray = new DoubleCollection { dashLength / 12.0, circumference };
 
-            // Changer la couleur en fonction du score
+            // Change color and set a clean title based on the score
             if (report.GlobalSuccessPercentage == 100)
             {
-                CircleProgress.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2ECC71")); // Vert
-                TxtDashboardTitle.Text = "🎉 Parfait ! Aucune différence détectée." + infoTests;
+                CircleProgress.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2ECC71")); // Green
+                TxtDashboardTitle.Text = "🎉 Perfect Match!" + cleanTestScores;
                 TxtDashboardTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2ECC71"));
             }
             else if (report.GlobalSuccessPercentage >= 95)
             {
-                CircleProgress.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F1C40F")); // Jaune
-                TxtDashboardTitle.Text = "⚠️ Presque parfait, quelques anomalies." + infoTests;
+                CircleProgress.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F1C40F")); // Yellow
+                TxtDashboardTitle.Text = "⚠️ Minor Discrepancies" + cleanTestScores;
                 TxtDashboardTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F39C12"));
             }
             else
             {
-                CircleProgress.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E74C3C")); // Rouge
-                TxtDashboardTitle.Text = "❌ Des différences majeures ont été trouvées." + infoTests;
+                CircleProgress.Stroke = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E74C3C")); // Red
+                TxtDashboardTitle.Text = "❌ Differences Detected" + cleanTestScores;
                 TxtDashboardTitle.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E74C3C"));
             }
 
-            // 3. Préparer et trier la liste pour le DataGrid
+            // 3. Prepare and sort the DataGrid list
             var uiResults = new List<UIComparisonResult>();
             foreach (var r in report.FileResults)
             {
@@ -208,11 +300,11 @@ namespace AutoActivator.Gui.Views
                     TableName = r.TableName,
                     Status = r.Status,
                     IsMatch = r.IsMatch,
-                    ErrorDetails = string.IsNullOrWhiteSpace(r.ErrorDetails) ? "Aucune différence détectée." : r.ErrorDetails.Trim()
+                    ErrorDetails = string.IsNullOrWhiteSpace(r.ErrorDetails) ? "No differences detected." : r.ErrorDetails.Trim()
                 });
             }
 
-            // MAGIE : On trie la liste pour que les erreurs (IsMatch = false) apparaissent TOUJOURS EN HAUT !
+            // Sort so that errors (IsMatch = false) always appear at the top
             var sortedResults = uiResults.OrderBy(x => x.IsMatch).ThenBy(x => x.TableName).ToList();
 
             GridResults.ItemsSource = sortedResults;
@@ -226,7 +318,7 @@ namespace AutoActivator.Gui.Views
             sb.AppendLine("                 COMPARISON REPORT                   ");
             sb.AppendLine("=====================================================");
 
-            // --- SECTION D'INFORMATIONS SUR LES TESTS ---
+            // --- TESTS METRICS SECTION ---
             sb.AppendLine($"[TESTS METRICS]");
             sb.AppendLine($"Tests in Base File   : {report.TotalBaseTests}");
             sb.AppendLine($"Tests in Target File : {report.TotalTargetTests}");
@@ -245,25 +337,25 @@ namespace AutoActivator.Gui.Views
                 }
             }
 
-            // --- NOUVEAU : SCORES PAR PRODUIT ---
-            sb.AppendLine("\n[SCORES PAR PRODUIT]");
+            // --- PRODUCT SCORES ---
+            sb.AppendLine("\n[PRODUCT SCORES]");
             if (report.ProductMetrics.Any())
             {
                 foreach (var kvp in report.ProductMetrics.OrderByDescending(x => x.Value.SuccessPercentage))
                 {
-                    sb.AppendLine($"- Produit {kvp.Key,-10} : {kvp.Value.SuccessPercentage,6}%  ({kvp.Value.TotalRows - kvp.Value.ErrorRows}/{kvp.Value.TotalRows} lignes OK)");
+                    sb.AppendLine($"- Product {kvp.Key,-10} : {kvp.Value.SuccessPercentage,6}%  ({kvp.Value.TotalRows - kvp.Value.ErrorRows}/{kvp.Value.TotalRows} rows OK)");
                 }
             }
             else
             {
-                sb.AppendLine("- Aucun produit détecté.");
+                sb.AppendLine("- No products detected.");
             }
 
-            // --- NOUVEAU : SCORES PAR TEST ID ---
-            sb.AppendLine("\n[SCORES PAR TEST ID]");
+            // --- TEST ID SCORES ---
+            sb.AppendLine("\n[TEST ID SCORES]");
             foreach (var kvp in report.TestMetrics.OrderBy(x => x.Key))
             {
-                sb.AppendLine($"- Test {kvp.Key,-13} : {kvp.Value.SuccessPercentage,6}%  ({kvp.Value.TotalRows - kvp.Value.ErrorRows}/{kvp.Value.TotalRows} lignes OK)");
+                sb.AppendLine($"- Test {kvp.Key,-13} : {kvp.Value.SuccessPercentage,6}%  ({kvp.Value.TotalRows - kvp.Value.ErrorRows}/{kvp.Value.TotalRows} rows OK)");
             }
 
             sb.AppendLine("-----------------------------------------------------");
@@ -316,7 +408,7 @@ namespace AutoActivator.Gui.Views
                 }
                 else
                 {
-                    MessageBox.Show("Aucun dossier de génération n'est disponible pour le moment.", "Info", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show("No output folder is available at the moment.", "Info", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
         }

@@ -67,7 +67,7 @@
             <Button x:Name="BtnActivation" Content="⚡ Activation" Padding="12" Margin="10,5" Click="BtnMenu_Click" Background="#1ABC9C" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
             <Button x:Name="BtnExtraction" Content="📥 Extraction" Padding="12" Margin="10,5" Click="BtnMenu_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
             <Button x:Name="BtnComparison" Content="📊 Comparison" Padding="12" Margin="10,5" Click="BtnMenu_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
-            <Button x:Name="BtnHelp" Content="❓ Help &amp; Docs" Padding="12" Margin="10,5" Click="BtnMenu_Click" Background="#8E44AD" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
+            <Button x:Name="BtnHelp" Content="❓ Help &amp; Docs" Padding="12" Margin="10,5" Click="BtnMenu_Click" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" FontWeight="Bold"/>
         </StackPanel>
 
         <Grid Grid.Column="1" Margin="25">

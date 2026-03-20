@@ -25,10 +25,10 @@ namespace AutoActivator.Services
             if (!File.Exists(filePath))
                 throw new FileNotFoundException("The specified CSV file could not be found.", filePath);
 
-            // CORRECTION : Utilisation d'un dictionnaire pour conserver l'ordre STRICT d'origine via l'index de la liste
+            // FIX: Use a dictionary to strictly preserve the original order via the list index
             ConcurrentDictionary<int, string> globalCombinedResults = new ConcurrentDictionary<int, string>();
 
-            // NOUVEAU : On ajoute le numéro de ligne (rowNum) dans la liste pour le transmettre plus tard
+            // NEW: Add the row number (rowNum) to the list to transmit it later
             List<(int rowNum, string contractNumber, string rawTestId)> contractsToProcess = new List<(int, string, string)>();
 
             using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
@@ -39,12 +39,12 @@ namespace AutoActivator.Services
                 int contractIndex = -1, testIdIndex = -1;
                 bool headerFound = false;
 
-                int lineNumber = 0; // NOUVEAU : Compteur de ligne globale
+                int lineNumber = 0; // NEW: Global line counter
 
-                // --- 1. RECHERCHE INTELLIGENTE DE L'EN-TÊTE ---
+                // --- 1. SMART HEADER SEARCH ---
                 while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
-                    lineNumber++; // NOUVEAU : Incrémente pour les premières lignes jusqu'à l'en-tête
+                    lineNumber++; // NEW: Increment for the first lines until the header
 
                     if (line.StartsWith("\uFEFF")) line = line.Substring(1);
                     if (string.IsNullOrWhiteSpace(line)) continue;
@@ -70,12 +70,12 @@ namespace AutoActivator.Services
                 }
 
                 if (!headerFound)
-                    throw new Exception("Impossible de trouver la colonne 'Value', 'Demand' ou 'Contract' dans le fichier CSV.");
+                    throw new Exception("Unable to find 'Value', 'Demand', or 'Contract' column in the CSV file.");
 
-                // --- 2. LECTURE DES DONNÉES EN MÉMOIRE ---
+                // --- 2. READING DATA INTO MEMORY ---
                 while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
-                    lineNumber++; // NOUVEAU : Incrémente pour chaque ligne de données
+                    lineNumber++; // NEW: Increment for each data line
 
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
@@ -85,7 +85,7 @@ namespace AutoActivator.Services
                     {
                         string contractNumber = columns[contractIndex].Replace("=", "").Replace("\"", "").Trim();
 
-                        // On ignore la ligne parasite générée dans certains exports Excel
+                        // Ignore the stray line generated in some Excel exports
                         if (contractNumber.Equals("End of File", StringComparison.OrdinalIgnoreCase))
                         {
                             continue;
@@ -97,24 +97,24 @@ namespace AutoActivator.Services
 
                         if (!string.IsNullOrEmpty(contractNumber))
                         {
-                            // NOUVEAU : On sauvegarde la ligne exacte
+                            // NEW: Save the exact line number
                             contractsToProcess.Add((lineNumber, contractNumber, rawTestId));
                         }
                     }
                 }
             }
 
-            // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
-            // CORRECTION : Réduction de 50 à 10 pour ne pas foudroyer le Pool de connexions SQL
+            // --- 3. MASSIVE PARALLEL PROCESSING ---
+            // FIX: Reduced concurrency from 50 to 10 to avoid exhausting the SQL Connection Pool
             var semaphore = new SemaphoreSlim(10);
 
-            // Initialisation des compteurs pour le suivi de la progression
+            // Initialize counters for progress tracking
             int totalItems = contractsToProcess.Count;
             int processedItems = 0;
 
             var tasks = contractsToProcess.Select((item, index) => Task.Run(async () =>
             {
-                // Micro-décalage pour ne pas assommer le Pool de connexion SQL à la milliseconde 0
+                // Micro-delay to prevent hitting the SQL Connection Pool all at millisecond 0
                 await Task.Delay(Math.Min(index * 20, 2000)).ConfigureAwait(false);
 
                 await semaphore.WaitAsync().ConfigureAwait(false);
@@ -145,7 +145,7 @@ namespace AutoActivator.Services
                             localReport.Append(result.EliaContent).AppendLine();
                         }
 
-                        // Ajout sécurisé à l'index exact du contrat (garantit le même ordre que le fichier lu)
+                        // Thread-safe addition at the exact contract index (guarantees the same order as the input file)
                         globalCombinedResults.TryAdd(index, localReport.ToString());
                     }
 
@@ -153,7 +153,7 @@ namespace AutoActivator.Services
 
                     onProgressUpdate?.Invoke(new BatchProgressInfo
                     {
-                        RowNum = item.rowNum, // NOUVEAU : Transmission du numéro de ligne
+                        RowNum = item.rowNum, // NEW: Transmit the row number
                         ContractId = displayContract,
                         InternalId = result.InternalId,
                         Product = env,
@@ -170,7 +170,7 @@ namespace AutoActivator.Services
                     int current = Interlocked.Increment(ref processedItems);
                     onProgressUpdate?.Invoke(new BatchProgressInfo
                     {
-                        RowNum = item.rowNum, // NOUVEAU : Transmission du numéro de ligne en cas d'erreur
+                        RowNum = item.rowNum, // NEW: Transmit the row number in case of error
                         ContractId = $"{item.contractNumber} (FAILED)",
                         InternalId = "Error",
                         Product = env,
@@ -188,11 +188,11 @@ namespace AutoActivator.Services
                 }
             })).ToList();
 
-            // Lancement de toutes les requêtes en parallèle et attente de leur fin sans bloquer l'UI
+            // Launch all requests in parallel and wait for them to finish without blocking the UI
             await Task.WhenAll(tasks).ConfigureAwait(false);
 
-            // --- 4. SAUVEGARDE DU RAPPORT GLOBAL ---
-            // CORRECTION : Reconstitution du fichier dans l'ordre strict initial de 0 à totalItems
+            // --- 4. SAVING THE GLOBAL REPORT ---
+            // FIX: Reconstruct the file in the strict initial order from 0 to totalItems
             StringBuilder finalCombinedReport = new StringBuilder();
             for (int i = 0; i < totalItems; i++)
             {
@@ -202,28 +202,15 @@ namespace AutoActivator.Services
                 }
             }
 
-            string fileSignature = "NoContract";
-            string sizeTag = "Big";
-
-            // CORRECTION : On prend les IDs d'origine pour que le nom de fichier soit toujours calculé sur les mêmes bases
-            var idList = contractsToProcess.Select(c => c.rawTestId).ToList();
-
-            if (idList.Count > 0)
-            {
-                var firstThree = idList.Select(c => c.Split('_')[0].Replace(" ", "")).Distinct().Take(3);
-                fileSignature = string.Join("_", firstThree);
-
-                if (idList.Count > 3)
-                    fileSignature += $"_#{idList.Count - 3}other";
-                else if (idList.Count == 1)
-                    sizeTag = "Uniq";
-            }
-
+            // NEW: Explicit filename based on the input file for the Smart Baseline Matcher
+            string origFileName = Path.GetFileNameWithoutExtension(filePath);
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             Directory.CreateDirectory(Settings.OutputDir);
 
             char envLetter = !string.IsNullOrEmpty(env) ? char.ToUpper(env[0]) : 'U';
-            string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_{sizeTag}_{fileSignature}_{timestamp}.csv");
+
+            // Output format: "Extraction_Converted_KEY_C01..._D_20231026_143000.csv"
+            string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{origFileName}_{envLetter}_{timestamp}.csv");
 
             string contentToWrite = finalCombinedReport.Length > 0 ? finalCombinedReport.ToString() : "NO CONTRACT FOUND.";
 
@@ -236,7 +223,7 @@ namespace AutoActivator.Services
             }
             catch (IOException)
             {
-                string alternativePath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_{sizeTag}_{fileSignature}_{timestamp}_{Guid.NewGuid().ToString().Substring(0, 4)}.csv");
+                string alternativePath = Path.Combine(Settings.OutputDir, $"Extraction_{origFileName}_{envLetter}_{timestamp}_{Guid.NewGuid().ToString().Substring(0, 4)}.csv");
                 using (StreamWriter writer = new StreamWriter(alternativePath, false, Encoding.UTF8))
                 {
                     await writer.WriteAsync(contentToWrite).ConfigureAwait(false);
