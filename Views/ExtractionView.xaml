@@ -43,11 +43,12 @@
 
     <Grid Margin="10">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <!-- AJOUT DU MINHEIGHT ICI POUR FORCER L'AFFICHAGE DU TABLEAU -->
-            <RowDefinition Height="*" MinHeight="250"/>
+            <RowDefinition Height="Auto"/> <!-- Header -->
+            <RowDefinition Height="Auto"/> <!-- Global Settings -->
+            <!-- CORRECTION : Remplacement de "Auto" par "*" pour que l'onglet s'adapte à l'espace restant -->
+            <RowDefinition Height="*"/>
+            <!-- CORRECTION : Utilisation d'une proportion dynamique et d'une hauteur minimale pour l'historique -->
+            <RowDefinition Height="1.5*" MinHeight="250"/>
         </Grid.RowDefinitions>
 
         <!-- HEADER -->
@@ -120,62 +121,67 @@
             <!-- TAB 2: BATCH -->
             <TabItem Header="📁 Batch Extraction (CSV)" FontSize="14" FontWeight="SemiBold">
                 <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0">
-                    <StackPanel>
-                        <TextBlock Text="Select a CSV or Excel file to extract multiple contracts for the selected environment." Margin="0,0,0,15" Foreground="{StaticResource TextSecondary}"/>
 
-                        <!-- Baseline Management Area -->
-                        <Border Background="{StaticResource BackgroundLight}" CornerRadius="4" Padding="12" Margin="0,0,0,20" BorderBrush="{StaticResource BorderDefault}" BorderThickness="1">
-                            <Grid>
+                    <!-- CORRECTION : Ajout du ScrollViewer pour gérer le contenu long du batch -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,10,0">
+                        <StackPanel>
+                            <TextBlock Text="Select a CSV or Excel file to extract multiple contracts for the selected environment." Margin="0,0,0,15" Foreground="{StaticResource TextSecondary}"/>
+
+                            <!-- Baseline Management Area -->
+                            <Border Background="{StaticResource BackgroundLight}" CornerRadius="4" Padding="12" Margin="0,0,0,20" BorderBrush="{StaticResource BorderDefault}" BorderThickness="1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">
+                                        <TextBlock Text="Baseline Management" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
+                                        <TextBlock Text="Import or open your reference files before running your extractions." Foreground="{StaticResource TextSecondary}" FontSize="12" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button x:Name="BtnAddBaselineExt" Content="➕ Add Baseline" Click="BtnAddBaseline_Click" Background="{StaticResource SecondaryAction}" Foreground="White" Padding="10,6" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0" FontWeight="SemiBold">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/></Border>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                        <Button x:Name="BtnOpenBaselineExt" Content="📂 Open Folder" Click="BtnOpenBaselineFolder_Click" Background="{StaticResource PrimaryAction}" Foreground="White" Padding="10,6" BorderThickness="0" Cursor="Hand" FontWeight="SemiBold">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/></Border>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <StackPanel Margin="0,0,0,15" Orientation="Horizontal">
+                                <TextBlock Text="Input Type:" Style="{StaticResource LabelStyle}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                <RadioButton x:Name="RbBatchSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="BatchInputType_Checked"/>
+                                <RadioButton x:Name="RbBatchSearchDemand" Content="Demand ID" VerticalAlignment="Center" Cursor="Hand" Checked="BatchInputType_Checked"/>
+                            </StackPanel>
+
+                            <TextBlock Text="Data File path (CSV/XLS):" Style="{StaticResource LabelStyle}"/>
+                            <Grid Margin="0,0,0,20">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">
-                                    <TextBlock Text="Baseline Management" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
-                                    <TextBlock Text="Import or open your reference files before running your extractions." Foreground="{StaticResource TextSecondary}" FontSize="12" TextWrapping="Wrap"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Button x:Name="BtnAddBaselineExt" Content="➕ Add Baseline" Click="BtnAddBaseline_Click" Background="{StaticResource SecondaryAction}" Foreground="White" Padding="10,6" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0" FontWeight="SemiBold">
-                                        <Button.Template>
-                                            <ControlTemplate TargetType="Button">
-                                                <Border Background="{TemplateBinding Background}" CornerRadius="4"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/></Border>
-                                            </ControlTemplate>
-                                        </Button.Template>
-                                    </Button>
-                                    <Button x:Name="BtnOpenBaselineExt" Content="📂 Open Folder" Click="BtnOpenBaselineFolder_Click" Background="{StaticResource PrimaryAction}" Foreground="White" Padding="10,6" BorderThickness="0" Cursor="Hand" FontWeight="SemiBold">
-                                        <Button.Template>
-                                            <ControlTemplate TargetType="Button">
-                                                <Border Background="{TemplateBinding Background}" CornerRadius="4"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/></Border>
-                                            </ControlTemplate>
-                                        </Button.Template>
-                                    </Button>
-                                </StackPanel>
+                                <TextBox x:Name="TxtBatchExtCsv" IsReadOnly="True" Style="{StaticResource InputStyle}" Margin="0,0,10,0"/>
+                                <Button Content="Browse..." Grid.Column="1" Padding="15,8" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnBrowseExtCsv_Click">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="4"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/></Border>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
                             </Grid>
-                        </Border>
 
-                        <StackPanel Margin="0,0,0,15" Orientation="Horizontal">
-                            <TextBlock Text="Input Type:" Style="{StaticResource LabelStyle}" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                            <RadioButton x:Name="RbBatchSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="BatchInputType_Checked"/>
-                            <RadioButton x:Name="RbBatchSearchDemand" Content="Demand ID" VerticalAlignment="Center" Cursor="Hand" Checked="BatchInputType_Checked"/>
+                            <Button x:Name="BtnRunBatch" Content="Run Batch Extraction" Click="BtnRunBatch_Click" Style="{DynamicResource ActionButtonStyle}" HorizontalAlignment="Right" Width="220"/>
                         </StackPanel>
-
-                        <TextBlock Text="Data File path (CSV/XLS):" Style="{StaticResource LabelStyle}"/>
-                        <Grid Margin="0,0,0,20">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtBatchExtCsv" IsReadOnly="True" Style="{StaticResource InputStyle}" Margin="0,0,10,0"/>
-                            <Button Content="Browse..." Grid.Column="1" Padding="15,8" Background="#34495E" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnBrowseExtCsv_Click">
-                                <Button.Template>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border Background="{TemplateBinding Background}" CornerRadius="4"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/></Border>
-                                    </ControlTemplate>
-                                </Button.Template>
-                            </Button>
-                        </Grid>
-                        <Button x:Name="BtnRunBatch" Content="Run Batch Extraction" Click="BtnRunBatch_Click" Style="{DynamicResource ActionButtonStyle}" HorizontalAlignment="Right" Width="220"/>
-                    </StackPanel>
+                    </ScrollViewer>
                 </Border>
             </TabItem>
         </TabControl>
