@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -17,8 +17,11 @@ namespace AutoActivator.Services
     {
         private static readonly CookieContainer _cookieContainer = new CookieContainer();
 
-        // CORRECTION 1 : Rendu Thread-Safe pour supporter 50 accès simultanés sans s'emmêler les pinceaux
+        // Rendu Thread-Safe pour supporter de multiples accès simultanés
         private static readonly ConcurrentDictionary<string, string> _lastWorkingServers = new ConcurrentDictionary<string, string>();
+
+        // Instance unique et statique de HttpClient
+        private static readonly HttpClient _httpClient;
 
         private readonly Dictionary<string, List<string>> _activeServers = new Dictionary<string, List<string>>()
         {
@@ -31,10 +34,37 @@ namespace AutoActivator.Services
         public string ActiveServer { get; private set; }
         private string _nodeUrl;
 
+        static MicroFocusApiService()
+        {
+            var handler = new HttpClientHandler
+            {
+                CookieContainer = _cookieContainer,
+                UseCookies = true,
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+                // Contournement des erreurs SSL
+                ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true,
+                // Forçage absolu de la limite de connexion (remplace ServicePoint.ConnectionLimit)
+                MaxConnectionsPerServer = 500
+            };
+
+            _httpClient = new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromSeconds(30)
+            };
+
+            // Configuration des Headers globaux
+            _httpClient.DefaultRequestHeaders.Add("accept-encoding", "gzip, deflate, br");
+            _httpClient.DefaultRequestHeaders.Add("sec-fetch-dest", "empty");
+            _httpClient.DefaultRequestHeaders.Add("sec-fetch-mode", "cors");
+            _httpClient.DefaultRequestHeaders.Add("sec-fetch-site", "same-origin");
+            _httpClient.DefaultRequestHeaders.Add("accept-language", "en-BE");
+            _httpClient.DefaultRequestHeaders.Add("x-requested-with", "XMLHttpRequest");
+            _httpClient.DefaultRequestHeaders.Accept.ParseAdd("application/json, text/plain, */*");
+        }
+
         public MicroFocusApiService()
         {
-            ServicePointManager.ServerCertificateValidationCallback = (sender, cert, chain, sslPolicyErrors) => true;
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
+            // Le constructeur d'instance est désormais vide car la configuration est gérée globalement.
         }
 
         public async Task<bool> LogonAsync(string username, string password, string env, Action<string> onProgress, CancellationToken cancellationToken)
@@ -47,16 +77,9 @@ namespace AutoActivator.Services
             if (_lastWorkingServers.TryGetValue(env, out string lastServer))
             {
                 _nodeUrl = $"{baseUrl}/native/v1/regions/{lastServer}/86/BATCH{env}/";
-                Cookie esAdminCookie = null;
 
-                foreach (Cookie c in _cookieContainer.GetCookies(new Uri(logonUrl)))
-                {
-                    if (c.Name.Equals("esadmin-cookie", StringComparison.OrdinalIgnoreCase))
-                    {
-                        esAdminCookie = c;
-                        break;
-                    }
-                }
+                var cookies = _cookieContainer.GetCookies(new Uri(logonUrl)).Cast<Cookie>();
+                var esAdminCookie = cookies.FirstOrDefault(c => c.Name.Equals("esadmin-cookie", StringComparison.OrdinalIgnoreCase));
 
                 if (esAdminCookie != null && (esAdminCookie.Expires == DateTime.MinValue || esAdminCookie.Expires > DateTime.Now.AddMinutes(1)))
                 {
@@ -77,44 +100,36 @@ namespace AutoActivator.Services
 
                 ActiveServer = server;
                 _nodeUrl = $"{baseUrl}/native/v1/regions/{ActiveServer}/86/BATCH{env}/";
-                var request = CreateRequest(logonUrl, "POST", logonUrl);
                 string jsonPayload = $"{{\"mfUser\":\"{username}\",\"mfNewPassword\":\"\",\"mfPassword\":\"{password}\"}}";
 
                 try
                 {
-                    using (cancellationToken.Register(() => request.Abort()))
-                    using (var streamWriter = new StreamWriter(await request.GetRequestStreamAsync().ConfigureAwait(false)))
+                    using (var request = CreateHttpRequest(HttpMethod.Post, logonUrl, logonUrl))
                     {
-                        await streamWriter.WriteAsync(jsonPayload).ConfigureAwait(false);
-                    }
+                        request.Content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
-                    using (var response = (HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false))
-                    {
-                        if (response.StatusCode == HttpStatusCode.OK && await TestConnectionAsync(_nodeUrl, cancellationToken).ConfigureAwait(false))
+                        using (var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false))
                         {
-                            _lastWorkingServers[env] = ActiveServer; // ConcurrentDictionary gère l'assignation safe
-                            return true;
-                        }
-                    }
-                }
-                catch (WebException ex)
-                {
-                    // CORRECTION : Fermeture de la réponse pour libérer le port HTTP
-                    if (ex.Response is HttpWebResponse errorResponse)
-                    {
-                        using (errorResponse)
-                        {
-                            if (errorResponse.StatusCode == HttpStatusCode.Unauthorized || errorResponse.StatusCode == HttpStatusCode.Forbidden)
-                                throw new UnauthorizedAccessException("Mot de passe incorrect. Arrêt immédiat (Anti-Ban).");
-
-                            using (var reader = new StreamReader(errorResponse.GetResponseStream()))
+                            if (response.IsSuccessStatusCode && await TestConnectionAsync(_nodeUrl, cancellationToken).ConfigureAwait(false))
                             {
-                                lastErrorMessage = await reader.ReadToEndAsync().ConfigureAwait(false);
-                                onProgress($"Serveur {ActiveServer} ignoré (HTTP {(int)errorResponse.StatusCode}).");
+                                _lastWorkingServers[env] = ActiveServer;
+                                return true;
+                            }
+                            else if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+                            {
+                                throw new UnauthorizedAccessException("Mot de passe incorrect. Arrêt immédiat (Anti-Ban).");
+                            }
+                            else
+                            {
+                                lastErrorMessage = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                                onProgress($"Serveur {ActiveServer} ignoré (HTTP {(int)response.StatusCode}).");
                             }
                         }
                     }
-                    else lastErrorMessage = ex.Message;
+                }
+                catch (HttpRequestException ex)
+                {
+                    lastErrorMessage = ex.Message;
                 }
                 catch (UnauthorizedAccessException) { throw; }
                 catch (Exception ex) when (!(ex is OperationCanceledException)) { lastErrorMessage = ex.Message; }
@@ -128,57 +143,60 @@ namespace AutoActivator.Services
             if (string.IsNullOrEmpty(_nodeUrl)) throw new InvalidOperationException("Non connecté au serveur. Appelez LogonAsync d'abord.");
 
             string submitUrl = $"{_nodeUrl}jescontrol/";
-            var request = CreateRequest(submitUrl, "POST", submitUrl);
             var payload = new { subJes = "2", ctlSubmit = "Submit", JCLIn = jclContent };
             string jsonPayload = JsonConvert.SerializeObject(payload);
 
             try
             {
-                using (cancellationToken.Register(() => request.Abort()))
-                using (var streamWriter = new StreamWriter(await request.GetRequestStreamAsync().ConfigureAwait(false)))
-                    await streamWriter.WriteAsync(jsonPayload).ConfigureAwait(false);
-
-                using (var response = (HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false))
-                using (var reader = new StreamReader(response.GetResponseStream()))
+                using (var request = CreateHttpRequest(HttpMethod.Post, submitUrl, submitUrl))
                 {
-                    string responseBody = await reader.ReadToEndAsync().ConfigureAwait(false);
-                    JObject doc = JObject.Parse(responseBody);
+                    request.Content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
-                    if (doc.TryGetValue("JobMsg", out JToken jobMsgToken))
+                    using (var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false))
                     {
-                        string jobNum = null;
-                        bool isReady = false;
-                        var errorMsg = new StringBuilder();
+                        string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
-                        foreach (var lineToken in jobMsgToken)
+                        if (!response.IsSuccessStatusCode)
                         {
-                            string line = lineToken.ToString();
-                            var match = Regex.Match(line, @"JOBNUM=(\d+)");
-                            if (match.Success) jobNum = "J" + match.Groups[1].Value;
-                            if (line.Contains("Job ready for execution")) isReady = true;
-
-                            errorMsg.AppendLine(line);
+                            return (false, null, $"Erreur HTTP {(int)response.StatusCode}: {responseBody}");
                         }
 
-                        // Sécurité supplémentaire : Si le format Regex habituel échoue
-                        if (string.IsNullOrEmpty(jobNum) && isReady)
-                        {
-                            var fallback = Regex.Match(errorMsg.ToString(), @"[Jj]\d{5,7}");
-                            if (fallback.Success) jobNum = fallback.Value.ToUpper();
-                        }
+                        JObject doc = JObject.Parse(responseBody);
 
-                        if (isReady && !string.IsNullOrEmpty(jobNum)) return (true, jobNum, null);
-                        return (false, null, string.IsNullOrEmpty(jobNum) ? "JobNum introuvable. \n" + errorMsg : errorMsg.ToString());
+                        if (doc.TryGetValue("JobMsg", out JToken jobMsgToken))
+                        {
+                            string jobNum = null;
+                            bool isReady = false;
+                            var errorMsg = new StringBuilder();
+
+                            foreach (var lineToken in jobMsgToken)
+                            {
+                                string line = lineToken.ToString();
+                                var match = Regex.Match(line, @"JOBNUM=(\d+)");
+                                if (match.Success) jobNum = "J" + match.Groups[1].Value;
+                                if (line.Contains("Job ready for execution")) isReady = true;
+
+                                errorMsg.AppendLine(line);
+                            }
+
+                            // Sécurité supplémentaire : Si le format Regex habituel échoue
+                            if (string.IsNullOrEmpty(jobNum) && isReady)
+                            {
+                                var fallback = Regex.Match(errorMsg.ToString(), @"[Jj]\d{5,7}");
+                                if (fallback.Success) jobNum = fallback.Value.ToUpper();
+                            }
+
+                            if (isReady && !string.IsNullOrEmpty(jobNum)) return (true, jobNum, null);
+                            return (false, null, string.IsNullOrEmpty(jobNum) ? "JobNum introuvable. \n" + errorMsg : errorMsg.ToString());
+                        }
+                        return (false, null, "Format JSON inattendu.");
                     }
-                    return (false, null, "Format JSON inattendu.");
                 }
             }
-            catch (WebException ex) // CORRECTION : libération du port HTTP
+            catch (Exception ex)
             {
-                ex.Response?.Close();
                 return (false, null, ex.Message);
             }
-            catch (Exception ex) { return (false, null, ex.Message); }
         }
 
         public async Task<(string Status, string ReturnCode)> CheckJobStatusAsync(string jobNum, CancellationToken cancellationToken)
@@ -186,15 +204,13 @@ namespace AutoActivator.Services
             if (string.IsNullOrEmpty(jobNum)) return ("Unknown", "JobNum invalide");
 
             string url = $"{_nodeUrl}jobview/{jobNum}";
-            var request = CreateRequest(url, "GET", url);
 
             try
             {
-                using (cancellationToken.Register(() => request.Abort()))
-                using (var response = (HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false))
-                using (var reader = new StreamReader(response.GetResponseStream()))
+                using (var request = CreateHttpRequest(HttpMethod.Get, url, url))
+                using (var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false))
                 {
-                    string responseBody = await reader.ReadToEndAsync().ConfigureAwait(false);
+                    string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
                     // DÉBUT DU MOUCHARD API
                     try
@@ -202,8 +218,13 @@ namespace AutoActivator.Services
                         string debugFilePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"DEBUG_API_{jobNum}.txt");
                         System.IO.File.AppendAllText(debugFilePath, "\n--- NOUVELLE VERIFICATION ---\n" + responseBody);
                     }
-                    catch { /* On ignore si l'écriture échoue pour ne pas bloquer l'appli */ }
+                    catch { /* On ignore si l'écriture échoue */ }
                     // FIN DU MOUCHARD API
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        return ("Unknown", $"Erreur HTTP: {(int)response.StatusCode}");
+                    }
 
                     JObject doc = JObject.Parse(responseBody);
 
@@ -222,33 +243,28 @@ namespace AutoActivator.Services
                     return (status, returnCode);
                 }
             }
-            catch (WebException ex) // CORRECTION : libération du port HTTP
-            {
-                ex.Response?.Close();
-                return ("Unknown", $"Erreur HTTP: {ex.Message}");
-            }
             catch (Exception ex)
             {
-                return ("Unknown", $"Erreur de lecture: {ex.Message}");
+                return ("Unknown", $"Erreur de requête: {ex.Message}");
             }
         }
 
-        // TÉLÉCHARGEMENT DU RAPPORT MÉTIER
         public async Task<string> GetJobBusinessReportAsync(string jobNum, CancellationToken cancellationToken)
         {
             string url = $"{_nodeUrl}jobview/{jobNum}";
-            var request = CreateRequest(url, "GET", url);
+            string ddEntityName = null;
+            string targetDdName = "";
 
             try
             {
-                string ddEntityName = null;
-                string targetDdName = "";
-
-                using (cancellationToken.Register(() => request.Abort()))
-                using (var response = (HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false))
-                using (var reader = new StreamReader(response.GetResponseStream()))
+                // 1. Récupération des informations du job (JobDDs)
+                using (var request = CreateHttpRequest(HttpMethod.Get, url, url))
+                using (var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false))
                 {
-                    string responseBody = await reader.ReadToEndAsync().ConfigureAwait(false);
+                    if (!response.IsSuccessStatusCode)
+                        return $"Erreur HTTP lors de la demande de rapport: {(int)response.StatusCode}";
+
+                    string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     JObject doc = JObject.Parse(responseBody);
 
                     if (doc.TryGetValue("JobDDs", out JToken ddsToken))
@@ -263,48 +279,41 @@ namespace AutoActivator.Services
                             targetDdName = dd["DDName"]?.ToString();
                         }
                     }
-                } // FIN DU USING : La réponse HTTP principale est bien libérée ici.
+                }
 
                 if (string.IsNullOrEmpty(ddEntityName)) return "Aucun fichier de rapport métier trouvé (BERPCTLO ou SYSOUT).";
 
-                // On interroge l'endpoint du Mainframe pour lire le fichier Spool (log)
+                // 2. Tentative de lecture via le Spool
                 string spoolUrl = $"{_nodeUrl}spool/{ddEntityName}";
-                var spoolReq = CreateRequest(spoolUrl, "GET", spoolUrl);
-
                 try
                 {
-                    using (var spoolResp = (HttpWebResponse)await spoolReq.GetResponseAsync().ConfigureAwait(false))
-                    using (var spoolReader = new StreamReader(spoolResp.GetResponseStream()))
+                    using (var spoolReq = CreateHttpRequest(HttpMethod.Get, spoolUrl, spoolUrl))
+                    using (var spoolResp = await _httpClient.SendAsync(spoolReq, cancellationToken).ConfigureAwait(false))
                     {
-                        return $"--- RAPPORT METIER ({targetDdName}) DU JOB {jobNum} ---\n\n" + await spoolReader.ReadToEndAsync().ConfigureAwait(false);
+                        spoolResp.EnsureSuccessStatusCode();
+                        string spoolContent = await spoolResp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        return $"--- RAPPORT METIER ({targetDdName}) DU JOB {jobNum} ---\n\n{spoolContent}";
                     }
                 }
-                catch (WebException ex) // CORRECTION : libération du port HTTP avant de tenter DDView
+                catch (HttpRequestException)
                 {
-                    ex.Response?.Close();
-
+                    // 3. Fallback sur DDView en cas d'échec du Spool
                     string ddviewUrl = $"{_nodeUrl}ddview/{ddEntityName}";
-                    var ddviewReq = CreateRequest(ddviewUrl, "GET", ddviewUrl);
-
                     try
                     {
-                        using (var ddviewResp = (HttpWebResponse)await ddviewReq.GetResponseAsync().ConfigureAwait(false))
-                        using (var ddviewReader = new StreamReader(ddviewResp.GetResponseStream()))
+                        using (var ddviewReq = CreateHttpRequest(HttpMethod.Get, ddviewUrl, ddviewUrl))
+                        using (var ddviewResp = await _httpClient.SendAsync(ddviewReq, cancellationToken).ConfigureAwait(false))
                         {
-                            return $"--- RAPPORT METIER ({targetDdName}) DU JOB {jobNum} ---\n\n" + await ddviewReader.ReadToEndAsync().ConfigureAwait(false);
+                            ddviewResp.EnsureSuccessStatusCode();
+                            string ddviewContent = await ddviewResp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                            return $"--- RAPPORT METIER ({targetDdName}) DU JOB {jobNum} ---\n\n{ddviewContent}";
                         }
                     }
-                    catch (WebException innerEx)
+                    catch (Exception innerEx)
                     {
-                        innerEx.Response?.Close();
-                        return "Impossible de télécharger le rapport (Spool et DDView échoués).";
+                        return $"Impossible de télécharger le rapport (Spool et DDView échoués). Erreur : {innerEx.Message}";
                     }
                 }
-            }
-            catch (WebException ex) // CORRECTION : libération globale du port HTTP
-            {
-                ex.Response?.Close();
-                return $"Erreur HTTP lors de la demande de rapport: {ex.Message}";
             }
             catch (Exception ex)
             {
@@ -317,45 +326,26 @@ namespace AutoActivator.Services
             try
             {
                 string testUrl = $"{nodeUrl}region-functionality";
-                var request = CreateRequest(testUrl, "GET", testUrl);
-                using (cancellationToken.Register(() => request.Abort()))
-                using (var response = (HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false))
+                using (var request = CreateHttpRequest(HttpMethod.Get, testUrl, testUrl))
+                using (var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false))
                 {
-                    return response.StatusCode == HttpStatusCode.OK;
+                    return response.IsSuccessStatusCode;
                 }
             }
-            catch (WebException ex) // CORRECTION : libération du port HTTP
+            catch
             {
-                ex.Response?.Close();
                 return false;
             }
-            catch { return false; }
         }
 
-        private HttpWebRequest CreateRequest(string url, string method, string referer)
+        private HttpRequestMessage CreateHttpRequest(HttpMethod method, string url, string referer)
         {
-            var request = (HttpWebRequest)WebRequest.Create(url);
+            var request = new HttpRequestMessage(method, url);
 
-            // CORRECTION 2 CRITIQUE : Forçage absolu de la limite de connexion sur le ServicePoint Actif.
-            // Quoi qu'il arrive, Windows laissera passer 500 requêtes en même temps pour cette URL précise.
-            request.ServicePoint.ConnectionLimit = 500;
-            request.ServicePoint.Expect100Continue = false;
-
-            request.Method = method;
-            request.ContentType = "application/json";
-            request.Accept = "application/json, text/plain, */*";
-            request.KeepAlive = false;
-            request.Referer = referer;
-            request.CookieContainer = _cookieContainer;
-            request.Timeout = 30000;
-            request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
-
-            request.Headers.Add("accept-encoding", "gzip, deflate, br");
-            request.Headers.Add("sec-fetch-dest", "empty");
-            request.Headers.Add("sec-fetch-mode", "cors");
-            request.Headers.Add("sec-fetch-site", "same-origin");
-            request.Headers.Add("accept-language", "en-BE");
-            request.Headers.Add("x-requested-with", "XMLHttpRequest");
+            if (!string.IsNullOrEmpty(referer))
+            {
+                request.Headers.Referrer = new Uri(referer);
+            }
 
             return request;
         }
