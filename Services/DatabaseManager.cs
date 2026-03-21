@@ -2,73 +2,86 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient; // Remplacez par Microsoft.Data.SqlClient si vous êtes sur du .NET récent
+using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using AutoActivator.Config;
 
 namespace AutoActivator.Services
 {
-    // 1. EXTRACTION DE L'INTERFACE (Pour permettre l'injection de dépendances et les tests)
+    // 1. MISE À JOUR DE L'INTERFACE (Ajout des CancellationToken)
     public interface IDatabaseManager
     {
         string EnvironmentName { get; }
-        Task<bool> TestConnectionAsync();
-        Task<DataTable> GetDataAsync(string query, Dictionary<string, object> parameters = null);
+
+        Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default);
+
+        Task<DataTable> GetDataAsync(string query, Dictionary<string, object> parameters = null, CancellationToken cancellationToken = default);
+
         Task<bool> InjectPaymentAsync(
             string contractInternalId, decimal amount, DateTime? paymentDate = null,
             string simulatedName = "TEST AUTOMATION", string simulatedAddress1 = "TEST STREET 1",
             string simulatedAddress2 = "1000 BRUSSELS", string simulatedIban = "BE47001304609580",
-            string simulatedBic = "GEBABEBB", string bureauNumber = "12831", string authorId = "AUTO_TEST");
+            string simulatedBic = "GEBABEBB", string bureauNumber = "12831", string authorId = "AUTO_TEST",
+            CancellationToken cancellationToken = default);
     }
 
     public class DatabaseManager : IDatabaseManager
     {
         private readonly string _connectionString;
+        private readonly ILogger<DatabaseManager> _logger;
         public string EnvironmentName { get; }
 
-        public DatabaseManager(string envSuffix)
+        // 2. INJECTION DU LOGGER (Optionnel par défaut pour faciliter la transition)
+        public DatabaseManager(string envSuffix, ILogger<DatabaseManager> logger = null)
         {
             if (string.IsNullOrWhiteSpace(envSuffix))
                 throw new ArgumentException("L'environnement (envSuffix) ne peut pas être vide.", nameof(envSuffix));
 
             EnvironmentName = envSuffix;
             _connectionString = Settings.DbConfig.GetConnectionString(envSuffix);
+            _logger = logger;
         }
 
         #region MÉTHODES ASYNCHRONES MODERNISÉES
 
-        public async Task<bool> TestConnectionAsync()
+        public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
         {
             try
             {
-                // 2. UTILISATION DE 'using var' (C# 8.0+) pour un code plus propre et sûr
                 using var connection = new SqlConnection(_connectionString);
-                await connection.OpenAsync().ConfigureAwait(false);
+                // Prise en charge de l'annulation
+                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
                 using var command = new SqlCommand("SELECT 1", connection);
-                var result = await command.ExecuteScalarAsync().ConfigureAwait(false);
+                var result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
 
                 if (result != null && result.ToString() == "1")
                 {
-                    System.Diagnostics.Debug.WriteLine($"[INFO] Successful connection to the database (Environment: {EnvironmentName})");
+                    _logger?.LogInformation("Successful connection to the database (Environment: {EnvironmentName})", EnvironmentName);
                     return true;
                 }
 
                 return false;
             }
+            catch (OperationCanceledException)
+            {
+                _logger?.LogWarning("Test de connexion annulé par l'utilisateur.");
+                return false;
+            }
             catch (SqlException ex)
             {
-                // Remplacement de Console.WriteLine par Debug.WriteLine (plus adapté pour WPF)
-                System.Diagnostics.Debug.WriteLine($"[ERROR] SQL connection failure (Code: {ex.Number}) : {ex.Message}");
+                _logger?.LogError(ex, "SQL connection failure (Code: {ErrorCode})", ex.Number);
                 return false;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ERROR] Connection failure (General error) : {ex.Message}");
+                _logger?.LogError(ex, "Connection failure (General error)");
                 return false;
             }
         }
 
-        public async Task<DataTable> GetDataAsync(string query, Dictionary<string, object> parameters = null)
+        public async Task<DataTable> GetDataAsync(string query, Dictionary<string, object> parameters = null, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(query))
                 throw new ArgumentException("La requête SQL ne peut pas être vide.", nameof(query));
@@ -89,24 +102,28 @@ namespace AutoActivator.Services
                     }
                 }
 
-                // Ouverture de la connexion sans bloquer le thread principal de l'UI
-                await connection.OpenAsync().ConfigureAwait(false);
+                // Ouverture de la connexion avec jeton d'annulation
+                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-                // Exécution de la requête en asynchrone
-                using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
+                // Exécution de la requête en asynchrone avec jeton d'annulation
+                using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
                 dataTable.Load(reader);
 
                 return dataTable;
             }
+            catch (OperationCanceledException)
+            {
+                _logger?.LogInformation("L'exécution de la requête a été annulée : {Query}", query);
+                throw; // On relance l'exception pour que le parent sache que c'est une annulation
+            }
             catch (SqlException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ERROR] SQL Error (Code {ex.Number}) on query: {query}\nDetails: {ex.Message}");
-                // 4. CORRECTION DU THROW : On utilise `throw;` pour conserver la StackTrace complète et le type SqlException
+                _logger?.LogError(ex, "SQL Error (Code {ErrorCode}) on query: {Query}", ex.Number, query);
                 throw;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ERROR] System Error on query: {query}\nDetails: {ex.Message}");
+                _logger?.LogError(ex, "System Error on query: {Query}", query);
                 throw;
             }
         }
@@ -121,7 +138,8 @@ namespace AutoActivator.Services
             string simulatedIban = "BE47001304609580",
             string simulatedBic = "GEBABEBB",
             string bureauNumber = "12831",
-            string authorId = "AUTO_TEST")
+            string authorId = "AUTO_TEST",
+            CancellationToken cancellationToken = default)
         {
             DateTime now = DateTime.Now;
             DateTime referenceDate = paymentDate ?? now;
@@ -166,28 +184,29 @@ namespace AutoActivator.Services
                 command.Parameters.AddWithValue("@bic", simulatedBic);
                 command.Parameters.AddWithValue("@auteur", authorId);
 
-                await connection.OpenAsync().ConfigureAwait(false);
-                await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
-                System.Diagnostics.Debug.WriteLine($"[INFO] Payment of {amount} EUR successfully injected (Contract: {contractInternalId} | Env: {EnvironmentName})");
+                _logger?.LogInformation("Payment of {Amount} EUR successfully injected (Contract: {Contract} | Env: {Env})", amount, contractInternalId, EnvironmentName);
                 return true;
+            }
+            catch (OperationCanceledException)
+            {
+                _logger?.LogInformation("L'injection du paiement a été annulée pour le contrat {Contract}", contractInternalId);
+                return false;
             }
             catch (SqlException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ERROR] SQL FAILURE during payment injection (Code: {ex.Number}) : {ex.Message}");
+                _logger?.LogError(ex, "SQL FAILURE during payment injection (Code: {ErrorCode})", ex.Number);
                 return false;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ERROR] System FAILURE during payment injection : {ex.Message}");
+                _logger?.LogError(ex, "System FAILURE during payment injection");
                 return false;
             }
         }
 
         #endregion
-
-        // 5. SUPPRESSION DÉFINITIVE DE LA RÉGION "MÉTHODES SYNCHRONES"
-        // Le code mort (TestConnection, GetData, InjectPayment synchrones) a été entièrement retiré
-        // pour alléger la classe, éviter la confusion et forcer les appelants à utiliser de l'asynchrone.
     }
 }

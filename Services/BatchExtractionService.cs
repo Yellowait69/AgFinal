@@ -6,31 +6,49 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using AutoActivator.Config;
 using AutoActivator.Models;
 
 namespace AutoActivator.Services
 {
-    public class BatchExtractionService
+    // Interface pour faciliter les tests unitaires et l'injection de dépendances
+    public interface IBatchExtractionService
+    {
+        Task PerformBatchExtractionAsync(string filePath, string env, Action<BatchProgressInfo> onProgressUpdate, bool isDemandId = false, CancellationToken cancellationToken = default);
+    }
+
+    public class BatchExtractionService : IBatchExtractionService
     {
         private readonly ExtractionService _extractionService;
+        private readonly ILogger<BatchExtractionService> _logger;
 
-        public BatchExtractionService(ExtractionService extractionService)
+        // Injection des dépendances (ExtractionService + Logger)
+        public BatchExtractionService(ExtractionService extractionService, ILogger<BatchExtractionService> logger)
         {
-            _extractionService = extractionService;
+            _extractionService = extractionService ?? throw new ArgumentNullException(nameof(extractionService));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        public async Task PerformBatchExtractionAsync(string filePath, string env, Action<BatchProgressInfo> onProgressUpdate, bool isDemandId = false)
+        public async Task PerformBatchExtractionAsync(
+            string filePath,
+            string env,
+            Action<BatchProgressInfo> onProgressUpdate,
+            bool isDemandId = false,
+            CancellationToken cancellationToken = default)
         {
             if (!File.Exists(filePath))
+            {
+                _logger.LogError("Le fichier CSV spécifié est introuvable : {FilePath}", filePath);
                 throw new FileNotFoundException("The specified CSV file could not be found.", filePath);
+            }
 
-            // FIX: Use a dictionary to strictly preserve the original order via the list index
-            ConcurrentDictionary<int, string> globalCombinedResults = new ConcurrentDictionary<int, string>();
+            _logger.LogInformation("Démarrage du batch d'extraction depuis {FilePath} sur l'environnement {Env}", filePath, env);
 
-            // NEW: Add the row number (rowNum) to the list to transmit it later
-            List<(int rowNum, string contractNumber, string rawTestId)> contractsToProcess = new List<(int, string, string)>();
+            var globalCombinedResults = new ConcurrentDictionary<int, string>();
+            var contractsToProcess = new List<(int rowNum, string contractNumber, string rawTestId)>();
 
+            // --- 1 & 2. LECTURE INTELLIGENTE ET CHARGEMENT (Avec gestion d'annulation) ---
             using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             using (var reader = new StreamReader(fs, Encoding.UTF8))
             {
@@ -38,14 +56,13 @@ namespace AutoActivator.Services
                 char delimiter = ';';
                 int contractIndex = -1, testIdIndex = -1;
                 bool headerFound = false;
+                int lineNumber = 0;
 
-                int lineNumber = 0; // NEW: Global line counter
-
-                // --- 1. SMART HEADER SEARCH ---
                 while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
-                    lineNumber++; // NEW: Increment for the first lines until the header
+                    cancellationToken.ThrowIfCancellationRequested(); // Arrêt possible pendant la lecture
 
+                    lineNumber++;
                     if (line.StartsWith("\uFEFF")) line = line.Substring(1);
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
@@ -72,11 +89,11 @@ namespace AutoActivator.Services
                 if (!headerFound)
                     throw new Exception("Unable to find 'Value', 'Demand', or 'Contract' column in the CSV file.");
 
-                // --- 2. READING DATA INTO MEMORY ---
                 while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
-                    lineNumber++; // NEW: Increment for each data line
+                    cancellationToken.ThrowIfCancellationRequested();
 
+                    lineNumber++;
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
                     var columns = ParseCsvLine(line, delimiter);
@@ -85,11 +102,7 @@ namespace AutoActivator.Services
                     {
                         string contractNumber = columns[contractIndex].Replace("=", "").Replace("\"", "").Trim();
 
-                        // Ignore the stray line generated in some Excel exports
-                        if (contractNumber.Equals("End of File", StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue;
-                        }
+                        if (contractNumber.Equals("End of File", StringComparison.OrdinalIgnoreCase)) continue;
 
                         string rawTestId = (testIdIndex != -1 && columns.Count > testIdIndex)
                             ? columns[testIdIndex].Replace("=", "").Replace("\"", "").Trim()
@@ -97,38 +110,36 @@ namespace AutoActivator.Services
 
                         if (!string.IsNullOrEmpty(contractNumber))
                         {
-                            // NEW: Save the exact line number
                             contractsToProcess.Add((lineNumber, contractNumber, rawTestId));
                         }
                     }
                 }
             }
 
-            // --- 3. MASSIVE PARALLEL PROCESSING ---
-            // FIX: Reduced concurrency from 50 to 10 to avoid exhausting the SQL Connection Pool
-            var semaphore = new SemaphoreSlim(10);
-
-            // Initialize counters for progress tracking
+            // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
             int totalItems = contractsToProcess.Count;
             int processedItems = 0;
 
+            _logger.LogInformation("Lancement du traitement parallèle pour {Count} contrats.", totalItems);
+
+            var semaphore = new SemaphoreSlim(10); // Limite de concurrence préservée
             var tasks = contractsToProcess.Select((item, index) => Task.Run(async () =>
             {
-                // Micro-delay to prevent hitting the SQL Connection Pool all at millisecond 0
-                await Task.Delay(Math.Min(index * 20, 2000)).ConfigureAwait(false);
+                await Task.Delay(Math.Min(index * 20, 2000), cancellationToken).ConfigureAwait(false);
 
-                await semaphore.WaitAsync().ConfigureAwait(false);
+                await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
                 try
                 {
-                    ExtractionResult result = await _extractionService.PerformExtractionAsync(item.contractNumber, env, false, isDemandId).ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                    string displayContract = isDemandId && !string.IsNullOrEmpty(result.ContractReference)
-                        ? result.ContractReference
-                        : item.contractNumber;
+                    // Utilisation de l'ExtractionService mis à jour (qui supporte maintenant le CancellationToken)
+                    ExtractionResult result = await _extractionService.PerformExtractionAsync(item.contractNumber, env, false, isDemandId, cancellationToken).ConfigureAwait(false);
+
+                    string displayContract = isDemandId && !string.IsNullOrEmpty(result.ContractReference) ? result.ContractReference : item.contractNumber;
 
                     if (!string.IsNullOrWhiteSpace(result.LisaContent) || !string.IsNullOrWhiteSpace(result.EliaContent))
                     {
-                        StringBuilder localReport = new StringBuilder();
+                        var localReport = new StringBuilder();
                         localReport.AppendLine(new string('=', 80));
                         localReport.AppendLine($"### GLOBAL CONTRACT REPORT: {displayContract} | TEST ID: {item.rawTestId} | ENV: {env} ###");
                         localReport.AppendLine(new string('=', 80));
@@ -145,7 +156,6 @@ namespace AutoActivator.Services
                             localReport.Append(result.EliaContent).AppendLine();
                         }
 
-                        // Thread-safe addition at the exact contract index (guarantees the same order as the input file)
                         globalCombinedResults.TryAdd(index, localReport.ToString());
                     }
 
@@ -153,7 +163,7 @@ namespace AutoActivator.Services
 
                     onProgressUpdate?.Invoke(new BatchProgressInfo
                     {
-                        RowNum = item.rowNum, // NEW: Transmit the row number
+                        RowNum = item.rowNum,
                         ContractId = displayContract,
                         InternalId = result.InternalId,
                         Product = env,
@@ -165,12 +175,18 @@ namespace AutoActivator.Services
                         TotalItems = totalItems
                     });
                 }
+                catch (OperationCanceledException)
+                {
+                    // Tâche annulée silencieusement pour ne pas spammer les logs
+                    throw;
+                }
                 catch (Exception ex)
                 {
+                    _logger.LogError(ex, "Erreur lors de l'extraction du contrat {Contract} à la ligne {Line}", item.contractNumber, item.rowNum);
                     int current = Interlocked.Increment(ref processedItems);
                     onProgressUpdate?.Invoke(new BatchProgressInfo
                     {
-                        RowNum = item.rowNum, // NEW: Transmit the row number in case of error
+                        RowNum = item.rowNum,
                         ContractId = $"{item.contractNumber} (FAILED)",
                         InternalId = "Error",
                         Product = env,
@@ -186,51 +202,64 @@ namespace AutoActivator.Services
                 {
                     semaphore.Release();
                 }
-            })).ToList();
+            }, cancellationToken)).ToList();
 
-            // Launch all requests in parallel and wait for them to finish without blocking the UI
+            // Attendre la fin ou l'annulation
             await Task.WhenAll(tasks).ConfigureAwait(false);
 
-            // --- 4. SAVING THE GLOBAL REPORT ---
-            // FIX: Reconstruct the file in the strict initial order from 0 to totalItems
-            StringBuilder finalCombinedReport = new StringBuilder();
-            for (int i = 0; i < totalItems; i++)
-            {
-                if (globalCombinedResults.TryGetValue(i, out var report))
-                {
-                    finalCombinedReport.Append(report);
-                }
-            }
-
-            // NEW: Explicit filename based on the input file for the Smart Baseline Matcher
+            // --- 4. SAUVEGARDE OPTIMISÉE DU RAPPORT GLOBAL ---
+            _logger.LogInformation("Génération du fichier final...");
             string origFileName = Path.GetFileNameWithoutExtension(filePath);
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             Directory.CreateDirectory(Settings.OutputDir);
 
             char envLetter = !string.IsNullOrEmpty(env) ? char.ToUpper(env[0]) : 'U';
-
-            // Output format: "Extraction_Converted_KEY_C01..._D_20231026_143000.csv"
             string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{origFileName}_{envLetter}_{timestamp}.csv");
-
-            string contentToWrite = finalCombinedReport.Length > 0 ? finalCombinedReport.ToString() : "NO CONTRACT FOUND.";
 
             try
             {
-                using (StreamWriter writer = new StreamWriter(combinedPath, false, Encoding.UTF8))
+                using (var writer = new StreamWriter(combinedPath, false, Encoding.UTF8))
                 {
-                    await writer.WriteAsync(contentToWrite).ConfigureAwait(false);
+                    if (globalCombinedResults.IsEmpty)
+                    {
+                        await writer.WriteAsync("NO CONTRACT FOUND.").ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        // OPTIMISATION MÉMOIRE : Au lieu de créer un immense StringBuilder final,
+                        // on écrit directement dans le Stream.
+                        for (int i = 0; i < totalItems; i++)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+
+                            if (globalCombinedResults.TryGetValue(i, out var report))
+                            {
+                                await writer.WriteAsync(report).ConfigureAwait(false);
+                            }
+                        }
+                    }
                 }
+                _logger.LogInformation("Fichier batch sauvegardé avec succès : {Path}", combinedPath);
             }
-            catch (IOException)
+            catch (IOException ex)
             {
+                _logger.LogWarning(ex, "Le fichier principal est verrouillé, création d'une alternative...");
                 string alternativePath = Path.Combine(Settings.OutputDir, $"Extraction_{origFileName}_{envLetter}_{timestamp}_{Guid.NewGuid().ToString().Substring(0, 4)}.csv");
-                using (StreamWriter writer = new StreamWriter(alternativePath, false, Encoding.UTF8))
+                using (var writer = new StreamWriter(alternativePath, false, Encoding.UTF8))
                 {
-                    await writer.WriteAsync(contentToWrite).ConfigureAwait(false);
+                    for (int i = 0; i < totalItems; i++)
+                    {
+                        if (globalCombinedResults.TryGetValue(i, out var report))
+                        {
+                            await writer.WriteAsync(report).ConfigureAwait(false);
+                        }
+                    }
                 }
             }
         }
 
+        // Remarque : Pour un projet encore plus professionnel, cette méthode ParseCsvLine pourrait être
+        // totalement remplacée par l'utilisation de la bibliothèque NuGet "CsvHelper".
         private List<string> ParseCsvLine(string line, char delimiter)
         {
             var result = new List<string>();
