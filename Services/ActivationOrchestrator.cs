@@ -18,7 +18,8 @@ namespace AutoActivator.Services
             _apiService = new MicroFocusApiService();
         }
 
-        public async Task RunActivationSequenceAsync(Dictionary<string, string> generalVariables, Dictionary<string, string> addprctSpecificVariables, string username, string password, Action<string> onProgress, CancellationToken cancellationToken = default)
+        // NOUVEAUTÉ ICI : Ajout du paramètre "bool skipPrime" en plus de "string channel"
+        public async Task RunActivationSequenceAsync(Dictionary<string, string> generalVariables, Dictionary<string, string> addprctSpecificVariables, string username, string password, string channel, bool skipPrime, Action<string> onProgress, CancellationToken cancellationToken = default)
         {
             try
             {
@@ -34,10 +35,16 @@ namespace AutoActivator.Services
 
                 int jobCounter = 1;
 
-                // Soumission Séquentielle (Obligatoire pour la cohérence des bases de données Mainframe)
-                await ProcessSubmitAndWaitAsync("ADDPRCT", addprctVars, jobCounter++, onProgress, cancellationToken).ConfigureAwait(false);
-                await ProcessSubmitAndWaitAsync("LVPP06U", generalVariables, jobCounter++, onProgress, cancellationToken).ConfigureAwait(false);
-                await ProcessSubmitAndWaitAsync("LVPG22U", generalVariables, jobCounter++, onProgress, cancellationToken).ConfigureAwait(false);
+                // NOUVEAUTÉ ICI : On ignore ces jobs si le canal est C05 OU si l'utilisateur a cliqué sur "Skip Prime"
+                if (channel != "C05" && !skipPrime)
+                {
+                    // Soumission Séquentielle (Obligatoire pour la cohérence des bases de données Mainframe)
+                    await ProcessSubmitAndWaitAsync("ADDPRCT", addprctVars, jobCounter++, onProgress, cancellationToken).ConfigureAwait(false);
+                    await ProcessSubmitAndWaitAsync("LVPP06U", generalVariables, jobCounter++, onProgress, cancellationToken).ConfigureAwait(false);
+                    await ProcessSubmitAndWaitAsync("LVPG22U", generalVariables, jobCounter++, onProgress, cancellationToken).ConfigureAwait(false);
+                }
+
+                // Ces jobs sont tournés dans tous les cas (y compris pour C05 ou mode Skip Prime)
                 await ProcessSubmitAndWaitAsync("LI1J04D0", generalVariables, jobCounter++, onProgress, cancellationToken).ConfigureAwait(false);
                 await ProcessSubmitAndWaitAsync("LI1J04D2", generalVariables, jobCounter++, onProgress, cancellationToken).ConfigureAwait(false);
             }

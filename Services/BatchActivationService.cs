@@ -19,9 +19,9 @@ namespace AutoActivator.Services
             _dataService = dataService;
         }
 
-        // NOUVEAUTÉ : Ajout du "alreadyActiveCount" dans la signature de retour
+        // NOUVEAUTÉ : Ajout de "bool skipPrime" dans la signature
         public async Task<(int successCount, int alreadyActiveCount, int errorCount, string reportPath)> RunBatchAsync(
-            string filePath, bool isDemandId, string envValue, string cus, string bucp, string cmdpmt,
+            string filePath, bool isDemandId, string envValue, string cus, string bucp, string cmdpmt, string channel, bool skipPrime,
             string username, string password, string outputDir, Action<string> onProgress, CancellationToken token)
         {
             // DÉBLOCAGE RÉSEAU. Autorise un grand nombre de requêtes HTTP simultanées.
@@ -31,7 +31,11 @@ namespace AutoActivator.Services
             StringBuilder report = new StringBuilder();
             report.AppendLine("=== RAPPORT D'ACTIVATION BATCH (MODE PARALLÈLE SÉCURISÉ) ===");
             report.AppendLine($"Date de lancement: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-            report.AppendLine($"Configuration Globale -> Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt}\n");
+
+            // NOUVEAUTÉ : Traçabilité du mode Skip Prime dans le rapport
+            if (skipPrime) report.AppendLine("MODE: SKIP PRIME ACTIF (Bypass de ADDPRCT, LVPP06U, LVPG22U)");
+
+            report.AppendLine($"Configuration Globale -> Env: {envValue} | Canal: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt}\n");
             report.AppendLine("---------------------------------------------------------------------------------------------------------");
 
             int successCount = 0;
@@ -146,7 +150,8 @@ namespace AutoActivator.Services
                     onProgress($"[{processedItems} / {totalItems} terminés] Envoi Mainframe API : {formattedContract}...");
 
                     // C. Exécution de la séquence d'activation
-                    await _dataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password, msg => { }, token).ConfigureAwait(false);
+                    // NOUVEAUTÉ : Transmission de skipPrime
+                    await _dataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, channel, skipPrime, username, password, msg => { }, token).ConfigureAwait(false);
 
                     globalReport.Add((item.rowNum, $"[SUCCÈS] Ligne {item.rowNum,-4} | Input: {item.rawInput} -> Contrat JCL: {formattedContract} | Env: {envValue} | Amount: {amount}"));
                     Interlocked.Increment(ref successCount);
@@ -205,13 +210,16 @@ namespace AutoActivator.Services
                     Directory.CreateDirectory(outputDir);
                 }
 
-                reportPath = Path.Combine(outputDir, $"Activation_Batch_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
+                // NOUVEAUTÉ : Ajout d'un suffixe si le mode Skip Prime a été utilisé
+                string skipSuffix = skipPrime ? "_SKIP_PRIME" : "";
+                reportPath = Path.Combine(outputDir, $"Activation_Batch{skipSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
                 File.WriteAllText(reportPath, report.ToString());
             }
             catch (IOException)
             {
                 // CORRECTION : Si le fichier plante (ex: ouvert par un autre programme), on génère un nom alternatif
-                reportPath = Path.Combine(outputDir, $"Activation_Batch_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString().Substring(0, 4)}.txt");
+                string skipSuffix = skipPrime ? "_SKIP_PRIME" : "";
+                reportPath = Path.Combine(outputDir, $"Activation_Batch{skipSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString().Substring(0, 4)}.txt");
                 File.WriteAllText(reportPath, report.ToString());
             }
             catch (Exception ex)

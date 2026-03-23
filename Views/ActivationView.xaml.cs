@@ -77,9 +77,26 @@ namespace AutoActivator.Gui.Views
         // Triggered when clicking on "Contract" or "Demand ID" in the Batch tab
         private void BatchActInputType_Checked(object sender, RoutedEventArgs e) => UpdateBatchActCsvPath();
 
-        // Triggered when changing "Env (D/Q/...)" or "Channel (C01/C02/...)"
+        // Triggered when changing "Env (D/Q/...)"
         private void CmbActEnv_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchActCsvPath();
-        private void CmbActChannel_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchActCsvPath();
+
+        // Triggered when changing "Channel (C01/C03/C05)"
+        private void CmbActChannel_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            UpdateBatchActCsvPath();
+
+            // NOUVEAUTÉ : Gestion de la visibilité des boutons "Skip Prime"
+            if (CmbActChannel?.SelectedItem is ComboBoxItem cItem)
+            {
+                string channelValue = cItem.Tag?.ToString() ?? "C01";
+
+                // On affiche le bouton uniquement pour C01 et C03
+                Visibility skipPrimeVisibility = (channelValue == "C01" || channelValue == "C03") ? Visibility.Visible : Visibility.Collapsed;
+
+                if (BtnSkipPrimeSingleAct != null) BtnSkipPrimeSingleAct.Visibility = skipPrimeVisibility;
+                if (BtnSkipPrimeBatchAct != null) BtnSkipPrimeBatchAct.Visibility = skipPrimeVisibility;
+            }
+        }
 
         private void BtnCancelActivation_Click(object sender, RoutedEventArgs e)
         {
@@ -98,7 +115,10 @@ namespace AutoActivator.Gui.Views
 
         // -- EXECUTION: SINGLE ACTIVATION --
 
-        private async void BtnRunSingleActivation_Click(object sender, RoutedEventArgs e)
+        private void BtnRunSingleActivation_Click(object sender, RoutedEventArgs e) => RunSingleActivation(false);
+        private void BtnSkipPrimeSingleAct_Click(object sender, RoutedEventArgs e) => RunSingleActivation(true);
+
+        private async void RunSingleActivation(bool skipPrime)
         {
             if (!(Window.GetWindow(this) is MainWindow mainWindow)) return;
 
@@ -106,7 +126,8 @@ namespace AutoActivator.Gui.Views
 
             await mainWindow.RunProcessAsync(async () =>
             {
-                string rawInput = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8";
+                // NOUVEAUTÉ : Ajout de la variable channel
+                string rawInput = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8", channel = "C01";
                 string username = Settings.DbConfig.Uid;
                 string password = Settings.DbConfig.Pwd;
                 bool isDemandId = false;
@@ -122,6 +143,9 @@ namespace AutoActivator.Gui.Views
                     cus = TxtActCus.Text.Trim();
                     if (CmbActBucp.SelectedItem is ComboBoxItem bItem) bucp = bItem.Content?.ToString() ?? "382";
                     if (CmbActCmdpmt.SelectedItem is ComboBoxItem cItem) cmdpmt = cItem.Content?.ToString() ?? "8";
+
+                    // NOUVEAUTÉ : Récupération du canal
+                    if (CmbActChannel.SelectedItem is ComboBoxItem chItem) channel = chItem.Tag?.ToString() ?? "C01";
                 });
 
                 if (string.IsNullOrEmpty(rawInput)) throw new Exception("Please enter a contract value or Demand ID.");
@@ -144,32 +168,34 @@ namespace AutoActivator.Gui.Views
 
                 StringBuilder report = new StringBuilder();
                 report.AppendLine("=== SINGLE ACTIVATION REPORT ===");
-                report.AppendLine($"Date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n");
+                report.AppendLine($"Date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                if (skipPrime) report.AppendLine("MODE: SKIP PRIME (Bypassing ADDPRCT, LVPP06U, LVPG22U)\n");
 
                 try
                 {
-                    // Update UI thread cleanly via InvokeAsync (non-blocking) through the MainWindow
-                    await _activationDataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, username, password,
+                    // NOUVEAUTÉ : On passe la variable "channel" et "skipPrime"
+                    await _activationDataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, channel, skipPrime, username, password,
                         msg => Application.Current.Dispatcher.InvokeAsync(() => mainWindow.TxtStatus.Text = msg), _cts.Token);
 
-                    report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: SUCCESS");
+                    report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | Channel: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: SUCCESS");
 
                     Application.Current.Dispatcher.Invoke(() => MessageBox.Show("Activation sequence completed successfully. Please check the generated report.", "Activation Successful", MessageBoxButton.OK, MessageBoxImage.Information));
                 }
                 catch (Exception ex) when (ex.Message == "ALREADY_ACTIVE") // Catches the specific 008 Exception
                 {
-                    report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: ALREADY ACTIVE (Error 008)");
+                    report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | Channel: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: ALREADY ACTIVE (Error 008)");
 
                     Application.Current.Dispatcher.Invoke(() => MessageBox.Show("This contract is already active (Error 008 - premium already assigned).", "Contract Already Active", MessageBoxButton.OK, MessageBoxImage.Information));
                 }
                 catch (Exception ex)
                 {
-                    report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: FAILED ({ex.Message})");
+                    report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | Channel: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: FAILED ({ex.Message})");
                     throw; // Rethrow the error for global UI handling (RunProcessAsync will display it)
                 }
                 finally
                 {
-                    string path = Path.Combine(Settings.OutputDir, $"Single_Activation_{formattedContract}_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
+                    string skipSuffix = skipPrime ? "_SKIP_PRIME" : "";
+                    string path = Path.Combine(Settings.OutputDir, $"Single_Activation_{formattedContract}{skipSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
                     File.WriteAllText(path, report.ToString());
 
                     // Pass the path to the main window for the clickable link
@@ -185,7 +211,10 @@ namespace AutoActivator.Gui.Views
 
         // -- EXECUTION: BATCH ACTIVATION --
 
-        private async void BtnRunBatchActivation_Click(object sender, RoutedEventArgs e)
+        private void BtnRunBatchActivation_Click(object sender, RoutedEventArgs e) => RunBatchActivation(false);
+        private void BtnSkipPrimeBatchAct_Click(object sender, RoutedEventArgs e) => RunBatchActivation(true);
+
+        private async void RunBatchActivation(bool skipPrime)
         {
             if (!(Window.GetWindow(this) is MainWindow mainWindow)) return;
 
@@ -193,7 +222,8 @@ namespace AutoActivator.Gui.Views
 
             await mainWindow.RunProcessAsync(async () =>
             {
-                string filePath = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8";
+                // NOUVEAUTÉ : Ajout de la variable channel
+                string filePath = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8", channel = "C01";
                 string username = Settings.DbConfig.Uid;
                 string password = Settings.DbConfig.Pwd;
                 bool isDemandId = false;
@@ -209,6 +239,9 @@ namespace AutoActivator.Gui.Views
                     cus = TxtActCus.Text.Trim();
                     if (CmbActBucp.SelectedItem is ComboBoxItem bItem) bucp = bItem.Content?.ToString() ?? "382";
                     if (CmbActCmdpmt.SelectedItem is ComboBoxItem cItem) cmdpmt = cItem.Content?.ToString() ?? "8";
+
+                    // NOUVEAUTÉ : Récupération du canal
+                    if (CmbActChannel.SelectedItem is ComboBoxItem chItem) channel = chItem.Tag?.ToString() ?? "C01";
                 });
 
                 if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) throw new Exception("Please select a valid file.");
@@ -225,9 +258,9 @@ namespace AutoActivator.Gui.Views
 
                 var batchService = new BatchActivationService(_activationDataService);
 
-                // The return tuple now tracks alreadyActiveCount as well
+                // NOUVEAUTÉ : On passe la variable "channel" et "skipPrime" à la méthode RunBatchAsync
                 var result = await batchService.RunBatchAsync(
-                    filePath, isDemandId, envValue, cus, bucp, cmdpmt, username, password, Settings.OutputDir,
+                    filePath, isDemandId, envValue, cus, bucp, cmdpmt, channel, skipPrime, username, password, Settings.OutputDir,
                     msg => Application.Current.Dispatcher.InvokeAsync(() => mainWindow.TxtStatus.Text = msg),
                     _cts.Token
                 );

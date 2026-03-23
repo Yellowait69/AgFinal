@@ -65,7 +65,8 @@ namespace AutoActivator.Services
             return "0";
         }
 
-        public async Task ExecuteActivationSequenceAsync(string contract, string amount, string envValue, string cus, string bucp, string cmdpmt, string username, string password, Action<string> onProgress, CancellationToken token)
+        // NOUVEAUTÉ ICI : Ajout du paramètre "bool skipPrime"
+        public async Task ExecuteActivationSequenceAsync(string contract, string amount, string envValue, string cus, string bucp, string cmdpmt, string channel, bool skipPrime, string username, string password, Action<string> onProgress, CancellationToken token)
         {
             string q2 = envValue == "D" ? "Q2T" : "Q2C";
             string fastCtrl = envValue == "D" ? "I0T.DB.CA.FIB.FASTCTRL" : "I10.DB.CA.FIB.FASTCTRL";
@@ -85,6 +86,8 @@ namespace AutoActivator.Services
 
             if (amount == "0.00" || amount == "0")
             {
+                // Si c'est C05 on pourrait théoriquement se passer du montant vu qu'on ignore ADDPRCT,
+                // mais c'est toujours bon de garder la sécurité ici pour s'assurer que le contrat est valide en DB.
                 throw new Exception("Montant (Premium) introuvable ou égal à 0€. L'activation a été annulée car elle ne produirait aucun effet. Vérifiez le contrat (12 chiffres/tirets nécessaires pour la DB).");
             }
 
@@ -119,8 +122,9 @@ namespace AutoActivator.Services
 
             var orchestrator = new ActivationOrchestrator(jclFolder);
 
+            // NOUVEAUTÉ ICI : Ajout de la variable skipPrime à l'appel
             await orchestrator.RunActivationSequenceAsync(
-                generalVariables, addprctVariables, username, password,
+                generalVariables, addprctVariables, username, password, channel, skipPrime,
                 onProgress, token
             );
         }
