@@ -89,7 +89,7 @@
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                 <Button x:Name="BtnCancelSingleAct" Content="🛑 Cancel" Click="BtnCancelActivation_Click" Style="{DynamicResource CancelButtonStyle}" Width="120" Margin="0,0,10,0" IsEnabled="False"/>
 
-                                <Button x:Name="BtnSkipPrimeSingleAct" Content="⏭️ Skip Prime" Click="BtnSkipPrimeSingleAct_Click" Style="{DynamicResource ActionButtonStyle}" Background="#E67E22" Width="150" Margin="0,0,10,0" Visibility="Collapsed" ToolTip="Relance la séquence sans affecter la prime (ignore ADDPRCT, LVPP06U, LVPG22U)"/>
+                                <Button x:Name="BtnSkipPrimeSingleAct" Content="⏭️ Skip Prime" Click="BtnSkipPrimeSingleAct_Click" Style="{DynamicResource ActionButtonStyle}" Background="#E67E22" Width="150" Margin="0,0,10,0" ToolTip="Relance la séquence sans affecter la prime (ignore ADDPRCT, LVPP06U, LVPG22U)"/>
 
                                 <Button x:Name="BtnRunSingleAct" Content="🚀 Run Single Activation" Click="BtnRunSingleActivation_Click" Style="{DynamicResource ActionButtonStyle}" Width="220"/>
                             </StackPanel>
@@ -121,7 +121,7 @@
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                 <Button x:Name="BtnCancelBatchAct" Content="🛑 Cancel" Click="BtnCancelActivation_Click" Style="{DynamicResource CancelButtonStyle}" Width="120" Margin="0,0,10,0" IsEnabled="False"/>
 
-                                <Button x:Name="BtnSkipPrimeBatchAct" Content="⏭️ Skip Prime" Click="BtnSkipPrimeBatchAct_Click" Style="{DynamicResource ActionButtonStyle}" Background="#E67E22" Width="150" Margin="0,0,10,0" Visibility="Collapsed" ToolTip="Relance la séquence sans affecter la prime (ignore ADDPRCT, LVPP06U, LVPG22U)"/>
+                                <Button x:Name="BtnSkipPrimeBatchAct" Content="⏭️ Skip Prime" Click="BtnSkipPrimeBatchAct_Click" Style="{DynamicResource ActionButtonStyle}" Background="#E67E22" Width="150" Margin="0,0,10,0" ToolTip="Relance la séquence sans affecter la prime (ignore ADDPRCT, LVPP06U, LVPG22U)"/>
 
                                 <Button x:Name="BtnRunBatchAct" Content="🚀 Run Batch Activation" Click="BtnRunBatchActivation_Click" Style="{DynamicResource ActionButtonStyle}" Width="220"/>
                             </StackPanel>
