@@ -79,32 +79,53 @@
             <TabItem Header="⚡ 2. Activation">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
                     <StackPanel>
-                        <TextBlock Text="Activation Module &amp; Job Submission" FontSize="20" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                        <TextBlock Text="Activation Module &amp; Automated Factory" FontSize="20" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
                         <TextBlock TextWrapping="Wrap" Foreground="#34495E" FontSize="14" LineHeight="22" Margin="0,0,0,20">
-                            The Activation module acts as the core processor. It allows you to send payment or activation commands directly to the mainframe or target server via MicroFocus REST APIs.
+                            The Activation module is an automated data-entry factory. It replaces manual 3270 terminal operations by querying the database for contract premiums, formatting JCL (Job Control Language) scripts on the fly, and submitting activation sequences directly to the Mainframe via Micro Focus REST APIs. It supports both Single and Batch execution modes.
                         </TextBlock>
 
-                        <TextBlock Text="Required Parameters" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                        <TextBlock Text="Data Inputs &amp; Required Parameters" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
                         <Border Background="#F9F9F9" BorderBrush="#ECF0F1" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
                             <StackPanel>
-                                <TextBlock Text="To successfully trigger an activation job, you must properly configure the following values in the UI:" TextWrapping="Wrap" Margin="0,0,0,10" FontSize="14" Foreground="#34495E"/>
-                                <TextBlock Text="• CUS Code: The unique customer or system code." Margin="10,0,0,5" FontSize="14" FontWeight="SemiBold"/>
-                                <TextBlock Text="• BUCP (Bureau Number): Specifies the operational bureau." Margin="10,0,0,5" FontSize="14" FontWeight="SemiBold"/>
-                                <TextBlock Text="• CMDPMT (Command): The specific command string required to execute the payment/activation routine (e.g., 8, X, H)." Margin="10,0,0,5" FontSize="14" FontWeight="SemiBold"/>
+                                <TextBlock Text="The system requires strict data formatting to ensure Mainframe database integrity:" TextWrapping="Wrap" Margin="0,0,0,10" FontSize="14" Foreground="#34495E"/>
+                                <TextBlock Text="• Target ID: You can provide a 12-digit Contract ID, or a Demand ID (the system will auto-resolve the contract from the DB)." Margin="10,0,0,5" FontSize="14" FontWeight="SemiBold"/>
+                                <TextBlock Text="• Channel &amp; Premium: Depending on the channel (C01, C03, C05), the premium is fetched automatically and formatted to 10 characters with 2 decimals (e.g., '2500' becomes '0002500.00')." Margin="10,0,0,5" FontSize="14" FontWeight="SemiBold"/>
+                                <TextBlock Text="• Business Presets: Use the UI presets to auto-fill CUS (System Code), BUCP (Bureau), and CMDPMT (Payment Command) for Bank, Old Broker, or New Broker." Margin="10,0,0,5" FontSize="14" FontWeight="SemiBold"/>
+                                <TextBlock Text="• Skip Prime Option: A feature that forces the engine to bypass premium/billing steps. Highly useful to bypass Error 008 blockages, and identical to the default behavior of the C05 channel." Margin="10,0,0,5" FontSize="14" FontWeight="SemiBold"/>
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Text="Background Polling &amp; Safe Cancel" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
-                        <TextBlock TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,20">
-                            Once a batch is launched, the engine continuously polls the Mainframe to check the Job Status (Running, Complete, Failed). You can interrupt this process at any time using the <Run Foreground="#E74C3C" FontWeight="Bold">🛑 Cancel</Run> button. The system will cleanly abort pending jobs without corrupting data.
+                        <TextBlock Text="Mainframe Job Sequence Logic" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,10">
+                            Once triggered, the orchestrator modifies the JCL scripts with the fetched variables and submits them sequentially. The order is strictly maintained to prevent database deadlocks:
                         </TextBlock>
+                        <Border Background="#F4F6F6" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock Text="1. ADDPRCT, LVPP06U, LVPG22U:" FontWeight="Bold" Foreground="#34495E"/>
+                                <TextBlock Text="These jobs handle premium addition and financial calculations. Note: If the 'Skip Prime' button is clicked, or if the Channel is set to 'C05', these three jobs are automatically ignored." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="10,0,0,10"/>
 
-                        <TextBlock Text="Troubleshooting &amp; Common Errors" FontWeight="Bold" FontSize="18" Foreground="#E74C3C" Margin="0,0,0,10"/>
+                                <TextBlock Text="2. LI1J04D0, LI1J04D2:" FontWeight="Bold" Foreground="#34495E"/>
+                                <TextBlock Text="These are the core activation jobs and are executed in all scenarios to finalize the contract state in the IMS databases." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="10,0,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="⚙️ Hybrid Batch Architecture" FontWeight="Bold" FontSize="16" Foreground="#2980B9" Margin="0,0,0,5"/>
+                        <Border Background="#EBF5FB" BorderBrush="#85C1E9" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
+                            <TextBlock TextWrapping="Wrap" Foreground="#21618C" LineHeight="20">
+                                When running a Mass Batch Activation, the system uses a highly optimized <Run FontWeight="Bold">Hybrid Architecture</Run>.&#x0a;&#x0a;
+                                <Run FontWeight="SemiBold">• Full Parallel Data Prep:</Run> Database queries to resolve Demand IDs and fetch premiums are executed completely in parallel, saving massive amounts of time.&#x0a;
+                                <Run FontWeight="SemiBold">• Sequential Mainframe Funnel:</Run> Because the Mainframe does not support concurrent data manipulation for the same process, the application uses a Thread-Safe Semaphore (queue). Once a contract's data is ready, it waits in line to be submitted individually to the API, guaranteeing 0% data corruption.
+                            </TextBlock>
+                        </Border>
+
+                        <TextBlock Text="Troubleshooting &amp; Job Status" FontWeight="Bold" FontSize="18" Foreground="#E74C3C" Margin="0,0,0,10"/>
                         <Border Background="#FDEDEC" CornerRadius="5" Padding="20" BorderBrush="#E74C3C" BorderThickness="1">
                             <StackPanel>
-                                <TextBlock Text="❌ Error 008 (Job 'addprct')" FontWeight="Bold" FontSize="16" Foreground="#C0392B" Margin="0,0,0,5"/>
-                                <TextBlock Text="If during the activation polling phase the console or report returns a specific '008' error for the 'addprct' job, it indicates a business-rule conflict." TextWrapping="Wrap" Foreground="#C0392B" Margin="0,0,0,10"/>
-                                <TextBlock Text="Cause: It is highly likely that a premium has already been assigned to this contract or demand. The activation is therefore deliberately blocked by the central system to prevent duplicate payments or overriding existing data. These will be logged as 'Already Active' in your final report." TextWrapping="Wrap" Foreground="#C0392B" FontStyle="Italic"/>
+                                <TextBlock Text="Polling &amp; Cancellation" FontWeight="Bold" FontSize="14" Foreground="#C0392B" Margin="0,0,0,5"/>
+                                <TextBlock Text="The engine continuously polls the Mainframe API (every 2 seconds) to monitor completion or crashes (Abend). You can safely abort the local sequence anytime using the Cancel button." TextWrapping="Wrap" Foreground="#C0392B" Margin="0,0,0,15"/>
+
+                                <TextBlock Text="❌ Error 008 (ALREADY ACTIVE)" FontWeight="Bold" FontSize="16" Foreground="#C0392B" Margin="0,0,0,5"/>
+                                <TextBlock Text="If the orchestrator intercepts a 'Return Code 8' from the 'ADDPRCT' job, it means a premium has already been assigned to this contract in the past. The system gracefully catches this exception, stops the sequence for this specific contract to prevent duplicate payments, and simply logs it as 'Already Active' in your final Batch Report without crashing. If you need to force the remaining activation steps, you can use the 'Skip Prime' functionality to bypass this error." TextWrapping="Wrap" Foreground="#C0392B" FontStyle="Italic"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
