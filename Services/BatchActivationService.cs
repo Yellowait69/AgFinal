@@ -102,9 +102,9 @@ namespace AutoActivator.Services
 
             // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
 
-            // OPTIMISATION : Limite abaissée à 3. Le Mainframe gérant les requêtes séquentiellement,
+            // OPTIMISATION : Limite abaissée à 1. Le Mainframe gérant les requêtes séquentiellement,
             // un chiffre bas garantit la stabilité et évite les Timeouts en chaîne.
-            var semaphore = new SemaphoreSlim(3);
+            var semaphore = new SemaphoreSlim(1);
 
             // Initialisation des compteurs
             int totalItems = contractsToProcess.Count;

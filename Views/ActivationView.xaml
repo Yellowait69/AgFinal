@@ -39,7 +39,7 @@
                                 <ComboBoxItem Content="Q000 (Q)" Tag="Q"/>
                             </ComboBox>
 
-                            <TextBlock Text="Channel:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                            <TextBlock Text="Process:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
                             <ComboBox x:Name="CmbActChannel" Margin="0,0,0,15" Padding="6" FontSize="14" BorderBrush="#DCDDE1" SelectedIndex="0" SelectionChanged="CmbActChannel_SelectionChanged">
                                 <ComboBoxItem Content="C01" Tag="C01"/>
                                 <ComboBoxItem Content="C03" Tag="C03"/>
