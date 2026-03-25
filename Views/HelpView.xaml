@@ -45,23 +45,36 @@
                     <StackPanel>
                         <TextBlock Text="Extraction Module &amp; Data Retrieval" TextWrapping="Wrap" FontSize="20" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
                         <TextBlock TextWrapping="Wrap" Foreground="#34495E" FontSize="14" LineHeight="22" Margin="0,0,0,20">
-                            The extraction module allows you to connect and retrieve data directly from target environments such as <Run FontWeight="Bold">D000</Run> or <Run FontWeight="Bold">Q000</Run>.
-                            It queries specific tables related to your contracts and generates consolidated CSV files ready for deep analysis. All generated files are safely stored in your <Run FontStyle="Italic">data/output</Run> folder.
+                            The extraction module connects to specific database environments (<Run FontWeight="Bold">D000</Run>, <Run FontWeight="Bold">Q000</Run>, etc.) to retrieve dozens of tables across the LISA and ELIA systems. Data is assembled into strictly ordered CSV files for future comparisons.
                         </TextBlock>
+
+                        <TextBlock Text="Core Engine Architecture &amp; Optimizations" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#8E44AD" Margin="0,0,0,5"/>
+                        <Border Background="#F5EEF8" BorderBrush="#9B59B6" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock Text="• Demand ID Auto-Resolution:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
+                                <TextBlock Text="If you search by Demand ID, the engine runs a background pre-query to automatically resolve the real Contract Number before starting the dual ELIA/LISA extraction." TextWrapping="Wrap" Foreground="#6C3483" Margin="10,0,0,10"/>
+
+                                <TextBlock Text="• SQL Connection Pool Protection:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
+                                <TextBlock Text="To prevent crashing the database during massive batches, the parallel extractor is strictly throttled using a SemaphoreSlim(10). It allows fast multi-threading while capping concurrent SQL queries." TextWrapping="Wrap" Foreground="#6C3483" Margin="10,0,0,10"/>
+
+                                <TextBlock Text="• Background Excel Interop Cleanup:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
+                                <TextBlock Text="If you load an Excel file, the engine quietly converts it to CSV in the background, ensuring COM objects are fully released to prevent Excel ghost processes." TextWrapping="Wrap" Foreground="#6C3483"/>
+                            </StackPanel>
+                        </Border>
 
                         <Border Background="#F9F9F9" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,20">
                             <StackPanel>
                                 <TextBlock Text="Batch Input File Rules (Excel / CSV)" TextWrapping="Wrap" FontWeight="Bold" FontSize="18" Foreground="#2C3E50" Margin="0,0,0,10"/>
-                                <TextBlock Text="When using the Batch Extraction feature, your input files MUST strictly adhere to the following templates based on your search criteria. If you provide an Excel (.xls/.xlsx) file, the engine will automatically convert it to CSV in the background." TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,15"/>
+                                <TextBlock Text="Your input files MUST strictly adhere to the following templates based on your search criteria." TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,15"/>
 
                                 <TextBlock Text="1. Search by Contract ID:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,5"/>
-                                <TextBlock Text="The program scans your file looking for a column named exactly 'LISA Contract'. Ensure that your column header matches this name precisely, without any leading or trailing spaces." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
+                                <TextBlock Text="The program scans your file looking for a column named exactly 'LISA Contract'. Ensure that your column header matches this name precisely." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
                                 <Border BorderBrush="#DCDDE1" BorderThickness="1" CornerRadius="4" Margin="20,0,0,20" HorizontalAlignment="Left" Padding="2" Background="White">
                                     <Image Source="/Images/TemplateContractLisa.png" Width="400" Stretch="Uniform" ToolTip="Example of the LISA Contract column format"/>
                                 </Border>
 
                                 <TextBlock Text="2. Search by Demand ID:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,5"/>
-                                <TextBlock Text="The program looks for a column named 'Value'. Important: The system expects this column header to be located specifically on the second row (Row 2) of your Excel/CSV file to accurately retrieve all Demand IDs." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
+                                <TextBlock Text="The program looks for a column named 'Value'. Important: The system expects this column header to be located specifically on the second row (Row 2) of your file to accurately retrieve all Demand IDs." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
                                 <Border BorderBrush="#DCDDE1" BorderThickness="1" CornerRadius="4" Margin="20,0,0,10" HorizontalAlignment="Left" Padding="2" Background="White">
                                     <Image Source="/Images/TemplateDemandValue.png" Width="400" Stretch="Uniform" ToolTip="Example of the Value column on Row 2"/>
                                 </Border>
@@ -70,7 +83,7 @@
 
                         <TextBlock Text="Session History Tracking" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
                         <TextBlock TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,15">
-                            At the bottom of the Extraction view, the <Run FontWeight="Bold">Session History</Run> grid allows you to monitor extractions in real-time. Contracts that are not found or raise SQL errors are marked as <Run Foreground="#E74C3C" FontWeight="Bold">KO (Inactive)</Run> and are automatically grouped at the top of the list for quick debugging.
+                            The GUI dynamically updates the <Run FontWeight="Bold">Session History</Run> grid on the main UI thread. Contracts raising SQL errors or not found are marked as <Run Foreground="#E74C3C" FontWeight="Bold">KO (Inactive)</Run> and are automatically pushed to the top of the list for immediate debugging.
                         </TextBlock>
                     </StackPanel>
                 </ScrollViewer>
@@ -81,65 +94,56 @@
                     <StackPanel>
                         <TextBlock Text="Activation Module &amp; Automated Factory" TextWrapping="Wrap" FontSize="20" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
                         <TextBlock TextWrapping="Wrap" Foreground="#34495E" FontSize="14" LineHeight="22" Margin="0,0,0,20">
-                            The Activation module acts as a fully automated data-entry factory. It replaces manual 3270 terminal (green screen) operations by automatically querying databases for contract premiums, formatting JCL (Job Control Language) scripts on the fly, and submitting activation sequences directly to the Mainframe via Micro Focus REST APIs.
+                            The Activation module acts as a fully automated data-entry factory. It replaces manual 3270 terminal (green screen) operations by automatically querying databases for contract premiums, formatting JCL (Job Control Language) scripts, and submitting sequences to the Mainframe via Micro Focus REST APIs.
                         </TextBlock>
 
-                        <TextBlock Text="1. Required Data &amp; Formatting Rules" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                        <TextBlock Text="1. Strict Mainframe Formatting Rules" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
                         <Border Background="#F9F9F9" BorderBrush="#ECF0F1" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
                             <StackPanel>
-                                <TextBlock Text="To ensure Mainframe database integrity, the DataService strictly formats all inputs:" TextWrapping="Wrap" Margin="0,0,0,10" FontSize="14" Foreground="#34495E" FontWeight="SemiBold"/>
+                                <TextBlock Text="To ensure database integrity, the DataService strictly formats all inputs:" TextWrapping="Wrap" Margin="0,0,0,10" FontSize="14" Foreground="#34495E" FontWeight="SemiBold"/>
 
                                 <TextBlock Text="• Target ID:" TextWrapping="Wrap" FontWeight="Bold" Margin="10,0,0,2" FontSize="14"/>
-                                <TextBlock Text="You can provide a Demand ID (the DB resolves it automatically) or a Contract Number. If a 12-digit contract is provided, the system automatically extracts the 9 central characters required by the Mainframe." TextWrapping="Wrap" Margin="25,0,0,8" FontSize="13" Foreground="#7F8C8D"/>
-
-                                <TextBlock Text="• Environment (Env):" TextWrapping="Wrap" FontWeight="Bold" Margin="10,0,0,2" FontSize="14"/>
-                                <TextBlock Text="D (Dev), Q (QA), A (Acceptance), P (Prod). This letter directs the API to the right servers and appends the '000' suffix to target the correct database (e.g., D000)." TextWrapping="Wrap" Margin="25,0,0,8" FontSize="13" Foreground="#7F8C8D"/>
+                                <TextBlock Text="If a 12-digit contract is provided, the system automatically truncates it to extract the 9 central characters required by the Mainframe scripts." TextWrapping="Wrap" Margin="25,0,0,8" FontSize="13" Foreground="#7F8C8D"/>
 
                                 <TextBlock Text="• Premium (Amount):" TextWrapping="Wrap" FontWeight="Bold" Margin="10,0,0,2" FontSize="14"/>
-                                <TextBlock Text="Fetched automatically via SQL. The Mainframe demands a strict 10-character format with 2 decimals padded with zeros (e.g., '2500' becomes '0002500.00'). Note: If the premium is exactly 0, the sequence is safely aborted." TextWrapping="Wrap" Margin="25,0,0,8" FontSize="13" Foreground="#7F8C8D"/>
+                                <TextBlock Text="Fetched automatically. The Mainframe demands a strict 10-character format with 2 decimals padded with zeros (e.g., '2500' becomes '0002500.00'). Note: If the premium is exactly 0, the billing sequence is safely bypassed." TextWrapping="Wrap" Margin="25,0,0,8" FontSize="13" Foreground="#7F8C8D"/>
 
                                 <TextBlock Text="• Business Presets (CUS, BUCP, CMDPMT):" TextWrapping="Wrap" FontWeight="Bold" Margin="10,0,0,2" FontSize="14"/>
-                                <TextBlock Text="Use presets for Bank (382, 8), Old Broker (49797, X), or New Broker (80819, H). The BUCP code is automatically padded with zeros to reach 5 characters." TextWrapping="Wrap" Margin="25,0,0,8" FontSize="13" Foreground="#7F8C8D"/>
+                                <TextBlock Text="Use presets for Bank (382, 8), Old Broker (49797, X), or New Broker (80819, H). BUCP codes are automatically padded with zeros to reach 5 characters." TextWrapping="Wrap" Margin="25,0,0,8" FontSize="13" Foreground="#7F8C8D"/>
                             </StackPanel>
                         </Border>
 
                         <TextBlock Text="2. Architecture &amp; Mainframe Sequence" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
                         <Border Background="#F4F6F6" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
                             <StackPanel>
-                                <TextBlock Text="The Orchestrator injects specific APs and JobCards into the JCL files and submits them in a rigid sequential order to prevent database deadlocks:" TextWrapping="Wrap" Foreground="#34495E" Margin="0,0,0,10"/>
+                                <TextBlock Text="The Orchestrator injects JobCards into JCL files and submits them in a rigid order to prevent database deadlocks:" TextWrapping="Wrap" Foreground="#34495E" Margin="0,0,0,10"/>
 
                                 <TextBlock Text="Phase 1: ADDPRCT, LVPP06U, LVPG22U" TextWrapping="Wrap" FontWeight="Bold" Foreground="#2980B9"/>
                                 <TextBlock Text="These jobs handle the billing phase and premium additions. Logically bypassed if the Channel is 'C05' or if the user clicks the 'Skip Prime' button." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="10,0,0,10"/>
 
                                 <TextBlock Text="Phase 2: LI1J04D0, LI1J04D2" TextWrapping="Wrap" FontWeight="Bold" Foreground="#2980B9"/>
                                 <TextBlock Text="Core IMS activation jobs executed in all scenarios to finalize the contract's status." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="10,0,0,10"/>
-
-                                <TextBlock Text="MicroFocus API Service (Resilience):" TextWrapping="Wrap" FontWeight="Bold" Foreground="#2980B9"/>
-                                <TextBlock Text="The network layer is highly optimized: Thread-safe, supports up to 500 parallel connections, recycles session cookies to avoid disconnects, and automatically falls back to secondary servers (Load Balancing) if a node crashes." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="10,0,0,0"/>
                             </StackPanel>
                         </Border>
 
                         <TextBlock Text="3. Hybrid Batch Architecture (Mass Processing)" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#8E44AD" Margin="0,0,0,5"/>
                         <Border Background="#F5EEF8" BorderBrush="#9B59B6" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
                             <StackPanel>
-                                <TextBlock Text="For Batch mode, Excel files are first auto-converted to CSV via Excel Interop. Then, the engine deploys a highly efficient Hybrid Architecture:" TextWrapping="Wrap" Foreground="#4A235A" Margin="0,0,0,10" FontWeight="SemiBold"/>
+                                <TextBlock Text="The engine deploys a highly efficient Hybrid Architecture to balance speed and stability:" TextWrapping="Wrap" Foreground="#4A235A" Margin="0,0,0,10" FontWeight="SemiBold"/>
 
                                 <TextBlock Text="⚡ Full Parallel DB Layer:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
-                                <TextBlock Text="SQL queries (Demand ID resolutions &amp; Premium fetching) are executed asynchronously and simultaneously for all rows, saving massive amounts of time." TextWrapping="Wrap" Foreground="#6C3483" Margin="10,0,0,10"/>
+                                <TextBlock Text="SQL queries (Demand ID resolutions &amp; Premium fetching) are executed asynchronously and simultaneously for all rows." TextWrapping="Wrap" Foreground="#6C3483" Margin="10,0,0,10"/>
 
                                 <TextBlock Text="⏳ Sequential Mainframe Funnel:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
-                                <TextBlock Text="To avoid Mainframe DB locking and corruption, the API submissions are protected by a SemaphoreSlim(1). Once a contract's SQL prep is done, it waits in line to be processed individually." TextWrapping="Wrap" Foreground="#6C3483" Margin="10,0,0,0"/>
+                                <TextBlock Text="To avoid Mainframe DB locking and corruption, API submissions are strictly protected by a SemaphoreSlim(1). Once a contract's SQL prep is done, it waits in line to be processed individually on the Mainframe." TextWrapping="Wrap" Foreground="#6C3483" Margin="10,0,0,0"/>
                             </StackPanel>
                         </Border>
 
                         <TextBlock Text="Troubleshooting &amp; Exception Handling" TextWrapping="Wrap" FontWeight="Bold" FontSize="18" Foreground="#E74C3C" Margin="0,0,0,10"/>
                         <Border Background="#FDEDEC" CornerRadius="5" Padding="20" BorderBrush="#E74C3C" BorderThickness="1">
                             <StackPanel>
-                                <TextBlock Text="Polling &amp; Cancellation" TextWrapping="Wrap" FontWeight="Bold" FontSize="14" Foreground="#C0392B" Margin="0,0,0,5"/>
-                                <TextBlock Text="The engine continuously polls the Mainframe API (every 2 seconds for a max of 10 mins) to monitor completion or crashes (Abend). You can safely abort the sequence anytime using the Cancel button." TextWrapping="Wrap" Foreground="#C0392B" Margin="0,0,0,15"/>
-
                                 <TextBlock Text="❌ Error 008 (ALREADY ACTIVE)" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#C0392B" Margin="0,0,0,5"/>
-                                <TextBlock Text="If the orchestrator intercepts a 'Return Code 8' from the 'ADDPRCT' job, it means a premium has already been assigned to this contract in the past. The system gracefully catches this exception, stops the sequence for this specific contract to prevent duplicate payments, and logs it as 'Already Active' in the real-time counters and final report. If you need to force the remaining IMS activation steps, use the 'Skip Prime' feature." TextWrapping="Wrap" Foreground="#C0392B" FontStyle="Italic"/>
+                                <TextBlock Text="If the orchestrator intercepts a 'Return Code 8' from the 'ADDPRCT' job, a premium was already assigned. The system gracefully catches this exception, stops the sequence to prevent duplicate payments, and logs it as 'Already Active'. You can force the remaining IMS steps using 'Skip Prime'." TextWrapping="Wrap" Foreground="#C0392B" FontStyle="Italic"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -151,26 +155,29 @@
                     <StackPanel>
                         <TextBlock Text="Deep Comparison Module" TextWrapping="Wrap" FontSize="20" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
                         <TextBlock TextWrapping="Wrap" Foreground="#34495E" FontSize="14" LineHeight="22" Margin="0,0,0,20">
-                            The Comparison module is your final quality-assurance step. It analyzes two previously extracted CSV files (Base vs. Target) to guarantee that system modifications or activations did not introduce regressions or data corruption.
+                            The Comparison module analyzes two extracted CSV files (Base vs. Target) to guarantee that system modifications or activations did not introduce regressions or data corruption.
                         </TextBlock>
 
-                        <TextBlock Text="🧠 Smart Baseline Matcher (NEW)" TextWrapping="Wrap" FontWeight="Bold" FontSize="18" Foreground="#8E44AD" Margin="0,0,0,10"/>
+                        <TextBlock Text="🧠 Smart Baseline Matcher" TextWrapping="Wrap" FontWeight="Bold" FontSize="18" Foreground="#8E44AD" Margin="0,0,0,10"/>
                         <Border Background="#F5EEF8" BorderBrush="#9B59B6" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
                             <StackPanel>
-                                <TextBlock Text="You no longer need to search for your files manually!" TextWrapping="Wrap" FontWeight="Bold" Foreground="#8E44AD" Margin="0,0,0,10"/>
-                                <TextBlock Text="1. Place your 'golden' baseline CSV files (e.g., Baseline_C01.csv) in the 'data/baseline' folder." TextWrapping="Wrap" Margin="0,0,0,8" FontSize="14" Foreground="#4A235A"/>
-                                <TextBlock Text="2. Select your Baseline and your Target Environment (D or Q) in the blue top menu." TextWrapping="Wrap" Margin="0,0,0,8" FontSize="14" Foreground="#4A235A"/>
-                                <TextBlock Text="3. The engine will instantly scan your output folder and automatically pair your baseline with the MOST RECENT extraction matching your channel and environment!" TextWrapping="Wrap" FontSize="14" Foreground="#4A235A"/>
+                                <TextBlock Text="1. Place your golden baselines in the 'data/baseline' folder." TextWrapping="Wrap" Margin="0,0,0,8" FontSize="14" Foreground="#4A235A"/>
+                                <TextBlock Text="2. Select your Baseline and Target Environment in the UI." TextWrapping="Wrap" Margin="0,0,0,8" FontSize="14" Foreground="#4A235A"/>
+                                <TextBlock Text="3. The engine instantly scans the output folder and automatically pairs your baseline with the MOST RECENT extraction matching your channel and environment. No manual file browsing required!" TextWrapping="Wrap" FontSize="14" Foreground="#4A235A" FontWeight="Bold"/>
                             </StackPanel>
                         </Border>
 
                         <TextBlock Text="How does the Deep Comparison work?" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
                         <Border Background="#F9F9F9" BorderBrush="#ECF0F1" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
                             <StackPanel>
-                                <TextBlock Text="1. Smart Filtering: The system scans both files and automatically isolates the MOST RECENT contract entry per Test ID, avoiding false positives from historical data." TextWrapping="Wrap" Margin="0,0,0,10" FontSize="14"/>
-                                <TextBlock Text="2. Data Normalization: Spaces, decimal formats, and null values are standardized so that the engine only compares actual business values." TextWrapping="Wrap" Margin="0,0,0,10" FontSize="14"/>
-                                <TextBlock Text="3. Cell-by-Cell Check: Every row and column is meticulously aligned and compared. Highly volatile columns (like generation timestamps) are safely ignored via the internal Exclusions dictionary." TextWrapping="Wrap" Margin="0,0,0,10" FontSize="14"/>
-                                <TextBlock Text="4. Report Generation: A detailed text report is generated and saved in the output folder. You can open it instantly using the blue 'Open Report Folder' button." TextWrapping="Wrap" FontSize="14"/>
+                                <TextBlock Text="1. Smart Time Filtering:" TextWrapping="Wrap" FontWeight="Bold" Margin="0,0,0,5" FontSize="14"/>
+                                <TextBlock Text="The system scans both files and mathematically isolates the MOST RECENT contract entry per Test ID by parsing the timestamp embedded in the 'ProcessID' (e.g., ID501_FIB_ProcessID:130326145957). Old duplicates are safely ignored." TextWrapping="Wrap" Margin="10,0,0,10" FontSize="13" Foreground="#7F8C8D"/>
+
+                                <TextBlock Text="2. Data Normalization:" TextWrapping="Wrap" FontWeight="Bold" Margin="0,0,0,5" FontSize="14"/>
+                                <TextBlock Text="Invisible characters (like BOM marks), trailing spaces, and null values are standardized so that the engine compares pure business logic." TextWrapping="Wrap" Margin="10,0,0,10" FontSize="13" Foreground="#7F8C8D"/>
+
+                                <TextBlock Text="3. Cell-by-Cell Exclusions:" TextWrapping="Wrap" FontWeight="Bold" Margin="0,0,0,5" FontSize="14"/>
+                                <TextBlock Text="Every table is aligned and checked. However, highly volatile columns (like TSTAMP_DMOD or Generation Dates) are safely ignored via the internal Exclusions dictionary to prevent false positives." TextWrapping="Wrap" Margin="10,0,0,10" FontSize="13" Foreground="#7F8C8D"/>
                             </StackPanel>
                         </Border>
 
