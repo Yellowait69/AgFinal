@@ -153,42 +153,78 @@
             <TabItem Header="📊 3. Comparison">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
                     <StackPanel>
-                        <TextBlock Text="Deep Comparison Module" TextWrapping="Wrap" FontSize="20" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                        <TextBlock Text="Deep Comparison &amp; Non-Regression Engine" TextWrapping="Wrap" FontSize="20" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
                         <TextBlock TextWrapping="Wrap" Foreground="#34495E" FontSize="14" LineHeight="22" Margin="0,0,0,20">
-                            The Comparison module analyzes two extracted CSV files (Base vs. Target) to guarantee that system modifications or activations did not introduce regressions or data corruption.
+                            The Comparison module is a powerful non-regression testing engine. It analyzes two extracted CSV datasets (Base vs. Target) table by table, row by row, and cell by cell to guarantee that system modifications have not corrupted data formatting or business rules.
                         </TextBlock>
 
-                        <TextBlock Text="🧠 Smart Baseline Matcher" TextWrapping="Wrap" FontWeight="Bold" FontSize="18" Foreground="#8E44AD" Margin="0,0,0,10"/>
+                        <TextBlock Text="🧠 1. Smart Baseline Matcher &amp; UI" TextWrapping="Wrap" FontWeight="Bold" FontSize="18" Foreground="#8E44AD" Margin="0,0,0,10"/>
                         <Border Background="#F5EEF8" BorderBrush="#9B59B6" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
                             <StackPanel>
-                                <TextBlock Text="1. Place your golden baselines in the 'data/baseline' folder." TextWrapping="Wrap" Margin="0,0,0,8" FontSize="14" Foreground="#4A235A"/>
-                                <TextBlock Text="2. Select your Baseline and Target Environment in the UI." TextWrapping="Wrap" Margin="0,0,0,8" FontSize="14" Foreground="#4A235A"/>
-                                <TextBlock Text="3. The engine instantly scans the output folder and automatically pairs your baseline with the MOST RECENT extraction matching your channel and environment. No manual file browsing required!" TextWrapping="Wrap" FontSize="14" Foreground="#4A235A" FontWeight="Bold"/>
+                                <TextBlock Text="Designed for zero manual file hunting:" TextWrapping="Wrap" Margin="0,0,0,8" FontSize="14" Foreground="#4A235A" FontWeight="SemiBold"/>
+                                <TextBlock Text="• File Import:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
+                                <TextBlock Text="Use the 'Add Baseline' button to automatically copy your golden CSV extractions into the protected Baseline directory." TextWrapping="Wrap" Margin="10,0,0,8" FontSize="13" Foreground="#6C3483"/>
+
+                                <TextBlock Text="• Intelligent Pairing:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
+                                <TextBlock Text="Select your Environment (D for D000, Q for Q000) and choose a Baseline. The engine instantly scans the output folder to find the MOST RECENT target extraction matching this specific channel and environment." TextWrapping="Wrap" Margin="10,0,0,8" FontSize="13" Foreground="#6C3483"/>
+
+                                <TextBlock Text="• Asynchronous Execution:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
+                                <TextBlock Text="Heavy matrix comparisons run in the background. The UI remains responsive and displays an animated circular dashboard upon completion." TextWrapping="Wrap" Margin="10,0,0,0" FontSize="13" Foreground="#6C3483"/>
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Text="How does the Deep Comparison work?" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
-                        <Border Background="#F9F9F9" BorderBrush="#ECF0F1" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
+                        <TextBlock Text="⚙️ 2. Orchestration &amp; Data Prep" TextWrapping="Wrap" FontWeight="Bold" FontSize="18" Foreground="#2980B9" Margin="0,0,0,10"/>
+                        <Border Background="#EBF5FB" BorderBrush="#3498DB" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
                             <StackPanel>
-                                <TextBlock Text="1. Smart Time Filtering:" TextWrapping="Wrap" FontWeight="Bold" Margin="0,0,0,5" FontSize="14"/>
-                                <TextBlock Text="The system scans both files and mathematically isolates the MOST RECENT contract entry per Test ID by parsing the timestamp embedded in the 'ProcessID' (e.g., ID501_FIB_ProcessID:130326145957). Old duplicates are safely ignored." TextWrapping="Wrap" Margin="10,0,0,10" FontSize="13" Foreground="#7F8C8D"/>
+                                <TextBlock Text="Before comparing, the Orchestrator cleans and aligns the datasets:" TextWrapping="Wrap" Margin="0,0,0,10" FontSize="14" Foreground="#154360" FontWeight="SemiBold"/>
 
-                                <TextBlock Text="2. Data Normalization:" TextWrapping="Wrap" FontWeight="Bold" Margin="0,0,0,5" FontSize="14"/>
-                                <TextBlock Text="Invisible characters (like BOM marks), trailing spaces, and null values are standardized so that the engine compares pure business logic." TextWrapping="Wrap" Margin="10,0,0,10" FontSize="13" Foreground="#7F8C8D"/>
+                                <TextBlock Text="• Latest Test ID Filtering:" TextWrapping="Wrap" FontWeight="Bold" Margin="0,0,0,5" Foreground="#1F618D"/>
+                                <TextBlock Text="If a contract was extracted multiple times, the system isolates only the MOST RECENT entry per Test ID (e.g., ID501) to prevent duplicate or outdated analysis." TextWrapping="Wrap" Margin="10,0,0,10" FontSize="13" Foreground="#2874A6"/>
 
-                                <TextBlock Text="3. Cell-by-Cell Exclusions:" TextWrapping="Wrap" FontWeight="Bold" Margin="0,0,0,5" FontSize="14"/>
-                                <TextBlock Text="Every table is aligned and checked. However, highly volatile columns (like TSTAMP_DMOD or Generation Dates) are safely ignored via the internal Exclusions dictionary to prevent false positives." TextWrapping="Wrap" Margin="10,0,0,10" FontSize="13" Foreground="#7F8C8D"/>
+                                <TextBlock Text="• Cross-Referencing &amp; Missing Tests:" TextWrapping="Wrap" FontWeight="Bold" Margin="0,0,0,5" Foreground="#1F618D"/>
+                                <TextBlock Text="The engine intersects the Test IDs. If a contract is present in the Baseline but missing in the Target (or vice versa), it is excluded from cell-by-cell comparison and reported as an informational discrepancy." TextWrapping="Wrap" Margin="10,0,0,10" FontSize="13" Foreground="#2874A6"/>
+
+                                <TextBlock Text="• Dynamic Product Detection:" TextWrapping="Wrap" FontWeight="Bold" Margin="0,0,0,5" Foreground="#1F618D"/>
+                                <TextBlock Text="The orchestrator automatically reads the ELIA table [FJ1.TB5UCON] (Column: IT5UCONCASU) to identify the insurance product involved, enabling precise statistics." TextWrapping="Wrap" Margin="10,0,0,0" FontSize="13" Foreground="#2874A6"/>
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Text="Understanding the Dashboard Scores" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#27AE60" Margin="0,0,0,5"/>
+                        <TextBlock Text="🔍 3. The Core Comparator Engine" TextWrapping="Wrap" FontWeight="Bold" FontSize="18" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                        <Border Background="#F9F9F9" BorderBrush="#DCDDE1" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock Text="The Comparator applies strict mathematical and normalization rules to prevent false positives:" TextWrapping="Wrap" Margin="0,0,0,10" FontSize="14" Foreground="#2C3E50" FontWeight="SemiBold"/>
+
+                                <TextBlock Text="• Cell Exclusions:" TextWrapping="Wrap" FontWeight="Bold" Margin="0,0,0,5" FontSize="14"/>
+                                <TextBlock Text="Volatile columns (e.g., TSTAMP_DMOD, dynamic IDs) are safely ignored via the internal Exclusions Dictionary to ensure only pure business logic is compared." TextWrapping="Wrap" Margin="10,0,0,10" FontSize="13" Foreground="#7F8C8D"/>
+
+                                <TextBlock Text="• Smart Data Normalization:" TextWrapping="Wrap" FontWeight="Bold" Margin="0,0,0,5" FontSize="14"/>
+                                <TextBlock Text="Textual values like 'NaN', 'None', or DBNull are standardized into empty strings." TextWrapping="Wrap" Margin="10,0,0,5" FontSize="13" Foreground="#7F8C8D"/>
+                                <TextBlock Text="Crucial: The engine detects all floating-point numbers and rounds them strictly to 4 decimal places using an Invariant Culture. This prevents precision errors (e.g., 10.5 vs 10.5000000001) from failing the test." TextWrapping="Wrap" Margin="10,0,0,10" FontSize="13" Foreground="#E67E22" FontWeight="SemiBold"/>
+
+                                <TextBlock Text="• Row Sorting &amp; RAM Protection:" TextWrapping="Wrap" FontWeight="Bold" Margin="0,0,0,5" FontSize="14"/>
+                                <TextBlock Text="Rows are sorted logically before comparison. To prevent memory crashes (Out Of Memory) if two massive tables are entirely different, the engine acts as a circuit breaker and stops detailing the text report after 100 discrepancies." TextWrapping="Wrap" Margin="10,0,0,0" FontSize="13" Foreground="#7F8C8D"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="📈 4. Understanding Statuses &amp; Scores" TextWrapping="Wrap" FontWeight="Bold" FontSize="18" Foreground="#27AE60" Margin="0,0,0,10"/>
                         <Border Background="#EAFAF1" BorderBrush="#2ECC71" BorderThickness="1" CornerRadius="5" Padding="15">
                             <StackPanel>
-                                <TextBlock Text="• 🎉 Perfect Match (100%): All tables are identical. No discrepancies were found." TextWrapping="Wrap" Foreground="#27AE60" Margin="0,0,0,8" FontWeight="SemiBold"/>
-                                <TextBlock Text="• ⚠️ Minor Discrepancies (≥ 95%): A few differences were spotted. Check the DataGrid details to see exactly which row/column changed." TextWrapping="Wrap" Foreground="#D35400" Margin="0,0,0,8" FontWeight="SemiBold"/>
-                                <TextBlock Text="• ❌ Differences Detected: Major regressions found. The system calculates success rates per Product and per Test ID so you can pinpoint the exact origin of the failure." TextWrapping="Wrap" Foreground="#C0392B" FontWeight="SemiBold"/>
+                                <TextBlock Text="Detailed Metrics Output:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#1E8449" Margin="0,0,0,10"/>
+                                <TextBlock Text="A detailed TXT report is generated containing granular metrics. It provides success percentages per 'Product' (ProductMetrics) and per 'Test ID' (TestMetrics), allowing QA teams to isolate which specific update broke which specific product." TextWrapping="Wrap" Foreground="#27AE60" Margin="0,0,0,15"/>
+
+                                <TextBlock Text="Comparison Status Codes:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#1E8449" Margin="0,0,0,5"/>
+                                <TextBlock Text="• OK : Perfect match. Data is identical." TextWrapping="Wrap" Foreground="#27AE60" Margin="10,0,0,3" FontWeight="SemiBold"/>
+                                <TextBlock Text="• OK_EMPTY : Both source and target tables are empty (Normal behavior)." TextWrapping="Wrap" Foreground="#27AE60" Margin="10,0,0,3" FontWeight="SemiBold"/>
+                                <TextBlock Text="• KO_ROW_COUNT : Data volume mismatch (e.g., Target has 4 rows, Base has 5)." TextWrapping="Wrap" Foreground="#E74C3C" Margin="10,0,0,3" FontWeight="SemiBold"/>
+                                <TextBlock Text="• KO : Cell values differ despite normalization." TextWrapping="Wrap" Foreground="#E74C3C" Margin="10,0,0,15" FontWeight="SemiBold"/>
+
+                                <TextBlock Text="Dashboard Color Coding:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#1E8449" Margin="0,0,0,5"/>
+                                <TextBlock Text="🟢 Green (100%): Flawless non-regression." TextWrapping="Wrap" Foreground="#27AE60" Margin="10,0,0,3"/>
+                                <TextBlock Text="🟡 Yellow (≥ 95%): Minor discrepancies detected." TextWrapping="Wrap" Foreground="#D35400" Margin="10,0,0,3"/>
+                                <TextBlock Text="🔴 Red (&lt; 95%): Major differences found. Review the DataGrid immediately." TextWrapping="Wrap" Foreground="#C0392B" Margin="10,0,0,0"/>
                             </StackPanel>
                         </Border>
+
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
