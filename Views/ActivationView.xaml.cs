@@ -85,12 +85,12 @@ namespace AutoActivator.Gui.Views
         {
             UpdateBatchActCsvPath();
 
-            // NOUVEAUTÉ : Gestion de la visibilité des boutons "Skip Prime"
+            // NEW: Manage "Skip Prime" buttons visibility
             if (CmbActChannel?.SelectedItem is ComboBoxItem cItem)
             {
                 string channelValue = cItem.Tag?.ToString() ?? "C01";
 
-                // On affiche le bouton uniquement pour C01 et C03
+                // Display the button only for C01 and C03
                 Visibility skipPrimeVisibility = (channelValue == "C01" || channelValue == "C03") ? Visibility.Visible : Visibility.Collapsed;
 
                 if (BtnSkipPrimeSingleAct != null) BtnSkipPrimeSingleAct.Visibility = skipPrimeVisibility;
@@ -113,6 +113,48 @@ namespace AutoActivator.Gui.Views
             }
         }
 
+        // -- PRESETS MANAGEMENT --
+
+        private void Preset_Checked(object sender, RoutedEventArgs e)
+        {
+            if (CmbActBucp == null || CmbActCmdpmt == null) return;
+
+            if (sender == RbPresetBank)
+            {
+                SelectComboBoxItemByContent(CmbActBucp, "382");
+                SelectComboBoxItemByContent(CmbActCmdpmt, "8");
+            }
+            else if (sender == RbPresetBrokerOld)
+            {
+                SelectComboBoxItemByContent(CmbActBucp, "49797");
+                SelectComboBoxItemByContent(CmbActCmdpmt, "X");
+            }
+            else if (sender == RbPresetBrokerNew)
+            {
+                SelectComboBoxItemByContent(CmbActBucp, "80819");
+                SelectComboBoxItemByContent(CmbActCmdpmt, "H");
+            }
+        }
+
+        private void BtnClearPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (RbPresetBank != null) RbPresetBank.IsChecked = false;
+            if (RbPresetBrokerOld != null) RbPresetBrokerOld.IsChecked = false;
+            if (RbPresetBrokerNew != null) RbPresetBrokerNew.IsChecked = false;
+        }
+
+        private void SelectComboBoxItemByContent(ComboBox comboBox, string content)
+        {
+            foreach (ComboBoxItem item in comboBox.Items)
+            {
+                if (item.Content?.ToString() == content)
+                {
+                    comboBox.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+
         // -- EXECUTION: SINGLE ACTIVATION --
 
         private void BtnRunSingleActivation_Click(object sender, RoutedEventArgs e) => RunSingleActivation(false);
@@ -126,7 +168,7 @@ namespace AutoActivator.Gui.Views
 
             await mainWindow.RunProcessAsync(async () =>
             {
-                // NOUVEAUTÉ : Ajout de la variable channel
+                // NEW: Add channel variable
                 string rawInput = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8", channel = "C01";
                 string username = Settings.DbConfig.Uid;
                 string password = Settings.DbConfig.Pwd;
@@ -144,7 +186,7 @@ namespace AutoActivator.Gui.Views
                     if (CmbActBucp.SelectedItem is ComboBoxItem bItem) bucp = bItem.Content?.ToString() ?? "382";
                     if (CmbActCmdpmt.SelectedItem is ComboBoxItem cItem) cmdpmt = cItem.Content?.ToString() ?? "8";
 
-                    // NOUVEAUTÉ : Récupération du canal
+                    // NEW: Retrieve the channel
                     if (CmbActChannel.SelectedItem is ComboBoxItem chItem) channel = chItem.Tag?.ToString() ?? "C01";
                 });
 
@@ -173,7 +215,7 @@ namespace AutoActivator.Gui.Views
 
                 try
                 {
-                    // NOUVEAUTÉ : On passe la variable "channel" et "skipPrime"
+                    // NEW: Pass the "channel" and "skipPrime" variables
                     await _activationDataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, channel, skipPrime, username, password,
                         msg => Application.Current.Dispatcher.InvokeAsync(() => mainWindow.TxtStatus.Text = msg), _cts.Token);
 
@@ -222,7 +264,7 @@ namespace AutoActivator.Gui.Views
 
             await mainWindow.RunProcessAsync(async () =>
             {
-                // NOUVEAUTÉ : Ajout de la variable channel
+                // NEW: Add channel variable
                 string filePath = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8", channel = "C01";
                 string username = Settings.DbConfig.Uid;
                 string password = Settings.DbConfig.Pwd;
@@ -240,7 +282,7 @@ namespace AutoActivator.Gui.Views
                     if (CmbActBucp.SelectedItem is ComboBoxItem bItem) bucp = bItem.Content?.ToString() ?? "382";
                     if (CmbActCmdpmt.SelectedItem is ComboBoxItem cItem) cmdpmt = cItem.Content?.ToString() ?? "8";
 
-                    // NOUVEAUTÉ : Récupération du canal
+                    // NEW: Retrieve the channel
                     if (CmbActChannel.SelectedItem is ComboBoxItem chItem) channel = chItem.Tag?.ToString() ?? "C01";
                 });
 
@@ -258,7 +300,7 @@ namespace AutoActivator.Gui.Views
 
                 var batchService = new BatchActivationService(_activationDataService);
 
-                // NOUVEAUTÉ : On passe la variable "channel" et "skipPrime" à la méthode RunBatchAsync
+                // NEW: Pass the "channel" and "skipPrime" variables to the RunBatchAsync method
                 var result = await batchService.RunBatchAsync(
                     filePath, isDemandId, envValue, cus, bucp, cmdpmt, channel, skipPrime, username, password, Settings.OutputDir,
                     msg => Application.Current.Dispatcher.InvokeAsync(() => mainWindow.TxtStatus.Text = msg),

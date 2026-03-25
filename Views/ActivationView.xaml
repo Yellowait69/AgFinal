@@ -25,6 +25,15 @@
             <Border Grid.Row="1" Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,15">
                 <StackPanel>
                     <TextBlock Text="Global Activation Settings" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,15"/>
+
+                    <TextBlock Text="Quick Presets (Optional):" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
+                        <RadioButton x:Name="RbPresetBank" Content="Bank (BUCP: 382, CMD: 8)" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="Preset_Checked"/>
+                        <RadioButton x:Name="RbPresetBrokerOld" Content="Broker Old Gen. (BUCP: 49797, CMD: X)" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="Preset_Checked"/>
+                        <RadioButton x:Name="RbPresetBrokerNew" Content="Broker New Gen. (BUCP: 80819, CMD: H)" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="Preset_Checked"/>
+                        <Button x:Name="BtnClearPreset" Content="Clear Presets" Padding="10,2" Background="#BDC3C7" BorderThickness="0" Cursor="Hand" Click="BtnClearPreset_Click"/>
+                    </StackPanel>
+
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -55,6 +64,7 @@
                             <ComboBox x:Name="CmbActBucp" Margin="0,0,0,15" Padding="6" FontSize="14" BorderBrush="#DCDDE1" SelectedIndex="0">
                                 <ComboBoxItem Content="382"/>
                                 <ComboBoxItem Content="49797"/>
+                                <ComboBoxItem Content="80819"/>
                             </ComboBox>
 
                             <TextBlock Text="Payment Command (CMDPMT):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
@@ -89,7 +99,7 @@
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                 <Button x:Name="BtnCancelSingleAct" Content="🛑 Cancel" Click="BtnCancelActivation_Click" Style="{DynamicResource CancelButtonStyle}" Width="120" Margin="0,0,10,0" IsEnabled="False"/>
 
-                                <Button x:Name="BtnSkipPrimeSingleAct" Content="⏭️ Skip Prime" Click="BtnSkipPrimeSingleAct_Click" Style="{DynamicResource ActionButtonStyle}" Background="#E67E22" Width="150" Margin="0,0,10,0" ToolTip="Relance la séquence sans affecter la prime (ignore ADDPRCT, LVPP06U, LVPG22U)"/>
+                                <Button x:Name="BtnSkipPrimeSingleAct" Content="⏭️ Skip Prime" Click="BtnSkipPrimeSingleAct_Click" Style="{DynamicResource ActionButtonStyle}" Background="#E67E22" Width="150" Margin="0,0,10,0" ToolTip="Restarts the sequence without assigning the premium (ignores ADDPRCT, LVPP06U, LVPG22U)"/>
 
                                 <Button x:Name="BtnRunSingleAct" Content="🚀 Run Single Activation" Click="BtnRunSingleActivation_Click" Style="{DynamicResource ActionButtonStyle}" Width="220"/>
                             </StackPanel>
@@ -121,7 +131,7 @@
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                 <Button x:Name="BtnCancelBatchAct" Content="🛑 Cancel" Click="BtnCancelActivation_Click" Style="{DynamicResource CancelButtonStyle}" Width="120" Margin="0,0,10,0" IsEnabled="False"/>
 
-                                <Button x:Name="BtnSkipPrimeBatchAct" Content="⏭️ Skip Prime" Click="BtnSkipPrimeBatchAct_Click" Style="{DynamicResource ActionButtonStyle}" Background="#E67E22" Width="150" Margin="0,0,10,0" ToolTip="Relance la séquence sans affecter la prime (ignore ADDPRCT, LVPP06U, LVPG22U)"/>
+                                <Button x:Name="BtnSkipPrimeBatchAct" Content="⏭️ Skip Prime" Click="BtnSkipPrimeBatchAct_Click" Style="{DynamicResource ActionButtonStyle}" Background="#E67E22" Width="150" Margin="0,0,10,0" ToolTip="Restarts the sequence without assigning the premium (ignores ADDPRCT, LVPP06U, LVPG22U)"/>
 
                                 <Button x:Name="BtnRunBatchAct" Content="🚀 Run Batch Activation" Click="BtnRunBatchActivation_Click" Style="{DynamicResource ActionButtonStyle}" Width="220"/>
                             </StackPanel>
