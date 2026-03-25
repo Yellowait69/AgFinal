@@ -119,7 +119,7 @@
                                 <TextBlock Text="The Orchestrator injects JobCards into JCL files and submits them in a rigid order to prevent database deadlocks:" TextWrapping="Wrap" Foreground="#34495E" Margin="0,0,0,10"/>
 
                                 <TextBlock Text="Phase 1: ADDPRCT, LVPP06U, LVPG22U" TextWrapping="Wrap" FontWeight="Bold" Foreground="#2980B9"/>
-                                <TextBlock Text="These jobs handle the billing phase and premium additions. Logically bypassed if the Channel is 'C05' or if the user clicks the 'Skip Prime' button." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="10,0,0,10"/>
+                                <TextBlock Text="These jobs handle the billing phase and premium additions. Logically bypassed if the process is 'C05' or if the user clicks the 'Skip Prime' button." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="10,0,0,10"/>
 
                                 <TextBlock Text="Phase 2: LI1J04D0, LI1J04D2" TextWrapping="Wrap" FontWeight="Bold" Foreground="#2980B9"/>
                                 <TextBlock Text="Core IMS activation jobs executed in all scenarios to finalize the contract's status." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="10,0,0,10"/>
@@ -166,7 +166,7 @@
                                 <TextBlock Text="Use the 'Add Baseline' button to automatically copy your golden CSV extractions into the protected Baseline directory." TextWrapping="Wrap" Margin="10,0,0,8" FontSize="13" Foreground="#6C3483"/>
 
                                 <TextBlock Text="• Intelligent Pairing:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
-                                <TextBlock Text="Select your Environment (D for D000, Q for Q000) and choose a Baseline. The engine instantly scans the output folder to find the MOST RECENT target extraction matching this specific channel and environment." TextWrapping="Wrap" Margin="10,0,0,8" FontSize="13" Foreground="#6C3483"/>
+                                <TextBlock Text="Select your Environment (D for D000, Q for Q000) and choose a Baseline. The engine instantly scans the output folder to find the MOST RECENT target extraction matching this specific process and environment." TextWrapping="Wrap" Margin="10,0,0,8" FontSize="13" Foreground="#6C3483"/>
 
                                 <TextBlock Text="• Asynchronous Execution:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
                                 <TextBlock Text="Heavy matrix comparisons run in the background. The UI remains responsive and displays an animated circular dashboard upon completion." TextWrapping="Wrap" Margin="10,0,0,0" FontSize="13" Foreground="#6C3483"/>
