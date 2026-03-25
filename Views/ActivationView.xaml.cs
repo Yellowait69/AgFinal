@@ -293,9 +293,8 @@ namespace AutoActivator.Gui.Views
                 {
                     Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Converting network Excel file to local CSV...");
 
-                    // Note: Ensure PrepareCsvFromExcel is set to "public" in MainWindow.xaml.cs
-                    // or moved to a utility class (e.g., ExcelHelper.PrepareCsvFromExcel)
-                    // filePath = await Task.Run(() => mainWindow.PrepareCsvFromExcel(filePath, envValue + "000"));
+                    // La conversion se lance automatiquement ici :
+                    filePath = await Task.Run(() => mainWindow.PrepareCsvFromExcel(filePath, envValue + "000"));
                 }
 
                 var batchService = new BatchActivationService(_activationDataService);

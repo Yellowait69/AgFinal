@@ -100,34 +100,31 @@ namespace AutoActivator.Services
                 }
             }
 
-            // --- 3. TRAITEMENT PARALLÈLE MASSIF ---
+            // --- 3. TRAITEMENT HYBRIDE (PARALLÈLE POUR LA DB, SÉQUENTIEL POUR LE MAINFRAME) ---
 
-            // OPTIMISATION : Limite abaissée à 1. Le Mainframe gérant les requêtes séquentiellement,
-            // un chiffre bas garantit la stabilité et évite les Timeouts en chaîne.
+            // Le sémaphore est maintenu à 1 pour protéger UNIQUEMENT l'envoi au Mainframe
             var semaphore = new SemaphoreSlim(1);
 
-            // Initialisation des compteurs
             int totalItems = contractsToProcess.Count;
             int processedItems = 0;
 
-            onProgress($"Lancement du traitement parallèle sécurisé... (0 / {totalItems} contrats)");
+            onProgress($"Lancement du traitement parallèle DB... (0 / {totalItems} contrats)");
 
             var tasks = contractsToProcess.Select((item, index) => Task.Run(async () =>
             {
-                // OPTIMISATION : L'étalement est désormais lissé et géré proprement par le SemaphoreSlim
-                // Cela évite l'effet "troupeau" après 3 secondes
-                await Task.Delay((index % 5) * 500, token).ConfigureAwait(false);
-
-                await semaphore.WaitAsync(token).ConfigureAwait(false);
                 try
                 {
                     if (token.IsCancellationRequested) return;
 
                     string resolvedContract = item.rawInput;
 
+                    // =========================================================================
+                    // ÉTAPE A : REQUÊTES BASE DE DONNÉES EN PARALLÈLE TOTAL (Hors Sémaphore)
+                    // =========================================================================
+
                     onProgress($"[{processedItems} / {totalItems} terminés] Recherche DB : {item.rawInput}...");
 
-                    // A. Résolution Demand ID (Si nécessaire)
+                    // A1. Résolution Demand ID (Si nécessaire)
                     if (isDemandId)
                     {
                         resolvedContract = await _dataService.GetContractFromDemandAsync(item.rawInput, envValue + "000").ConfigureAwait(false);
@@ -138,30 +135,45 @@ namespace AutoActivator.Services
                             Interlocked.Increment(ref errorCount);
 
                             int currentErr = Interlocked.Increment(ref processedItems);
-                            onProgress($"[{currentErr} / {totalItems} terminés] Échec Demand ID : {item.rawInput}");
-                            return;
+                            onProgress($"[{currentErr} / {totalItems} terminés] Échec DB : {item.rawInput}");
+                            return; // Arrêt anticipé pour cette ligne, sans jamais bloquer le sémaphore
                         }
                     }
 
-                    // B. Recherche de la prime
+                    // A2. Recherche de la prime
                     string amount = await _dataService.FetchPremiumAsync(resolvedContract, envValue + "000").ConfigureAwait(false);
                     string formattedContract = _dataService.FormatContractForJcl(resolvedContract);
 
-                    onProgress($"[{processedItems} / {totalItems} terminés] Envoi Mainframe API : {formattedContract}...");
 
-                    // C. Exécution de la séquence d'activation
-                    // NOUVEAUTÉ : Transmission de skipPrime
-                    await _dataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, channel, skipPrime, username, password, msg => { }, token).ConfigureAwait(false);
+                    // =========================================================================
+                    // ÉTAPE B : EXÉCUTION MAINFRAME EN SÉQUENTIEL (Dans le Sémaphore)
+                    // =========================================================================
 
-                    globalReport.Add((item.rowNum, $"[SUCCÈS] Ligne {item.rowNum,-4} | Input: {item.rawInput} -> Contrat JCL: {formattedContract} | Env: {envValue} | Amount: {amount}"));
-                    Interlocked.Increment(ref successCount);
+                    await semaphore.WaitAsync(token).ConfigureAwait(false);
+                    try
+                    {
+                        if (token.IsCancellationRequested) return;
 
-                    int currentOk = Interlocked.Increment(ref processedItems);
-                    onProgress($"[{currentOk} / {totalItems} terminés] Succès : {formattedContract}");
+                        onProgress($"[{processedItems} / {totalItems} terminés] Envoi Mainframe API : {formattedContract}...");
+
+                        // B1. Exécution de la séquence d'activation
+                        await _dataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, channel, skipPrime, username, password, msg => { }, token).ConfigureAwait(false);
+
+                        globalReport.Add((item.rowNum, $"[SUCCÈS] Ligne {item.rowNum,-4} | Input: {item.rawInput} -> Contrat JCL: {formattedContract} | Env: {envValue} | Amount: {amount}"));
+                        Interlocked.Increment(ref successCount);
+
+                        int currentOk = Interlocked.Increment(ref processedItems);
+                        onProgress($"[{currentOk} / {totalItems} terminés] Succès : {formattedContract}");
+                    }
+                    finally
+                    {
+                        // On libère le Mainframe pour le contrat suivant
+                        semaphore.Release();
+                    }
                 }
                 catch (Exception ex)
                 {
-                    // NOUVEAUTÉ : Traitement du statut "Déjà Actif"
+                    // Traitement du statut "Déjà Actif" ou autres erreurs
                     if (ex.Message == "ALREADY_ACTIVE")
                     {
                         globalReport.Add((item.rowNum, $"[DÉJÀ ACTIF] Ligne {item.rowNum,-4} | Input: {item.rawInput} | Le contrat est déjà activé (Erreur 008)."));
@@ -179,10 +191,6 @@ namespace AutoActivator.Services
                         onProgress($"[{currentFail} / {totalItems} terminés] Échec : {item.rawInput}");
                     }
                 }
-                finally
-                {
-                    semaphore.Release();
-                }
             }, token)).ToList();
 
             // Attente non-bloquante pour l'interface utilisateur
@@ -197,27 +205,20 @@ namespace AutoActivator.Services
             }
 
             report.AppendLine("---------------------------------------------------------------------------------------------------------");
-            // NOUVEAUTÉ : Ajout des "Déjà actifs" dans le bilan final
             report.AppendLine($"FIN DU TRAITEMENT. Succès: {successCount} | Déjà actifs: {alreadyActiveCount} | Échecs: {errorCount}");
 
             string reportPath = string.Empty;
 
             try
             {
-                // CRUCIAL : S'assure que le dossier d'export existe avant d'écrire
-                if (!Directory.Exists(outputDir))
-                {
-                    Directory.CreateDirectory(outputDir);
-                }
+                if (!Directory.Exists(outputDir)) Directory.CreateDirectory(outputDir);
 
-                // NOUVEAUTÉ : Ajout d'un suffixe si le mode Skip Prime a été utilisé
                 string skipSuffix = skipPrime ? "_SKIP_PRIME" : "";
                 reportPath = Path.Combine(outputDir, $"Activation_Batch{skipSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
                 File.WriteAllText(reportPath, report.ToString());
             }
             catch (IOException)
             {
-                // CORRECTION : Si le fichier plante (ex: ouvert par un autre programme), on génère un nom alternatif
                 string skipSuffix = skipPrime ? "_SKIP_PRIME" : "";
                 reportPath = Path.Combine(outputDir, $"Activation_Batch{skipSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString().Substring(0, 4)}.txt");
                 File.WriteAllText(reportPath, report.ToString());
@@ -230,7 +231,6 @@ namespace AutoActivator.Services
 
             onProgress("Rapport généré avec succès !");
 
-            // NOUVEAUTÉ : Retourne le compteur "alreadyActiveCount" en plus
             return (successCount, alreadyActiveCount, errorCount, reportPath);
         }
 

@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Threading;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
@@ -128,6 +128,67 @@ namespace AutoActivator.Gui
             {
                 // Hide loading bar when done
                 PrgLoading.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        // --- NOUVEAU : CONVERTISSEUR EXCEL VERS CSV ---
+        public string PrepareCsvFromExcel(string excelFilePath, string environmentSuffix)
+        {
+            string outputCsvPath = Path.Combine(Settings.InputDir,
+                $"ConvertedBatch_{environmentSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+
+            // Choix du driver en fonction de l'extension (xls vs xlsx)
+            string connString;
+            if (excelFilePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase))
+                connString = $"Provider=Microsoft.Jet.OLEDB.4.0;Data Source=\"{excelFilePath}\";Extended Properties=\"Excel 8.0;HDR=YES;IMEX=1\";";
+            else
+                connString = $"Provider=Microsoft.ACE.OLEDB.12.0;Data Source=\"{excelFilePath}\";Extended Properties=\"Excel 12.0 Xml;HDR=YES;IMEX=1\";";
+
+            try
+            {
+                using (var conn = new System.Data.OleDb.OleDbConnection(connString))
+                {
+                    conn.Open();
+                    var schemaTable = conn.GetOleDbSchemaTable(System.Data.OleDb.OleDbSchemaGuid.Tables, null);
+                    if (schemaTable == null || schemaTable.Rows.Count == 0)
+                        throw new Exception("Aucune feuille trouvée dans le fichier Excel.");
+
+                    string sheetName = schemaTable.Rows[0]["TABLE_NAME"].ToString();
+
+                    using (var cmd = new System.Data.OleDb.OleDbCommand($"SELECT * FROM [{sheetName}]", conn))
+                    using (var reader = cmd.ExecuteReader())
+                    using (var writer = new StreamWriter(outputCsvPath, false, Encoding.UTF8))
+                    {
+                        // 1. Écrire les entêtes (séparateur point-virgule)
+                        for (int i = 0; i < reader.FieldCount; i++)
+                        {
+                            writer.Write(reader.GetName(i));
+                            if (i < reader.FieldCount - 1) writer.Write(";");
+                        }
+                        writer.WriteLine();
+
+                        // 2. Écrire les données
+                        while (reader.Read())
+                        {
+                            for (int i = 0; i < reader.FieldCount; i++)
+                            {
+                                string val = reader[i]?.ToString() ?? "";
+                                if (val.Contains(";") || val.Contains("\"") || val.Contains("\n") || val.Contains("\r"))
+                                {
+                                    val = $"\"{val.Replace("\"", "\"\"")}\""; // Échappement propre
+                                }
+                                writer.Write(val);
+                                if (i < reader.FieldCount - 1) writer.Write(";");
+                            }
+                            writer.WriteLine();
+                        }
+                    }
+                }
+                return outputCsvPath;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Échec de la conversion de l'Excel en CSV. Erreur technique : {ex.Message}");
             }
         }
 
