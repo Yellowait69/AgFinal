@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,6 +9,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using AutoActivator.Config;
 using AutoActivator.Services;
+using Excel = Microsoft.Office.Interop.Excel;
 
 namespace AutoActivator.Gui.Views
 {
@@ -256,6 +258,64 @@ namespace AutoActivator.Gui.Views
         private void BtnRunBatchActivation_Click(object sender, RoutedEventArgs e) => RunBatchActivation(false);
         private void BtnSkipPrimeBatchAct_Click(object sender, RoutedEventArgs e) => RunBatchActivation(true);
 
+        public string PrepareCsvFromExcel(string excelFilePath)
+        {
+            if (!File.Exists(excelFilePath))
+                throw new FileNotFoundException($"Excel file not found: {excelFilePath}");
+
+            Directory.CreateDirectory(Settings.OutputDir);
+
+            string originalFileName = Path.GetFileNameWithoutExtension(excelFilePath);
+            string savedCsvPath = Path.Combine(Settings.OutputDir, $"Converted_Act_{originalFileName}_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+
+            Excel.Application excelApp = null;
+            Excel.Workbook workbook = null;
+            Excel.Worksheet worksheet = null;
+            Excel.Range firstRow = null;
+            Excel.Range searchRange = null;
+            Excel.Range valueCol = null;
+
+            try
+            {
+                excelApp = new Excel.Application { Visible = false, DisplayAlerts = false };
+                workbook = excelApp.Workbooks.Open(excelFilePath, ReadOnly: true);
+                worksheet = workbook.Sheets[1];
+
+                firstRow = worksheet.Rows[2];
+                searchRange = firstRow.Find("Value");
+
+                if (searchRange != null)
+                {
+                    valueCol = worksheet.Columns[searchRange.Column];
+                    valueCol.NumberFormat = "0";
+                }
+
+                workbook.SaveAs(savedCsvPath, Excel.XlFileFormat.xlCSV, Type.Missing, Type.Missing,
+                                Type.Missing, Type.Missing, Excel.XlSaveAsAccessMode.xlNoChange,
+                                Type.Missing, Type.Missing, Type.Missing, Type.Missing, Type.Missing);
+            }
+            finally
+            {
+                // Libération EXPLICITE des objets COM
+                if (valueCol != null) Marshal.ReleaseComObject(valueCol);
+                if (searchRange != null) Marshal.ReleaseComObject(searchRange);
+                if (firstRow != null) Marshal.ReleaseComObject(firstRow);
+                if (worksheet != null) Marshal.ReleaseComObject(worksheet);
+                if (workbook != null)
+                {
+                    workbook.Close(false);
+                    Marshal.ReleaseComObject(workbook);
+                }
+                if (excelApp != null)
+                {
+                    excelApp.Quit();
+                    Marshal.ReleaseComObject(excelApp);
+                }
+            }
+
+            return savedCsvPath;
+        }
+
         private async void RunBatchActivation(bool skipPrime)
         {
             if (!(Window.GetWindow(this) is MainWindow mainWindow)) return;
@@ -291,10 +351,10 @@ namespace AutoActivator.Gui.Views
                 // Use the PrepareCsvFromExcel method if an Excel file is provided
                 if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                 {
-                    Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Converting network Excel file to local CSV...");
+                    Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Converting network Excel file to local CSV via Excel Interop...");
 
-                    // La conversion se lance automatiquement ici :
-                    filePath = await Task.Run(() => mainWindow.PrepareCsvFromExcel(filePath, envValue + "000"));
+                    // Utilisation de la méthode robuste de conversion Excel -> CSV
+                    filePath = await Task.Run(() => PrepareCsvFromExcel(filePath));
                 }
 
                 var batchService = new BatchActivationService(_activationDataService);
