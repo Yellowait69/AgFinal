@@ -105,8 +105,8 @@ namespace AutoActivator.Services
             }
 
             // --- 3. MASSIVE PARALLEL PROCESSING ---
-            // FIX: Reduced concurrency from 50 to 10 to avoid exhausting the SQL Connection Pool
-            var semaphore = new SemaphoreSlim(10);
+            // FIX: Reduced concurrency from 50 to 30 to avoid exhausting the SQL Connection Pool
+            var semaphore = new SemaphoreSlim(30);
 
             // Initialize counters for progress tracking
             int totalItems = contractsToProcess.Count;
