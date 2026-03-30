@@ -10,6 +10,11 @@ using System.Threading.Tasks;
 
 namespace AutoActivator.Services
 {
+    /// <summary>
+    /// Service responsible for processing bulk contract activations from a CSV file.
+    /// It orchestrates parallel database lookups while throttling Mainframe API submissions
+    /// to prevent overloading the host system.
+    /// </summary>
     public class BatchActivationService
     {
         private readonly ActivationDataService _dataService;
@@ -19,30 +24,17 @@ namespace AutoActivator.Services
             _dataService = dataService;
         }
 
-        // NOUVEAUTÉ : Ajout de "bool skipPrime" dans la signature
         public async Task<(int successCount, int alreadyActiveCount, int errorCount, string reportPath)> RunBatchAsync(
             string filePath, bool isDemandId, string envValue, string cus, string bucp, string cmdpmt, string channel, bool skipPrime,
             string username, string password, string outputDir, Action<string> onProgress, CancellationToken token)
         {
-            // DÉBLOCAGE RÉSEAU. Autorise un grand nombre de requêtes HTTP simultanées.
             ServicePointManager.DefaultConnectionLimit = 500;
             ServicePointManager.Expect100Continue = false;
 
-            StringBuilder report = new StringBuilder();
-            report.AppendLine("=== RAPPORT D'ACTIVATION BATCH (MODE PARALLÈLE SÉCURISÉ) ===");
-            report.AppendLine($"Date de lancement: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-
-            // NOUVEAUTÉ : Traçabilité du mode Skip Prime dans le rapport
-            if (skipPrime) report.AppendLine("MODE: SKIP PRIME ACTIF (Bypass de ADDPRCT, LVPP06U, LVPG22U)");
-
-            report.AppendLine($"Configuration Globale -> Env: {envValue} | Canal: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt}\n");
-            report.AppendLine("---------------------------------------------------------------------------------------------------------");
-
             int successCount = 0;
-            int alreadyActiveCount = 0; // NOUVEAU COMPTEUR
+            int alreadyActiveCount = 0;
             int errorCount = 0;
 
-            // Structure Thread-Safe pour stocker les résultats dans le désordre, puis les trier à la fin
             var globalReport = new ConcurrentBag<(int RowNum, string Message)>();
             var contractsToProcess = new List<(string rawInput, int rowNum)>();
 
@@ -54,10 +46,9 @@ namespace AutoActivator.Services
                 int contractIdx = -1;
                 bool headerFound = false;
 
-                // --- 1. RECHERCHE DE L'EN-TÊTE ---
                 while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
-                    if (line.StartsWith("\uFEFF")) line = line.Substring(1); // Nettoyage BOM
+                    if (line.StartsWith("\uFEFF")) line = line.Substring(1);
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
                     if (line.Replace("\"", "").TrimStart().StartsWith("Contract in", StringComparison.OrdinalIgnoreCase))
@@ -79,9 +70,8 @@ namespace AutoActivator.Services
                 }
 
                 if (!headerFound)
-                    throw new Exception("Colonne de contrat ou de Demand introuvable dans le fichier.");
+                    throw new Exception("Contract or Demand column not found in the input file.");
 
-                // --- 2. CHARGEMENT EN MÉMOIRE ---
                 int currentRow = 1;
                 while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
@@ -92,7 +82,6 @@ namespace AutoActivator.Services
 
                     string rawInput = columns[contractIdx].Replace("=", "").Replace("\"", "").Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
 
-                    // On ignore les lignes vides OU la ligne parasite "End of File"
                     if (string.IsNullOrEmpty(rawInput) || rawInput.Equals("End of File", StringComparison.OrdinalIgnoreCase))
                         continue;
 
@@ -100,15 +89,12 @@ namespace AutoActivator.Services
                 }
             }
 
-            // --- 3. TRAITEMENT HYBRIDE (PARALLÈLE POUR LA DB, SÉQUENTIEL POUR LE MAINFRAME) ---
-
-            // Le sémaphore est maintenu à 1 pour protéger UNIQUEMENT l'envoi au Mainframe
             var semaphore = new SemaphoreSlim(1);
 
             int totalItems = contractsToProcess.Count;
             int processedItems = 0;
 
-            onProgress($"Lancement du traitement parallèle DB... (0 / {totalItems} contrats)");
+            onProgress($"Starting parallel DB processing... (0 / {totalItems} contracts)");
 
             var tasks = contractsToProcess.Select((item, index) => Task.Run(async () =>
             {
@@ -118,122 +104,125 @@ namespace AutoActivator.Services
 
                     string resolvedContract = item.rawInput;
 
-                    // =========================================================================
-                    // ÉTAPE A : REQUÊTES BASE DE DONNÉES EN PARALLÈLE TOTAL (Hors Sémaphore)
-                    // =========================================================================
+                    onProgress($"[{processedItems} / {totalItems} completed] DB Search : {item.rawInput}...");
 
-                    onProgress($"[{processedItems} / {totalItems} terminés] Recherche DB : {item.rawInput}...");
-
-                    // A1. Résolution Demand ID (Si nécessaire)
                     if (isDemandId)
                     {
                         resolvedContract = await _dataService.GetContractFromDemandAsync(item.rawInput, envValue + "000").ConfigureAwait(false);
 
                         if (string.IsNullOrEmpty(resolvedContract))
                         {
-                            globalReport.Add((item.rowNum, $"[ÉCHEC]  Ligne {item.rowNum,-4} | Input: {item.rawInput} | Erreur: Aucun contrat associé à ce Demand ID en base."));
+                            globalReport.Add((item.rowNum, $"[FAILED]  Line {item.rowNum,-4} | Input: {item.rawInput} | Error: No contract associated with this Demand ID in the database."));
                             Interlocked.Increment(ref errorCount);
 
                             int currentErr = Interlocked.Increment(ref processedItems);
-                            onProgress($"[{currentErr} / {totalItems} terminés] Échec DB : {item.rawInput}");
-                            return; // Arrêt anticipé pour cette ligne, sans jamais bloquer le sémaphore
+                            onProgress($"[{currentErr} / {totalItems} completed] DB Failure : {item.rawInput}");
+                            return;
                         }
                     }
 
-                    // A2. Recherche de la prime
                     string amount = await _dataService.FetchPremiumAsync(resolvedContract, envValue + "000").ConfigureAwait(false);
                     string formattedContract = _dataService.FormatContractForJcl(resolvedContract);
-
-
-                    // =========================================================================
-                    // ÉTAPE B : EXÉCUTION MAINFRAME EN SÉQUENTIEL (Dans le Sémaphore)
-                    // =========================================================================
 
                     await semaphore.WaitAsync(token).ConfigureAwait(false);
                     try
                     {
                         if (token.IsCancellationRequested) return;
 
-                        onProgress($"[{processedItems} / {totalItems} terminés] Envoi Mainframe API : {formattedContract}...");
+                        onProgress($"[{processedItems} / {totalItems} completed] Sending to Mainframe API : {formattedContract}...");
 
-                        // B1. Exécution de la séquence d'activation
                         await _dataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, channel, skipPrime, username, password, msg => { }, token).ConfigureAwait(false);
 
-                        globalReport.Add((item.rowNum, $"[SUCCÈS] Ligne {item.rowNum,-4} | Input: {item.rawInput} -> Contrat JCL: {formattedContract} | Env: {envValue} | Amount: {amount}"));
+                        globalReport.Add((item.rowNum, $"[SUCCESS] Line {item.rowNum,-4} | Input: {item.rawInput} -> JCL Contract: {formattedContract} | Env: {envValue} | Amount: {amount}"));
                         Interlocked.Increment(ref successCount);
 
-                        int currentOk = Interlocked.Increment(ref processedItems);
-                        onProgress($"[{currentOk} / {totalItems} terminés] Succès : {formattedContract}");
+                        int currentSuccess = Interlocked.Increment(ref processedItems);
+                        onProgress($"[{currentSuccess} / {totalItems} completed] Success : {formattedContract}");
                     }
                     finally
                     {
-                        // On libère le Mainframe pour le contrat suivant
                         semaphore.Release();
                     }
                 }
                 catch (Exception ex)
                 {
-                    // Traitement du statut "Déjà Actif" ou autres erreurs
                     if (ex.Message == "ALREADY_ACTIVE")
                     {
-                        globalReport.Add((item.rowNum, $"[DÉJÀ ACTIF] Ligne {item.rowNum,-4} | Input: {item.rawInput} | Le contrat est déjà activé (Erreur 008)."));
+                        globalReport.Add((item.rowNum, $"[ALREADY ACTIVE] Line {item.rowNum,-4} | Input: {item.rawInput} | The contract is already activated (Error 008)."));
                         Interlocked.Increment(ref alreadyActiveCount);
 
                         int currentAct = Interlocked.Increment(ref processedItems);
-                        onProgress($"[{currentAct} / {totalItems} terminés] Déjà actif : {item.rawInput}");
+                        onProgress($"[{currentAct} / {totalItems} completed] Already active : {item.rawInput}");
                     }
                     else
                     {
-                        globalReport.Add((item.rowNum, $"[ÉCHEC]  Ligne {item.rowNum,-4} | Input: {item.rawInput} | Erreur: {ex.Message}"));
+                        globalReport.Add((item.rowNum, $"[FAILED]  Line {item.rowNum,-4} | Input: {item.rawInput} | Error: {ex.Message}"));
                         Interlocked.Increment(ref errorCount);
 
                         int currentFail = Interlocked.Increment(ref processedItems);
-                        onProgress($"[{currentFail} / {totalItems} terminés] Échec : {item.rawInput}");
+                        onProgress($"[{currentFail} / {totalItems} completed] Failed : {item.rawInput}");
                     }
                 }
             }, token)).ToList();
 
-            // Attente non-bloquante pour l'interface utilisateur
             await Task.WhenAll(tasks).ConfigureAwait(false);
 
-            onProgress("Tous les contrats ont été traités. Génération du rapport...");
+            onProgress("All contracts have been processed. Generating the report...");
 
-            // --- 4. ASSEMBLAGE DU RAPPORT FINAL ---
-            foreach (var log in globalReport.OrderBy(x => x.RowNum))
-            {
-                report.AppendLine(log.Message);
-            }
+            string skipSuffix = skipPrime ? "_SKIP_PRIME" : "";
+            string reportPath = Path.Combine(outputDir, $"Activation_Batch{skipSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
 
-            report.AppendLine("---------------------------------------------------------------------------------------------------------");
-            report.AppendLine($"FIN DU TRAITEMENT. Succès: {successCount} | Déjà actifs: {alreadyActiveCount} | Échecs: {errorCount}");
-
-            string reportPath = string.Empty;
+            if (!Directory.Exists(outputDir)) Directory.CreateDirectory(outputDir);
 
             try
             {
-                if (!Directory.Exists(outputDir)) Directory.CreateDirectory(outputDir);
+                using (StreamWriter writer = new StreamWriter(reportPath, false, Encoding.UTF8))
+                {
+                    await writer.WriteLineAsync("=== BATCH ACTIVATION REPORT (SECURE PARALLEL MODE) ===").ConfigureAwait(false);
+                    await writer.WriteLineAsync($"Launch date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}").ConfigureAwait(false);
 
-                string skipSuffix = skipPrime ? "_SKIP_PRIME" : "";
-                reportPath = Path.Combine(outputDir, $"Activation_Batch{skipSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
-                File.WriteAllText(reportPath, report.ToString());
+                    if (skipPrime) await writer.WriteLineAsync("MODE: SKIP PRIME ACTIVE (Bypassing ADDPRCT, LVPP06U, LVPG22U)").ConfigureAwait(false);
+
+                    await writer.WriteLineAsync($"Global Configuration -> Env: {envValue} | Channel: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt}\n").ConfigureAwait(false);
+                    await writer.WriteLineAsync("---------------------------------------------------------------------------------------------------------").ConfigureAwait(false);
+
+                    foreach (var log in globalReport.OrderBy(x => x.RowNum))
+                    {
+                        await writer.WriteLineAsync(log.Message).ConfigureAwait(false);
+                    }
+
+                    await writer.WriteLineAsync("---------------------------------------------------------------------------------------------------------").ConfigureAwait(false);
+                    await writer.WriteLineAsync($"END OF PROCESSING. Successes: {successCount} | Already active: {alreadyActiveCount} | Failures: {errorCount}").ConfigureAwait(false);
+                }
             }
             catch (IOException)
             {
-                string skipSuffix = skipPrime ? "_SKIP_PRIME" : "";
                 reportPath = Path.Combine(outputDir, $"Activation_Batch{skipSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString().Substring(0, 4)}.txt");
-                File.WriteAllText(reportPath, report.ToString());
+
+                using (StreamWriter fallbackWriter = new StreamWriter(reportPath, false, Encoding.UTF8))
+                {
+                    await fallbackWriter.WriteLineAsync("=== BATCH ACTIVATION REPORT (FALLBACK MODE) ===").ConfigureAwait(false);
+                    foreach (var log in globalReport.OrderBy(x => x.RowNum))
+                    {
+                        await fallbackWriter.WriteLineAsync(log.Message).ConfigureAwait(false);
+                    }
+                    await fallbackWriter.WriteLineAsync($"END OF PROCESSING. Successes: {successCount} | Failures: {errorCount}").ConfigureAwait(false);
+                }
             }
             catch (Exception ex)
             {
-                onProgress($"ERREUR GRAVE : Impossible de sauvegarder le rapport ({ex.Message})");
+                onProgress($"CRITICAL ERROR: Unable to save the report ({ex.Message})");
                 throw;
             }
 
-            onProgress("Rapport généré avec succès !");
+            onProgress("Report generated successfully!");
 
             return (successCount, alreadyActiveCount, errorCount, reportPath);
         }
 
+        /// <summary>
+        /// Custom CSV parser to handle fields that contain the delimiter character inside quotes.
+        /// </summary>
         private List<string> ParseCsvLine(string line, char delimiter)
         {
             var result = new List<string>();

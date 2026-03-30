@@ -9,7 +9,6 @@ using AutoActivator.Config;
 
 namespace AutoActivator.Services
 {
-    // Énumérations nécessaires pour définir le sens et le mode de transfert FTP
     public enum DsnDirection
     {
         Read,
@@ -22,11 +21,14 @@ namespace AutoActivator.Services
         Binary
     }
 
+    /// <summary>
+    /// Service responsible for parsing, cleaning, and injecting variables into JCL (Job Control Language) templates.
+    /// It also generates dynamic FTP JCLs for Mainframe file transfers.
+    /// </summary>
     public class JclProcessorService
     {
         private readonly string _jclDirectory;
 
-        // Paramètres réseau pour le transfert FTP avec le Mainframe
         private static readonly string TempShare = "FILES.FIBE.FORTIS";
         private static readonly string WriteTempFolder = @"\elia\11 - Technical Architecture\11 - IS Tooling\01 - Tools\FTP-Write\";
         private static readonly string ReadTempFolder = @"\elia\11 - Technical Architecture\11 - IS Tooling\01 - Tools\FTP-Read\";
@@ -36,10 +38,6 @@ namespace AutoActivator.Services
             _jclDirectory = jclDirectory;
         }
 
-
-        // TRAITEMENT DES FICHIERS JCL CLASSIQUES
-
-
         public async Task<string> GetPreparedJclAsync(string jobName, Dictionary<string, string> variables, int count)
         {
             string cleanJobName = jobName.ToUpper().Replace(".JCL", "");
@@ -47,14 +45,13 @@ namespace AutoActivator.Services
             string filePath = Path.Combine(_jclDirectory, fileName);
 
             if (!File.Exists(filePath)) filePath = Path.Combine(_jclDirectory, jobName);
-            if (!File.Exists(filePath)) throw new FileNotFoundException($"Fichier JCL introuvable: {fileName}");
+            if (!File.Exists(filePath)) throw new FileNotFoundException($"JCL file not found: {fileName}");
 
             string rawContent;
             using (StreamReader reader = new StreamReader(filePath))
             {
-                rawContent = await reader.ReadToEndAsync();
+                rawContent = await reader.ReadToEndAsync().ConfigureAwait(false);
             }
-
 
             string correctedContent = DoCorrections(rawContent);
             return ApplyVariables(cleanJobName, correctedContent, variables, count);
@@ -64,28 +61,23 @@ namespace AutoActivator.Services
         {
             StringBuilder output = new StringBuilder();
 
-            //  Nettoyage initial et coupure à 72 caractères
             foreach (string line in content.Replace("\r", "").Split('\n'))
             {
-
                 if (line.StartsWith("//*")) continue;
 
                 string processedLine = line;
 
-                //  Ajouter l'espace manquant pour les conditions IF (ex: "RC<5" devient "RC < 5")
                 if (processedLine.Contains(" IF ") && processedLine.Contains("RC<"))
                 {
                     processedLine = processedLine.Replace("RC<", "RC < ");
                 }
 
-                // Coupure des numéros de séquence (colonnes > 72)
                 if (processedLine.Length > 72 && int.TryParse(processedLine.Substring(72).Trim(), out int _))
                     output.AppendLine(processedLine.Substring(0, 72));
                 else
                     output.AppendLine(processedLine);
             }
 
-            //  Suppression sécurisée de la JobCard existante
             StringBuilder output2 = new StringBuilder();
             List<string> lines = output.ToString().Replace("\r", "").Split('\n').ToList();
 
@@ -94,7 +86,6 @@ namespace AutoActivator.Services
 
             foreach (string line in lines)
             {
-
                 if (!jobCardFound && line.ToUpper().Contains(" JOB "))
                 {
                     existingJobcard = true;
@@ -104,11 +95,9 @@ namespace AutoActivator.Services
                 if (!existingJobcard)
                     output2.AppendLine(line);
 
-
                 if (existingJobcard && !line.Trim().EndsWith(","))
                     existingJobcard = false;
             }
-
 
             return output2.ToString().TrimEnd(new char[] { '\n', '\r' });
         }
@@ -116,7 +105,6 @@ namespace AutoActivator.Services
         private string ApplyVariables(string cleanJobName, string content, Dictionary<string, string> vars, int count)
         {
             List<string> jclLines = content.Replace("\r", "").Split('\n').ToList();
-
 
             Dictionary<string, string> localVars = new Dictionary<string, string>(vars);
             if (!localVars.ContainsKey("JOBNAM"))
@@ -130,10 +118,8 @@ namespace AutoActivator.Services
                 contentBuilder.AppendLine(jclLine);
             }
 
-
             string env = localVars.ContainsKey("ENV") ? localVars["ENV"] : "D";
             string jobClass = localVars.ContainsKey("CLASS") ? localVars["CLASS"] : "A";
-
 
             string username = localVars.ContainsKey("USERNAME") ? localVars["USERNAME"] : Environment.UserName;
 
@@ -144,7 +130,6 @@ namespace AutoActivator.Services
             else if (env == "P") schenv = "IM7P";
 
             string jobcard = "//";
-
 
             if (localVars.ContainsKey("JOBNAM") && !string.IsNullOrEmpty(localVars["JOBNAM"]))
             {
@@ -167,7 +152,6 @@ namespace AutoActivator.Services
                 content2 = tempContent;
                 tempContent = ApplyVarsCore(content2, localVars);
             }
-
 
             StringBuilder content3 = new StringBuilder();
             foreach (string line in content2.Replace("\r", "").Split('\n'))
@@ -198,9 +182,9 @@ namespace AutoActivator.Services
                 else if (value.StartsWith("'") && value.EndsWith("'") && value.Length >= 3)
                 {
                     value = value.Substring(1, value.Length - 2);
-
                     if (value.Contains("''")) value = value.Replace("''", "'");
                 }
+
                 value = value.Replace("$", "$$");
 
                 try
@@ -219,18 +203,13 @@ namespace AutoActivator.Services
                     temp = Regex.Replace(temp, pattern5, value + "$2");
                     temp = Regex.Replace(temp, pattern6, value);
                 }
-                catch { /* Ignorer les erreurs de RegEx mal formées */ }
+                catch { /* Silently ignore malformed RegEx errors to allow processing to continue */ }
             }
             return temp;
         }
 
-
-        // UTILITAIRES D'ANALYSE (INSPIRÉ DE LVCHAINTOOL)
-
-
         public List<string> FindDSNs(string jclContent)
         {
-            // remove comments
             StringBuilder content = new StringBuilder();
             List<string> jclLines = jclContent.Replace("\r", "").Split('\n').ToList();
             foreach (string jclLine in jclLines)
@@ -242,7 +221,6 @@ namespace AutoActivator.Services
 
             HashSet<string> dsnList = new HashSet<string>();
 
-            // find DSNs based on regexes
             List<string> patterns = new List<string>()
             {
                 @"DSN=([^,\r\n]+)([,% \n\r])",
@@ -255,7 +233,6 @@ namespace AutoActivator.Services
                 for (int i = 0; i < matches.Count; i++)
                 {
                     var value = matches[i].Groups[1].Value;
-                    // exceptions
                     if (value.StartsWith("&&")) continue;
                     dsnList.Add((value ?? "").Trim());
                 }
@@ -266,7 +243,6 @@ namespace AutoActivator.Services
 
         public List<string> FindAllVars(string jclContent)
         {
-            // remove comments
             StringBuilder content2 = new StringBuilder();
             List<string> jclLines = jclContent.Replace("\r", "").Split('\n').ToList();
             foreach (string jclLine in jclLines)
@@ -275,7 +251,6 @@ namespace AutoActivator.Services
                 content2.AppendLine(jclLine);
             }
 
-            // loop over search in
             List<string> patterns = new List<string>()
             {
                 @"(%%[ABCDEFGHIJKLMNOPQRSTUVWXYZ]+)(?=%)",
@@ -300,9 +275,6 @@ namespace AutoActivator.Services
             return vars2.OrderBy(x => x).ToList();
         }
 
-        // =========================================================================
-        // PARTIE 3 : GENERATION DES JCL MFFTP
-        // =========================================================================
 
         public string GenerateFtpJcl(DsnDirection direction, string dsn, string tempFileName, TransferMode transferMode)
         {
@@ -316,9 +288,10 @@ namespace AutoActivator.Services
 
             if (string.IsNullOrEmpty(uid) || string.IsNullOrEmpty(pwd))
             {
-                throw new InvalidOperationException("Les identifiants ne sont pas définis.");
+                throw new InvalidOperationException("Credentials are not defined.");
             }
 
+            // Mainframe FTP Job template
             string jclTemplate =
 @"//##USER##T JOB CLASS=I
 //TRANSFER EXEC PGM=MFFTP,
@@ -364,6 +337,7 @@ MFFTP_PROCESS_TRAILS_ONGET=FALSE
                 instructions.AppendLine(instruction);
             }
 
+            // Handle encoding settings for Text vs Binary transfers
             string options = transferMode == TransferMode.Text
                 ? "LOCSITE ENCODING=SBCS\r\nLOCSITE SBDATACONN=TABSTD\r\n" : "";
 

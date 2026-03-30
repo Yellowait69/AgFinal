@@ -22,7 +22,6 @@ namespace AutoActivator.Gui.Views
         /// <param name="index">The index of the tab to select.</param>
         public void SelectTab(int index)
         {
-            // Vérifie que l'index demandé existe bien dans le TabControl pour éviter un crash
             if (HelpTabControl != null && index >= 0 && index < HelpTabControl.Items.Count)
             {
                 HelpTabControl.SelectedIndex = index;

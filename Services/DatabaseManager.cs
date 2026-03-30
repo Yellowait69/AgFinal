@@ -18,7 +18,7 @@ namespace AutoActivator.Services
             _connectionString = Settings.DbConfig.GetConnectionString(envSuffix);
         }
 
-        #region MÉTHODES ASYNCHRONES (OPTIMISÉES POUR LA VITESSE ET LE PARALLÉLISME)
+        #region ASYNCHRONOUS METHODS (OPTIMIZED FOR SPEED AND PARALLELISM)
 
         public async Task<bool> TestConnectionAsync()
         {
@@ -26,10 +26,10 @@ namespace AutoActivator.Services
             {
                 using (SqlConnection connection = new SqlConnection(_connectionString))
                 {
-                    await connection.OpenAsync();
+                    await connection.OpenAsync().ConfigureAwait(false);
                     using (SqlCommand command = new SqlCommand("SELECT 1", connection))
                     {
-                        var result = await command.ExecuteScalarAsync();
+                        var result = await command.ExecuteScalarAsync().ConfigureAwait(false);
                         if (result != null && result.ToString() == "1")
                         {
                             Console.WriteLine($"[INFO] Successful connection to the database (Environment: {EnvironmentName})");
@@ -69,13 +69,10 @@ namespace AutoActivator.Services
                             }
                         }
 
-                        // Ouverture de la connexion sans bloquer le thread principal
-                        await connection.OpenAsync();
+                        await connection.OpenAsync().ConfigureAwait(false);
 
-                        // Exécution de la requête en asynchrone
-                        using (SqlDataReader reader = await command.ExecuteReaderAsync())
+                        using (SqlDataReader reader = await command.ExecuteReaderAsync().ConfigureAwait(false))
                         {
-                            // On charge les données dans la table
                             dataTable.Load(reader);
                         }
                     }
@@ -151,8 +148,8 @@ namespace AutoActivator.Services
                         command.Parameters.AddWithValue("@bic", simulatedBic);
                         command.Parameters.AddWithValue("@auteur", authorId);
 
-                        await connection.OpenAsync();
-                        await command.ExecuteNonQueryAsync();
+                        await connection.OpenAsync().ConfigureAwait(false);
+                        await command.ExecuteNonQueryAsync().ConfigureAwait(false);
 
                         Console.WriteLine($"[INFO] Payment of {amount} EUR successfully injected (Contract: {contractInternalId} | Env: {EnvironmentName})");
                         return true;
@@ -173,7 +170,7 @@ namespace AutoActivator.Services
 
         #endregion
 
-        #region MÉTHODES SYNCHRONES (CONSERVÉES POUR LA COMPATIBILITÉ AVEC L'ANCIEN CODE)
+        #region SYNCHRONOUS METHODS (KEPT FOR BACKWARD COMPATIBILITY)
 
         public bool TestConnection()
         {

@@ -13,14 +13,16 @@ using Newtonsoft.Json.Linq;
 
 namespace AutoActivator.Services
 {
+    /// <summary>
+    /// Service responsible for communicating with the MicroFocus Mainframe REST API.
+    /// It handles authentication, JCL job submission, status polling, and spool retrieval.
+    /// </summary>
     public class MicroFocusApiService
     {
         private static readonly CookieContainer _cookieContainer = new CookieContainer();
 
-        // Rendu Thread-Safe pour supporter de multiples accès simultanés
         private static readonly ConcurrentDictionary<string, string> _lastWorkingServers = new ConcurrentDictionary<string, string>();
 
-        // Instance unique et statique de HttpClient
         private static readonly HttpClient _httpClient;
 
         private readonly Dictionary<string, List<string>> _activeServers = new Dictionary<string, List<string>>()
@@ -41,9 +43,7 @@ namespace AutoActivator.Services
                 CookieContainer = _cookieContainer,
                 UseCookies = true,
                 AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
-                // Contournement des erreurs SSL
                 ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true,
-                // Forçage absolu de la limite de connexion (remplace ServicePoint.ConnectionLimit)
                 MaxConnectionsPerServer = 500
             };
 
@@ -52,7 +52,6 @@ namespace AutoActivator.Services
                 Timeout = TimeSpan.FromSeconds(30)
             };
 
-            // Configuration des Headers globaux
             _httpClient.DefaultRequestHeaders.Add("accept-encoding", "gzip, deflate, br");
             _httpClient.DefaultRequestHeaders.Add("sec-fetch-dest", "empty");
             _httpClient.DefaultRequestHeaders.Add("sec-fetch-mode", "cors");
@@ -64,13 +63,17 @@ namespace AutoActivator.Services
 
         public MicroFocusApiService()
         {
-            // Le constructeur d'instance est désormais vide car la configuration est gérée globalement.
+            // The instance constructor is empty because configuration is handled globally.
         }
 
+        /// <summary>
+        /// Authenticates with the Mainframe network. Includes a failover mechanism that automatically
+        /// switches to the next available server node if the primary one is down.
+        /// </summary>
         public async Task<bool> LogonAsync(string username, string password, string env, Action<string> onProgress, CancellationToken cancellationToken)
         {
             string baseUrl = $"https://escwa{env.ToLower()}.aginsurance.intranet:10086";
-            if (!_activeServers.ContainsKey(env)) throw new ArgumentException($"Environnement inconnu: {env}");
+            if (!_activeServers.ContainsKey(env)) throw new ArgumentException($"Unknown environment: {env}");
 
             string logonUrl = $"{baseUrl}/logon";
 
@@ -86,7 +89,7 @@ namespace AutoActivator.Services
                     if (await TestConnectionAsync(_nodeUrl, cancellationToken).ConfigureAwait(false))
                     {
                         ActiveServer = lastServer;
-                        onProgress($"Session existante réutilisée avec succès sur {ActiveServer}.");
+                        onProgress($"Existing session successfully reused on {ActiveServer}.");
                         return true;
                     }
                 }
@@ -117,12 +120,12 @@ namespace AutoActivator.Services
                             }
                             else if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
                             {
-                                throw new UnauthorizedAccessException("Mot de passe incorrect. Arrêt immédiat (Anti-Ban).");
+                                throw new UnauthorizedAccessException("Incorrect password. Immediate stop to prevent account ban.");
                             }
                             else
                             {
                                 lastErrorMessage = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                                onProgress($"Serveur {ActiveServer} ignoré (HTTP {(int)response.StatusCode}).");
+                                onProgress($"Server {ActiveServer} ignored (HTTP {(int)response.StatusCode}).");
                             }
                         }
                     }
@@ -135,12 +138,12 @@ namespace AutoActivator.Services
                 catch (Exception ex) when (!(ex is OperationCanceledException)) { lastErrorMessage = ex.Message; }
             }
 
-            throw new Exception($"Aucun serveur n'a répondu. Dernière erreur : {lastErrorMessage}");
+            throw new Exception($"No server responded. Last error: {lastErrorMessage}");
         }
 
         public async Task<(bool Success, string JobNum, string Error)> SubmitJobAsync(string jclContent, CancellationToken cancellationToken)
         {
-            if (string.IsNullOrEmpty(_nodeUrl)) throw new InvalidOperationException("Non connecté au serveur. Appelez LogonAsync d'abord.");
+            if (string.IsNullOrEmpty(_nodeUrl)) throw new InvalidOperationException("Not connected to the server. Call LogonAsync first.");
 
             string submitUrl = $"{_nodeUrl}jescontrol/";
             var payload = new { subJes = "2", ctlSubmit = "Submit", JCLIn = jclContent };
@@ -158,7 +161,7 @@ namespace AutoActivator.Services
 
                         if (!response.IsSuccessStatusCode)
                         {
-                            return (false, null, $"Erreur HTTP {(int)response.StatusCode}: {responseBody}");
+                            return (false, null, $"HTTP Error {(int)response.StatusCode}: {responseBody}");
                         }
 
                         JObject doc = JObject.Parse(responseBody);
@@ -179,7 +182,6 @@ namespace AutoActivator.Services
                                 errorMsg.AppendLine(line);
                             }
 
-                            // Sécurité supplémentaire : Si le format Regex habituel échoue
                             if (string.IsNullOrEmpty(jobNum) && isReady)
                             {
                                 var fallback = Regex.Match(errorMsg.ToString(), @"[Jj]\d{5,7}");
@@ -187,9 +189,9 @@ namespace AutoActivator.Services
                             }
 
                             if (isReady && !string.IsNullOrEmpty(jobNum)) return (true, jobNum, null);
-                            return (false, null, string.IsNullOrEmpty(jobNum) ? "JobNum introuvable. \n" + errorMsg : errorMsg.ToString());
+                            return (false, null, string.IsNullOrEmpty(jobNum) ? "JobNum not found. \n" + errorMsg : errorMsg.ToString());
                         }
-                        return (false, null, "Format JSON inattendu.");
+                        return (false, null, "Unexpected JSON format.");
                     }
                 }
             }
@@ -201,7 +203,7 @@ namespace AutoActivator.Services
 
         public async Task<(string Status, string ReturnCode)> CheckJobStatusAsync(string jobNum, CancellationToken cancellationToken)
         {
-            if (string.IsNullOrEmpty(jobNum)) return ("Unknown", "JobNum invalide");
+            if (string.IsNullOrEmpty(jobNum)) return ("Unknown", "Invalid JobNum");
 
             string url = $"{_nodeUrl}jobview/{jobNum}";
 
@@ -212,18 +214,16 @@ namespace AutoActivator.Services
                 {
                     string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
-                    // DÉBUT DU MOUCHARD API
                     try
                     {
                         string debugFilePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"DEBUG_API_{jobNum}.txt");
-                        System.IO.File.AppendAllText(debugFilePath, "\n--- NOUVELLE VERIFICATION ---\n" + responseBody);
+                        System.IO.File.AppendAllText(debugFilePath, "\n--- NEW VERIFICATION ---\n" + responseBody);
                     }
-                    catch { /* On ignore si l'écriture échoue */ }
-                    // FIN DU MOUCHARD API
+                    catch { /* Silently ignore if writing fails to prevent application crash */ }
 
                     if (!response.IsSuccessStatusCode)
                     {
-                        return ("Unknown", $"Erreur HTTP: {(int)response.StatusCode}");
+                        return ("Unknown", $"HTTP Error: {(int)response.StatusCode}");
                     }
 
                     JObject doc = JObject.Parse(responseBody);
@@ -245,10 +245,13 @@ namespace AutoActivator.Services
             }
             catch (Exception ex)
             {
-                return ("Unknown", $"Erreur de requête: {ex.Message}");
+                return ("Unknown", $"Request error: {ex.Message}");
             }
         }
 
+        /// <summary>
+        /// Retrieves the business report (Spool) of a specific job to log exactly what the Mainframe did.
+        /// </summary>
         public async Task<string> GetJobBusinessReportAsync(string jobNum, CancellationToken cancellationToken)
         {
             string url = $"{_nodeUrl}jobview/{jobNum}";
@@ -257,19 +260,17 @@ namespace AutoActivator.Services
 
             try
             {
-                // 1. Récupération des informations du job (JobDDs)
                 using (var request = CreateHttpRequest(HttpMethod.Get, url, url))
                 using (var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false))
                 {
                     if (!response.IsSuccessStatusCode)
-                        return $"Erreur HTTP lors de la demande de rapport: {(int)response.StatusCode}";
+                        return $"HTTP Error when requesting report: {(int)response.StatusCode}";
 
                     string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     JObject doc = JObject.Parse(responseBody);
 
                     if (doc.TryGetValue("JobDDs", out JToken ddsToken))
                     {
-                        // On cherche le journal de log métier COBOL (BERPCTLO) en priorité
                         var dd = ddsToken.FirstOrDefault(d => d["DDName"]?.ToString() == "BERPCTLO")
                               ?? ddsToken.FirstOrDefault(d => d["DDName"]?.ToString() == "SYSOUT");
 
@@ -281,9 +282,8 @@ namespace AutoActivator.Services
                     }
                 }
 
-                if (string.IsNullOrEmpty(ddEntityName)) return "Aucun fichier de rapport métier trouvé (BERPCTLO ou SYSOUT).";
+                if (string.IsNullOrEmpty(ddEntityName)) return "No business report file found (BERPCTLO or SYSOUT).";
 
-                // 2. Tentative de lecture via le Spool
                 string spoolUrl = $"{_nodeUrl}spool/{ddEntityName}";
                 try
                 {
@@ -292,12 +292,11 @@ namespace AutoActivator.Services
                     {
                         spoolResp.EnsureSuccessStatusCode();
                         string spoolContent = await spoolResp.Content.ReadAsStringAsync().ConfigureAwait(false);
-                        return $"--- RAPPORT METIER ({targetDdName}) DU JOB {jobNum} ---\n\n{spoolContent}";
+                        return $"--- BUSINESS REPORT ({targetDdName}) OF JOB {jobNum} ---\n\n{spoolContent}";
                     }
                 }
                 catch (HttpRequestException)
                 {
-                    // 3. Fallback sur DDView en cas d'échec du Spool
                     string ddviewUrl = $"{_nodeUrl}ddview/{ddEntityName}";
                     try
                     {
@@ -306,18 +305,18 @@ namespace AutoActivator.Services
                         {
                             ddviewResp.EnsureSuccessStatusCode();
                             string ddviewContent = await ddviewResp.Content.ReadAsStringAsync().ConfigureAwait(false);
-                            return $"--- RAPPORT METIER ({targetDdName}) DU JOB {jobNum} ---\n\n{ddviewContent}";
+                            return $"--- BUSINESS REPORT ({targetDdName}) OF JOB {jobNum} ---\n\n{ddviewContent}";
                         }
                     }
                     catch (Exception innerEx)
                     {
-                        return $"Impossible de télécharger le rapport (Spool et DDView échoués). Erreur : {innerEx.Message}";
+                        return $"Unable to download the report (Spool and DDView failed). Error: {innerEx.Message}";
                     }
                 }
             }
             catch (Exception ex)
             {
-                return $"Erreur interne lors du rapport : {ex.Message}";
+                return $"Internal error during report extraction: {ex.Message}";
             }
         }
 

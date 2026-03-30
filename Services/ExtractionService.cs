@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
-using System.Linq; // Nécessaire pour le .ToList()
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,10 +27,8 @@ namespace AutoActivator.Services
 
             string cleanedContract = targetContract.Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
 
-            // --- Résolution du Demand ID en Numéro de contrat ---
             if (isDemandId)
             {
-                // Instance dédiée pour la requête Demand ID
                 var demandDb = new DatabaseManager(envSuffix);
                 var dtDemand = await demandDb.GetDataAsync(SqlQueries.Queries["GET_CONTRACT_BY_DEMAND"], new Dictionary<string, object> { { "@DemandId", cleanedContract } }).ConfigureAwait(false);
 
@@ -46,7 +44,6 @@ namespace AutoActivator.Services
 
             var parameters = new Dictionary<string, object> { { "@ContractNumber", cleanedContract } };
 
-            // CORRECTION CRITIQUE : Instances séparées pour les requêtes initiales LISA et ELIA
             var lisaDb = new DatabaseManager(envSuffix);
             var eliaDb = new DatabaseManager(envSuffix);
 
@@ -67,45 +64,42 @@ namespace AutoActivator.Services
             string eliaUconId = "Not found", eliaDemandId = "Not found", internalIdString = "Not found";
             string premiumAmount = "0";
 
-            #region SECTION LISA
+            #region LISA SECTION
             if (dtLisa.Rows.Count > 0)
             {
                 if (dtLisa.Rows[0]["NO_CNT"] == DBNull.Value)
-                    throw new Exception($"Le contrat {cleanedContract} a été trouvé mais son ID interne (NO_CNT) est NULL en base de données.");
+                    throw new Exception($"The contract {cleanedContract} was found but its internal ID (NO_CNT) is NULL in the database.");
 
                 long internalId = Convert.ToInt64(dtLisa.Rows[0]["NO_CNT"]);
                 internalIdString = internalId.ToString();
 
                 var lisaTables = new[] { "LV.PCONT0", "LV.ELIAT0", "LV.ELIHT0", "LV.SCNTT0", "LV.SWBGT0", "LV.SAVTT0", "LV.XRSTT0", "LV.SPERT0", "LV.ADMDT0", "FJ1.TB5LPPL", "FJ1.TB5LPPR", "FJ1.TB5LGDR", "LV.PRIST0", "LV.PECHT0", "LV.PFIET0", "LV.PMNTT0", "LV.PRCTT0", "LV.PSUMT0", "LV.SELTT0", "FJ1.TB5LPPF", "LV.FMVGT0", "LV.FMVDT0", "LV.SFTS", "LV.PINCT0", "LV.SCLST0", "LV.SCLRT0", "LV.SCLDT0", "LV.BSPDT0", "LV.BSPGT0", "LV.BPBAT0", "LV.BPPAT0", "LV.MWBGT0" };
 
-                // Extraction parallèle de toutes les tables LISA (on passe envSuffix au lieu de l'objet db)
                 await ExtractAndAppendTablesAsync(envSuffix, lisaTables, "@InternalId", internalId, sbLisa).ConfigureAwait(false);
             }
             else sbLisa.AppendLine($"### DIAGNOSTIC : Contract {cleanedContract} missing ###");
             #endregion
 
-            #region SECTION ELIA
+            #region ELIA SECTION
             if (dtElia.Rows.Count > 0)
             {
                 eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"]?.ToString()?.Trim() ?? "Not found";
 
-                // Récupération spécifique de la prime (Premium)
                 if (SqlQueries.Queries.ContainsKey("FJ1.TB5UPRP"))
                 {
                     try
                     {
-                        var premiumDb = new DatabaseManager(envSuffix); // Instance dédiée
+                        var premiumDb = new DatabaseManager(envSuffix);
                         var dtPremium = await premiumDb.GetDataAsync(SqlQueries.Queries["FJ1.TB5UPRP"], new Dictionary<string, object> { { "@EliaId", eliaUconId } }).ConfigureAwait(false);
                         if (dtPremium.Rows.Count > 0 && dtPremium.Columns.Contains("IT5UPRPUBRU"))
                         {
                             premiumAmount = dtPremium.Rows[0]["IT5UPRPUBRU"]?.ToString()?.Trim() ?? "0";
                         }
                     }
-                    catch { /* Ignore l'erreur silencieusement et garde "0" */ }
+                    catch { /* Silently ignore the error and keep "0" */ }
                 }
 
-                // Récupération des Demands
-                var eliaDemandDb = new DatabaseManager(envSuffix); // Instance dédiée
+                var eliaDemandDb = new DatabaseManager(envSuffix);
                 var dtDemand = await eliaDemandDb.GetDataAsync(SqlQueries.Queries["GET_ELIA_DEMAND_IDS"], new Dictionary<string, object> { { "@EliaId", eliaUconId } }).ConfigureAwait(false);
 
                 var demandIds = new List<string>();
@@ -117,7 +111,6 @@ namespace AutoActivator.Services
 
                 var eliaTables = new[] { "FJ1.TB5HELT", "FJ1.TB5UCON", "FJ1.TB5UGAR", "FJ1.TB5UASU", "FJ1.TB5UCCR", "FJ1.TB5UAVE", "FJ1.TB5UPNR", "FJ1.TB5UPRP", "FJ1.TB5UPRS", "FJ1.TB5UPMP", "FJ1.TB5URPP", "FJ1.TB5UPRF", "FJ1.TB5UFML", "FJ1.TB5UCRB", "FJ1.TB5UDCR", "FJ1.TB5UBEN" };
 
-                // Extraction parallèle de toutes les tables ELIA
                 await ExtractAndAppendTablesAsync(envSuffix, eliaTables, "@EliaId", eliaUconId, sbElia).ConfigureAwait(false);
 
                 if (demandIds.Count > 0)
@@ -129,24 +122,28 @@ namespace AutoActivator.Services
             else sbElia.AppendLine("### ELIA SECTION : NO DATA FOUND ###");
             #endregion
 
+            string finalLisaContent = sbLisa.ToString();
+            string finalEliaContent = sbElia.ToString();
+
             if (saveIndividualFile)
             {
                 Directory.CreateDirectory(Settings.OutputDir);
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-
                 char envLetter = !string.IsNullOrEmpty(envSuffix) ? char.ToUpper(envSuffix[0]) : 'U';
                 string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_Uniq_{cleanedContract}_{timestamp}.csv");
 
                 string lisaHeader = $"================================================================================\n=== SECTION LISA (INTERNAL ID: {internalIdString} | ENV: {envSuffix}) ===\n================================================================================\n";
                 string eliaHeader = $"================================================================================\n=== SECTION ELIA (UCON ID: {eliaUconId} | ENV: {envSuffix}) ===\n================================================================================\n";
 
-                string combinedContent = lisaHeader + sbLisa.ToString() + "\n" + eliaHeader + sbElia.ToString();
-
                 try
                 {
                     using (StreamWriter writer = new StreamWriter(combinedPath, false, Encoding.UTF8))
                     {
-                        await writer.WriteAsync(combinedContent).ConfigureAwait(false);
+                        await writer.WriteAsync(lisaHeader).ConfigureAwait(false);
+                        await writer.WriteAsync(finalLisaContent).ConfigureAwait(false);
+                        await writer.WriteLineAsync().ConfigureAwait(false);
+                        await writer.WriteAsync(eliaHeader).ConfigureAwait(false);
+                        await writer.WriteAsync(finalEliaContent).ConfigureAwait(false);
                     }
                 }
                 catch (IOException)
@@ -154,7 +151,11 @@ namespace AutoActivator.Services
                     string alternativePath = Path.Combine(Settings.OutputDir, $"Extraction_{envLetter}_Uniq_{cleanedContract}_{timestamp}_{Guid.NewGuid().ToString().Substring(0, 4)}.csv");
                     using (StreamWriter writer = new StreamWriter(alternativePath, false, Encoding.UTF8))
                     {
-                        await writer.WriteAsync(combinedContent).ConfigureAwait(false);
+                        await writer.WriteAsync(lisaHeader).ConfigureAwait(false);
+                        await writer.WriteAsync(finalLisaContent).ConfigureAwait(false);
+                        await writer.WriteLineAsync().ConfigureAwait(false);
+                        await writer.WriteAsync(eliaHeader).ConfigureAwait(false);
+                        await writer.WriteAsync(finalEliaContent).ConfigureAwait(false);
                     }
                 }
             }
@@ -165,24 +166,24 @@ namespace AutoActivator.Services
                 FilePath = Settings.OutputDir,
                 StatusMessage = $"Extraction saved | ID: {internalIdString}",
                 InternalId = internalIdString, UconId = eliaUconId, DemandId = eliaDemandId,
-                LisaContent = sbLisa.ToString(), EliaContent = sbElia.ToString(),
+                LisaContent = finalLisaContent, EliaContent = finalEliaContent,
                 Premium = premiumAmount
             };
         }
 
         private async Task ExtractAndAppendTablesAsync(string envSuffix, IEnumerable<string> tables, string parameterName, object parameterValue, StringBuilder sb)
         {
-            var resultsDictionary = new ConcurrentDictionary<string, string>();
+            var tablesList = tables.ToList();
 
-            // CORRECTION 1 : Réduit de 30 à 10 pour stabiliser les requêtes SQL (max 10 requêtes simultanées par contrat)
+            string[] resultsArray = new string[tablesList.Count];
             var semaphore = new SemaphoreSlim(10);
             var tasks = new List<Task>();
 
-            // CORRECTION 2 : Pour garantir que les tables sont ajoutées dans le même ordre à chaque fois (ordre de la liste 'tables')
-            var tablesList = tables.ToList();
-
-            foreach (var table in tablesList)
+            for (int i = 0; i < tablesList.Count; i++)
             {
+                int index = i;
+                string table = tablesList[index];
+
                 tasks.Add(Task.Run(async () =>
                 {
                     await semaphore.WaitAsync().ConfigureAwait(false);
@@ -195,13 +196,15 @@ namespace AutoActivator.Services
 
                             var tempSb = new StringBuilder();
                             CsvFormatter.AddTableToBuffer(tempSb, table, dt);
+                            resultsArray[index] = tempSb.ToString();
 
-                            resultsDictionary.TryAdd(table, tempSb.ToString());
+                            dt.Clear();
+                            dt.Dispose();
                         }
                     }
                     catch (Exception ex)
                     {
-                        resultsDictionary.TryAdd(table, $"### TABLE : {table} | EXTRACTION ERROR\nSQL Error: {ex.Message}\n");
+                        resultsArray[index] = $"### TABLE : {table} | EXTRACTION ERROR\nSQL Error: {ex.Message}\n";
                     }
                     finally
                     {
@@ -212,10 +215,9 @@ namespace AutoActivator.Services
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
 
-            // CORRECTION 3 : Concaténation dans le StringBuilder basée sur l'ordre de la liste originale pour assurer un ordre de sortie fixe
-            foreach (var table in tablesList)
+            foreach (var content in resultsArray)
             {
-                if (resultsDictionary.TryGetValue(table, out var content))
+                if (!string.IsNullOrEmpty(content))
                 {
                     sb.Append(content);
                 }

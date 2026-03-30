@@ -11,7 +11,6 @@ namespace AutoActivator.Gui
 {
     public partial class MainWindow : Window
     {
-        // Shared variable to know which folder/file to open when clicking the hyperlink
         public string LastGeneratedPath { get; set; } = "";
 
         public MainWindow()
@@ -19,10 +18,12 @@ namespace AutoActivator.Gui
             InitializeComponent();
             InitializeDirectories();
 
-            // Set "Activation" as the default tab on startup
             BtnMenu_Click(BtnActivation, null);
         }
 
+        /// <summary>
+        /// Ensures all required local directories exist before the application starts writing files.
+        /// </summary>
         private void InitializeDirectories()
         {
             try
@@ -31,7 +32,6 @@ namespace AutoActivator.Gui
                 if (!Directory.Exists(Settings.SnapshotDir)) Directory.CreateDirectory(Settings.SnapshotDir);
                 if (!Directory.Exists(Settings.InputDir)) Directory.CreateDirectory(Settings.InputDir);
 
-                // NEW: Create Baseline directory for the Smart Matcher feature
                 if (!Directory.Exists(Settings.BaselineDir)) Directory.CreateDirectory(Settings.BaselineDir);
             }
             catch (Exception ex)
@@ -40,33 +40,30 @@ namespace AutoActivator.Gui
             }
         }
 
-        // --- NEW: Method to route user to the exact Help tab they need ---
+        /// <summary>
+        /// Routes the user to the Help view and opens a specific internal tab.
+        /// Called by the "?" buttons located in the individual views.
+        /// </summary>
         public void OpenHelpTargetingTab(int tabIndex)
         {
-            // 1. Simulate a click on the sidebar "Help" button to switch the UI view
             BtnMenu_Click(BtnHelp, null);
 
-            // 2. Instruct the HelpView to switch to the correct internal tab
             ViewHelp.SelectTab(tabIndex);
         }
 
-        // --- SIDEBAR MENU NAVIGATION ---
         private void BtnMenu_Click(object sender, RoutedEventArgs e)
         {
-            // 1. Hide all views
             if (ViewActivation != null) ViewActivation.Visibility = Visibility.Collapsed;
             if (ViewExtraction != null) ViewExtraction.Visibility = Visibility.Collapsed;
             if (ViewComparison != null) ViewComparison.Visibility = Visibility.Collapsed;
             if (ViewHelp != null) ViewHelp.Visibility = Visibility.Collapsed;
 
-            // 2. Reset colors for all menu buttons to the default dark blue
             var inactiveColor = (SolidColorBrush)new BrushConverter().ConvertFrom("#34495E");
             if (BtnActivation != null) BtnActivation.Background = inactiveColor;
             if (BtnExtraction != null) BtnExtraction.Background = inactiveColor;
             if (BtnComparison != null) BtnComparison.Background = inactiveColor;
             if (BtnHelp != null) BtnHelp.Background = inactiveColor;
 
-            // 3. Set the active theme colors
             var activeColor = (SolidColorBrush)new BrushConverter().ConvertFrom("#1ABC9C"); // Green/Teal
             var helpColor = (SolidColorBrush)new BrushConverter().ConvertFrom("#8E44AD");   // Purple
 
@@ -94,21 +91,20 @@ namespace AutoActivator.Gui
             }
         }
 
-        // --- GLOBAL ASYNC ENGINE (Manages progress bar for all views) ---
-        // This method is public so the specific Views (UserControls) can call it.
+        /// <summary>
+        /// Centralized wrapper for executing long-running asynchronous tasks from the sub-views.
+        /// It manages the global loading bar, the status text colors, and catches unhandled exceptions safely.
+        /// </summary>
         public async Task RunProcessAsync(Func<Task> action)
         {
-            // Show loading bar and hide link
             PrgLoading.Visibility = Visibility.Visible;
             LnkFile.Visibility = Visibility.Collapsed;
             TxtStatus.Foreground = Brushes.Blue;
 
             try
             {
-                // Execute the requested async task
                 await action();
 
-                // On success
                 LnkFile.Visibility = Visibility.Visible;
                 TxtStatus.Foreground = Brushes.Green;
             }
@@ -126,18 +122,19 @@ namespace AutoActivator.Gui
             }
             finally
             {
-                // Hide loading bar when done
                 PrgLoading.Visibility = Visibility.Collapsed;
             }
         }
 
-        // --- NOUVEAU : CONVERTISSEUR EXCEL VERS CSV ---
+        /// <summary>
+        /// Converts an Excel file to a CSV file using OLEDB.
+        /// This is an alternative to Interop that runs faster but requires the Microsoft ACE OLEDB drivers installed on the machine.
+        /// </summary>
         public string PrepareCsvFromExcel(string excelFilePath, string environmentSuffix)
         {
             string outputCsvPath = Path.Combine(Settings.InputDir,
                 $"ConvertedBatch_{environmentSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
 
-            // Choix du driver en fonction de l'extension (xls vs xlsx)
             string connString;
             if (excelFilePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase))
                 connString = $"Provider=Microsoft.Jet.OLEDB.4.0;Data Source=\"{excelFilePath}\";Extended Properties=\"Excel 8.0;HDR=YES;IMEX=1\";";
@@ -149,9 +146,10 @@ namespace AutoActivator.Gui
                 using (var conn = new System.Data.OleDb.OleDbConnection(connString))
                 {
                     conn.Open();
+
                     var schemaTable = conn.GetOleDbSchemaTable(System.Data.OleDb.OleDbSchemaGuid.Tables, null);
                     if (schemaTable == null || schemaTable.Rows.Count == 0)
-                        throw new Exception("Aucune feuille trouvée dans le fichier Excel.");
+                        throw new Exception("No sheets found in the Excel file.");
 
                     string sheetName = schemaTable.Rows[0]["TABLE_NAME"].ToString();
 
@@ -159,7 +157,6 @@ namespace AutoActivator.Gui
                     using (var reader = cmd.ExecuteReader())
                     using (var writer = new StreamWriter(outputCsvPath, false, Encoding.UTF8))
                     {
-                        // 1. Écrire les entêtes (séparateur point-virgule)
                         for (int i = 0; i < reader.FieldCount; i++)
                         {
                             writer.Write(reader.GetName(i));
@@ -167,16 +164,17 @@ namespace AutoActivator.Gui
                         }
                         writer.WriteLine();
 
-                        // 2. Écrire les données
                         while (reader.Read())
                         {
                             for (int i = 0; i < reader.FieldCount; i++)
                             {
                                 string val = reader[i]?.ToString() ?? "";
+
                                 if (val.Contains(";") || val.Contains("\"") || val.Contains("\n") || val.Contains("\r"))
                                 {
-                                    val = $"\"{val.Replace("\"", "\"\"")}\""; // Échappement propre
+                                    val = $"\"{val.Replace("\"", "\"\"")}\"";
                                 }
+
                                 writer.Write(val);
                                 if (i < reader.FieldCount - 1) writer.Write(";");
                             }
@@ -188,23 +186,20 @@ namespace AutoActivator.Gui
             }
             catch (Exception ex)
             {
-                throw new Exception($"Échec de la conversion de l'Excel en CSV. Erreur technique : {ex.Message}");
+                throw new Exception($"Failed to convert Excel to CSV. Technical error: {ex.Message}");
             }
         }
 
-        // --- GLOBAL HYPERLINK CLICK HANDLER ---
         private void Hyperlink_Click(object sender, RoutedEventArgs e)
         {
             try
             {
                 if (Directory.Exists(LastGeneratedPath))
                 {
-                    // Open folder
                     Process.Start("explorer.exe", LastGeneratedPath);
                 }
                 else if (File.Exists(LastGeneratedPath))
                 {
-                    // Open folder AND select the specific generated file
                     Process.Start("explorer.exe", $"/select,\"{LastGeneratedPath}\"");
                 }
                 else

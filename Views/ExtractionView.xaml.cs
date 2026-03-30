@@ -18,7 +18,6 @@ namespace AutoActivator.Gui.Views
     {
         private readonly ExtractionService _extractionService;
 
-        // ObservableCollection pour mettre à jour l'UI en temps réel
         public ObservableCollection<ExtractionItem> ExtractionHistory { get; set; } = new ObservableCollection<ExtractionItem>();
 
         private int _koExtractionCount = 0;
@@ -31,7 +30,6 @@ namespace AutoActivator.Gui.Views
             _extractionService = new ExtractionService();
         }
 
-        // -- UI NAVIGATION & MANAGEMENT --
 
         private void BtnHelp_Click(object sender, RoutedEventArgs e)
         {
@@ -46,11 +44,8 @@ namespace AutoActivator.Gui.Views
             return int.TryParse(rowNumStr, out int val) ? val : 0;
         }
 
-        // Ajout intelligent avec tri ascendant (OK en bas, KO en haut)
         private void AddExtractionItemToHistory(ExtractionItem item)
         {
-            // Vérifie si on est déjà sur le thread UI (Progress<T> le fait automatiquement,
-            // mais c'est une sécurité supplémentaire si appelé d'ailleurs).
             if (!Dispatcher.CheckAccess())
             {
                 Dispatcher.Invoke(() => AddExtractionItemToHistory(item));
@@ -66,7 +61,6 @@ namespace AutoActivator.Gui.Views
             int insertIndex = isKo ? 0 : _koExtractionCount;
             int limit = isKo ? _koExtractionCount : ExtractionHistory.Count;
 
-            // Trouver la bonne position pour garder l'ordre
             while (insertIndex < limit)
             {
                 if (GetRowNumValue(ExtractionHistory[insertIndex].RowNum) > newItemRow)
@@ -91,13 +85,11 @@ namespace AutoActivator.Gui.Views
 
             string clean = contract.Replace("-", "").Replace(" ", "");
 
-            // Compatibilité C# 7.3 : Utilisation classique de Substring
             return clean.Length == 12
                 ? $"{clean.Substring(0, 3)}-{clean.Substring(3, 7)}-{clean.Substring(10, 2)}"
                 : contract;
         }
 
-        // -- USER INTERFACE MANAGEMENT --
 
         private void InputType_Checked(object sender, RoutedEventArgs e)
         {
@@ -114,7 +106,6 @@ namespace AutoActivator.Gui.Views
             }
             else if (RbBatchSearchDemand?.IsChecked == true)
             {
-                // Compatibilité C# 7.3 : Cast "as" au lieu du pattern matching
                 string envValue = (CmbExtEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "D";
                 string channelValue = (CmbExtChannel?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "C01";
 
@@ -126,7 +117,6 @@ namespace AutoActivator.Gui.Views
         private void CmbExtEnv_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
         private void CmbExtChannel_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
 
-        // --- BASELINE MANAGEMENT LOGIC ---
 
         private void BtnAddBaseline_Click(object sender, RoutedEventArgs e)
         {
@@ -167,7 +157,6 @@ namespace AutoActivator.Gui.Views
             }
         }
 
-        // --- SINGLE EXTRACTION TAB LOGIC ---
 
         private async void BtnRunSingle_Click(object sender, RoutedEventArgs e)
         {
@@ -176,7 +165,6 @@ namespace AutoActivator.Gui.Views
             string rawInput = TxtExtContract?.Text.Trim();
             bool isDemandId = RbSearchDemand?.IsChecked == true;
 
-            // Compatibilité C# 7.3
             string envValue = (CmbExtEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "D";
 
             if (string.IsNullOrEmpty(rawInput))
@@ -185,7 +173,6 @@ namespace AutoActivator.Gui.Views
                 return;
             }
 
-            // Progress<T> s'exécute automatiquement sur le thread UI
             IProgress<ExtractionItem> progress = new Progress<ExtractionItem>(AddExtractionItemToHistory);
 
             await mainWindow.RunProcessAsync(async () =>
@@ -200,12 +187,11 @@ namespace AutoActivator.Gui.Views
         {
             try
             {
-                ExtractionResult result = await _extractionService.PerformExtractionAsync(targetValue, env, true, isDemandId);
+                ExtractionResult result = await _extractionService.PerformExtractionAsync(targetValue, env, true, isDemandId).ConfigureAwait(false);
                 mainWindow.LastGeneratedPath = Settings.OutputDir;
 
                 string displayContract = isDemandId ? FormatContractForDisplay(result.ContractReference) : FormatContractForDisplay(targetValue);
 
-                // Compatibilité C# 7.3 : "==" au lieu de "is" et "or"
                 string finalTest = (result.InternalId == "Not found" || result.InternalId == "Error") ? "KO" : "OK";
 
                 progress.Report(new ExtractionItem
@@ -240,7 +226,6 @@ namespace AutoActivator.Gui.Views
             }
         }
 
-        // --- BATCH EXTRACTION TAB LOGIC ---
 
         private void BtnBrowseExtCsv_Click(object sender, RoutedEventArgs e)
         {
@@ -295,7 +280,6 @@ namespace AutoActivator.Gui.Views
             }
             finally
             {
-                // Libération EXPLICITE des objets COM pour éviter les processus Excel fantômes
                 if (valueCol != null) Marshal.ReleaseComObject(valueCol);
                 if (searchRange != null) Marshal.ReleaseComObject(searchRange);
                 if (firstRow != null) Marshal.ReleaseComObject(firstRow);
@@ -322,7 +306,6 @@ namespace AutoActivator.Gui.Views
             string filePath = TxtBatchExtCsv?.Text.Trim();
             bool isDemandId = RbBatchSearchDemand?.IsChecked == true;
 
-            // Compatibilité C# 7.3
             string envValue = (CmbExtEnv?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "D";
 
             if (string.IsNullOrEmpty(filePath))
@@ -337,7 +320,6 @@ namespace AutoActivator.Gui.Views
             {
                 mainWindow.TxtStatus.Text = $"Batch extraction in progress: {info.CurrentItem} / {info.TotalItems} contracts processed...";
 
-                // Compatibilité C# 7.3
                 string status = (info.InternalId == "Not found" || info.InternalId == "Error" || info.Status.Contains("Error") || info.Status.Contains("Not found"))
                                 ? "KO" : info.Status;
 
@@ -366,11 +348,11 @@ namespace AutoActivator.Gui.Views
                     if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                     {
                         UpdateMainWindowStatus(mainWindow, $"Converting Network Excel to CSV for {envValue}000...");
-                        actualFile = await Task.Run(() => PrepareCsvFromExcel(filePath));
+                        actualFile = await Task.Run(() => PrepareCsvFromExcel(filePath)).ConfigureAwait(false);
                     }
 
                     UpdateMainWindowStatus(mainWindow, $"Launching batch extraction ({envValue}000)...");
-                    await batchService.PerformBatchExtractionAsync(actualFile, $"{envValue}000", progress.Report, isDemandId);
+                    await batchService.PerformBatchExtractionAsync(actualFile, $"{envValue}000", progress.Report, isDemandId).ConfigureAwait(false);
 
                     mainWindow.LastGeneratedPath = Settings.OutputDir;
                     UpdateMainWindowStatus(mainWindow, "Batch extraction completed! Files saved in Output folder.", Brushes.Green);
@@ -391,7 +373,6 @@ namespace AutoActivator.Gui.Views
             if (TxtTotalCount != null) TxtTotalCount.Text = "0";
         }
 
-        // Utilitaire pour nettoyer le code de mise à jour du statut UI
         private void UpdateMainWindowStatus(MainWindow mainWindow, string text, Brush color = null)
         {
             Dispatcher.Invoke(() =>

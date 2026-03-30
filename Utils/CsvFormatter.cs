@@ -8,17 +8,20 @@ using System.Text;
 
 namespace AutoActivator.Utils
 {
+    /// <summary>
+    /// Utility class for formatting and parsing CSV data, optimized for low memory consumption.
+    /// </summary>
     public static class CsvFormatter
     {
         public static void AddTableToBuffer(StringBuilder sb, string tableName, DataTable dt)
         {
             sb.AppendLine("--------------------------------------------------------------------------------");
-            sb.AppendLine($"### TABLE : {tableName} | Lignes : {dt?.Rows.Count ?? 0}");
+            sb.AppendLine($"### TABLE : {tableName} | Rows : {dt?.Rows.Count ?? 0}");
             sb.AppendLine("--------------------------------------------------------------------------------");
 
             if (dt == null || dt.Rows.Count == 0)
             {
-                sb.AppendLine("AUCUNE DONNÉE TROUVÉE\n");
+                sb.AppendLine("NO DATA FOUND\n");
                 return;
             }
 
@@ -47,7 +50,6 @@ namespace AutoActivator.Utils
             return field;
         }
 
-        // --- NOUVELLES MÉTHODES POUR LE FILTRAGE INTELLIGENT LORS DE LA COMPARAISON ---
 
         private static DateTime ParseProcessIdToDate(string rawTestId)
         {
@@ -70,25 +72,23 @@ namespace AutoActivator.Utils
         }
 
         /// <summary>
-        /// Découpe le fichier complet et ne garde QUE le bloc de texte du contrat le plus récent pour chaque Test ID.
+        /// Splits the full file and keeps ONLY the text block of the most recent contract for each Test ID.
+        /// MEMORY OPTIMIZED (Line-by-line streaming).
         /// </summary>
         public static Dictionary<string, string> SplitAndFilterMostRecentByTestId(string filePath)
         {
             var blocks = new Dictionary<string, (DateTime date, StringBuilder content)>();
             if (!File.Exists(filePath)) return new Dictionary<string, string>();
 
-            string[] lines = File.ReadAllLines(filePath);
             string currentRootTestId = "UNKNOWN";
             DateTime currentDate = DateTime.MinValue;
             StringBuilder currentBlock = new StringBuilder();
-            long fallbackCounter = 0; // Si pas de date, on prend le dernier dans l'ordre de lecture
+            long fallbackCounter = 0;
 
-            foreach (var line in lines)
+            foreach (var line in File.ReadLines(filePath, Encoding.UTF8))
             {
-                // À chaque nouveau contrat trouvé dans le fichier...
                 if (line.StartsWith("### GLOBAL CONTRACT REPORT:"))
                 {
-                    // 1. Sauvegarder le bloc du contrat PRÉCÉDENT s'il est plus récent que celui déjà en mémoire
                     if (currentBlock.Length > 0 && currentRootTestId != "UNKNOWN")
                     {
                         if (!blocks.ContainsKey(currentRootTestId) || currentDate >= blocks[currentRootTestId].date)
@@ -97,7 +97,6 @@ namespace AutoActivator.Utils
                         }
                     }
 
-                    // 2. Préparer le NOUVEAU bloc
                     currentBlock = new StringBuilder();
                     currentDate = new DateTime(fallbackCounter++);
                     currentRootTestId = "UNKNOWN";
@@ -109,11 +108,8 @@ namespace AutoActivator.Utils
                         if (endIdx != -1)
                         {
                             string rawTestId = line.Substring(idx + 8, endIdx - (idx + 8)).Trim();
-
-                            // On extrait "ID501" de "ID501_FIB_ProcessID:130326145957"
                             currentRootTestId = rawTestId.Contains("_") ? rawTestId.Split('_')[0].Trim() : rawTestId;
 
-                            // On extrait la date pour pouvoir comparer
                             DateTime parsedDate = ParseProcessIdToDate(rawTestId);
                             if (parsedDate != DateTime.MinValue) currentDate = parsedDate;
                         }
@@ -123,7 +119,6 @@ namespace AutoActivator.Utils
                 currentBlock.AppendLine(line);
             }
 
-            // N'oublions pas d'enregistrer le tout dernier contrat lu du fichier !
             if (currentBlock.Length > 0 && currentRootTestId != "UNKNOWN")
             {
                 if (!blocks.ContainsKey(currentRootTestId) || currentDate >= blocks[currentRootTestId].date)
@@ -132,26 +127,41 @@ namespace AutoActivator.Utils
                 }
             }
 
-            // On retourne le dictionnaire propre avec juste le texte
             return blocks.ToDictionary(k => k.Key, v => v.Value.content.ToString());
         }
 
+
         public static List<string> GetAllTableNamesFromContent(string fileContent)
         {
-            var tableNames = new HashSet<string>();
             using (var reader = new StringReader(fileContent))
             {
-                string line;
-                while ((line = reader.ReadLine()) != null)
+                return GetAllTableNamesFromReader(reader);
+            }
+        }
+
+        public static List<string> GetAllTableNames(string filePath)
+        {
+            if (!File.Exists(filePath)) return new List<string>();
+
+            using (var reader = new StreamReader(filePath, Encoding.UTF8))
+            {
+                return GetAllTableNamesFromReader(reader);
+            }
+        }
+
+        private static List<string> GetAllTableNamesFromReader(TextReader reader)
+        {
+            var tableNames = new HashSet<string>();
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                if (line.StartsWith("### TABLE : "))
                 {
-                    if (line.StartsWith("### TABLE : "))
+                    int startIndex = 12;
+                    int endIndex = line.IndexOf(" |", startIndex);
+                    if (endIndex > startIndex)
                     {
-                        int startIndex = 12;
-                        int endIndex = line.IndexOf(" |", startIndex);
-                        if (endIndex > startIndex)
-                        {
-                            tableNames.Add(line.Substring(startIndex, endIndex - startIndex).Trim());
-                        }
+                        tableNames.Add(line.Substring(startIndex, endIndex - startIndex).Trim());
                     }
                 }
             }
@@ -160,34 +170,63 @@ namespace AutoActivator.Utils
 
         public static DataTable LoadTableFromContent(string fileContent, string tableName)
         {
+            using (var reader = new StringReader(fileContent))
+            {
+                return LoadTableFromReader(reader, tableName);
+            }
+        }
+
+        public static DataTable LoadTableFromCsv(string filePath, string tableName)
+        {
+            if (!File.Exists(filePath)) return new DataTable(tableName);
+
+            using (var reader = new StreamReader(filePath, Encoding.UTF8))
+            {
+                return LoadTableFromReader(reader, tableName);
+            }
+        }
+
+        /// <summary>
+        /// Extracts a table using a text stream (file or memory), which prevents
+        /// RAM saturation when parsing very large files.
+        /// </summary>
+        private static DataTable LoadTableFromReader(TextReader reader, string tableName)
+        {
             var dt = new DataTable(tableName);
             string searchString = $"### TABLE : {tableName} |";
-            int tableStartIndex = fileContent.IndexOf(searchString);
+            string line;
+            bool tableFound = false;
 
-            if (tableStartIndex == -1) return dt;
+            while ((line = reader.ReadLine()) != null)
+            {
+                if (line.StartsWith(searchString))
+                {
+                    tableFound = true;
+                    reader.ReadLine();
+                    break;
+                }
+            }
 
-            int firstNewLine = fileContent.IndexOf('\n', tableStartIndex);
-            int secondNewLine = fileContent.IndexOf('\n', firstNewLine + 1);
-            if (firstNewLine == -1 || secondNewLine == -1) return dt;
-
-            int dataStartIndex = secondNewLine + 1;
+            if (!tableFound) return dt;
 
             bool isHeader = true;
             bool inQuotes = false;
             StringBuilder currentField = new StringBuilder();
             List<string> currentLine = new List<string>();
 
-            for (int i = dataStartIndex; i < fileContent.Length; i++)
+            int intChar;
+            while ((intChar = reader.Read()) != -1)
             {
-                char c = fileContent[i];
-                char nextC = i + 1 < fileContent.Length ? fileContent[i + 1] : '\0';
+                char c = (char)intChar;
+                int peek = reader.Peek();
+                char nextC = peek != -1 ? (char)peek : '\0';
 
                 if (c == '"')
                 {
                     if (inQuotes && nextC == '"')
                     {
                         currentField.Append('"');
-                        i++;
+                        reader.Read();
                     }
                     else
                     {
@@ -201,12 +240,12 @@ namespace AutoActivator.Utils
                 }
                 else if ((c == '\r' || c == '\n') && !inQuotes)
                 {
-                    if (c == '\r' && nextC == '\n') i++;
+                    if (c == '\r' && nextC == '\n') reader.Read();
 
                     currentLine.Add(currentField.ToString());
                     currentField.Clear();
 
-                    if (currentLine.Count == 1 && (string.IsNullOrWhiteSpace(currentLine[0]) || currentLine[0].StartsWith("---") || currentLine[0] == "AUCUNE DONNÉE TROUVÉE"))
+                    if (currentLine.Count == 1 && (string.IsNullOrWhiteSpace(currentLine[0]) || currentLine[0].StartsWith("---") || currentLine[0] == "NO DATA FOUND"))
                     {
                         break;
                     }
@@ -240,20 +279,21 @@ namespace AutoActivator.Utils
                 }
             }
 
+            if (currentField.Length > 0 || currentLine.Count > 0)
+            {
+                currentLine.Add(currentField.ToString());
+                if (!isHeader && currentLine.Any(x => !string.IsNullOrWhiteSpace(x)))
+                {
+                    var row = dt.NewRow();
+                    for (int j = 0; j < currentLine.Count && j < dt.Columns.Count; j++)
+                    {
+                        row[j] = currentLine[j];
+                    }
+                    dt.Rows.Add(row);
+                }
+            }
+
             return dt;
-        }
-
-        // --- ANCIENNES MÉTHODES POUR CONSERVER LA COMPATIBILITÉ AVEC LE RESTE DE L'APPLICATION ---
-        public static List<string> GetAllTableNames(string filePath)
-        {
-            if (!File.Exists(filePath)) return new List<string>();
-            return GetAllTableNamesFromContent(File.ReadAllText(filePath));
-        }
-
-        public static DataTable LoadTableFromCsv(string filePath, string tableName)
-        {
-            if (!File.Exists(filePath)) return new DataTable(tableName);
-            return LoadTableFromContent(File.ReadAllText(filePath), tableName);
         }
     }
 }

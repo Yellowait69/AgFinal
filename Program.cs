@@ -4,7 +4,7 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks; // INDISPENSABLE POUR L'ASYNCHRONE
+using System.Threading.Tasks;
 using AutoActivator.Config;
 using AutoActivator.Services;
 using AutoActivator.Sql;
@@ -13,7 +13,7 @@ namespace AutoActivator
 {
     class Program
     {
-        // MODIFIÉ : La méthode Main devient "async Task" pour supporter l'asynchrone
+
         static async Task Main(string[] args)
         {
             Console.WriteLine("==================================================");
@@ -42,10 +42,10 @@ namespace AutoActivator
             switch (choice)
             {
                 case "1":
-                    await RunTestExtractionAsync(); // APPEL ASYNCHRONE
+                    await RunTestExtractionAsync();
                     break;
                 case "2":
-                    await RunActivationAsync();     // APPEL ASYNCHRONE
+                    await RunActivationAsync();
                     break;
                 case "3":
                     RunComparison();
@@ -72,7 +72,6 @@ namespace AutoActivator
 
             if (string.IsNullOrWhiteSpace(input)) return;
 
-            // Demander l'environnement pour utiliser la nouvelle logique de DatabaseManager
             Console.Write("Environment suffix (e.g., D000 or Q000): ");
             string envSuffix = Console.ReadLine() ?? "D000";
             if (string.IsNullOrWhiteSpace(envSuffix)) envSuffix = "D000";
@@ -81,8 +80,6 @@ namespace AutoActivator
 
             try
             {
-                // APPEL ASYNCHRONE : On ajoute 'await' et on utilise 'PerformExtractionAsync'
-                // false à la fin indique que l'entrée n'est pas un Demand ID par défaut
                 var result = await extractionService.PerformExtractionAsync(input, envSuffix, true, false);
                 Console.WriteLine($"\n🎉 Extraction completed! Files generated in:\n--> {result.FilePath}");
             }
@@ -105,7 +102,7 @@ namespace AutoActivator
 
             var db = new DatabaseManager(envSuffix);
 
-            // APPEL ASYNCHRONE
+
             if (!await db.TestConnectionAsync()) return;
 
 
@@ -116,7 +113,6 @@ namespace AutoActivator
                 Console.WriteLine($"\n--- Processing: {oldContractExt} ---");
                 var parameters = new Dictionary<string, object> { { "@ContractNumber", oldContractExt } };
 
-                // APPEL ASYNCHRONE
                 var dtId = await db.GetDataAsync(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
 
                 if (dtId.Rows.Count > 0)

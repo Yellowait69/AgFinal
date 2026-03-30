@@ -31,7 +31,6 @@ namespace AutoActivator.Sql
                 WHERE IT5UCONAIDN = @EliaId"
             },
 
-            // NOUVELLE REQUÊTE BASEE SUR LA JOINTURE OPTIMISÉE
             { "GET_CONTRACT_BY_DEMAND", @"
                 SELECT TOP 1 u.IT5UCONLREFEXN
                 FROM FJ1.TB5UCON u WITH(NOLOCK)
@@ -134,8 +133,6 @@ namespace AutoActivator.Sql
             { "FJ1.TB5UPRS", "SELECT * FROM FJ1.TB5UPRS WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
             { "FJ1.TB5UPMP", "SELECT * FROM FJ1.TB5UPMP WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
             { "FJ1.TB5URPP", "SELECT * FROM FJ1.TB5URPP WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
-
-            // NOUVELLE REQUÊTE ICI
             { "FJ1.TB5UIVN", "SELECT * FROM FJ1.TB5UIVN WITH(NOLOCK) WHERE IT5UCONAIDN = @EliaId" },
 
 

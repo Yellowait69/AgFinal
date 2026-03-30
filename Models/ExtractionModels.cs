@@ -3,9 +3,7 @@ using System.Collections.Generic;
 
 namespace AutoActivator.Models
 {
-    // ==========================================
     // EXTRACTION MODELS
-    // ==========================================
 
     public class ExtractionResult
     {
@@ -16,17 +14,12 @@ namespace AutoActivator.Models
         public string DemandId { get; set; }
         public string LisaContent { get; set; }
         public string EliaContent { get; set; }
-
-        // NEW: Property to carry the premium extracted from ELIA
         public string Premium { get; set; }
-
-        // NEW: Property to carry the real contract number (Contract Extended) resolved from Demand ID
         public string ContractReference { get; set; }
     }
 
     public class BatchProgressInfo
     {
-        // NOUVEAU : Ligne dans le fichier source (Excel/CSV)
         public int RowNum { get; set; }
 
         public string ContractId { get; set; }
@@ -36,19 +29,16 @@ namespace AutoActivator.Models
         public string UconId { get; set; }
         public string DemandId { get; set; }
         public string Status { get; set; }
-
-        // NOUVEAU : Propriétés pour le compteur visuel (Progression en direct)
         public int CurrentItem { get; set; }
         public int TotalItems { get; set; }
     }
 
-    // ==========================================
+
     // GRAPHICAL USER INTERFACE (GUI) MODELS
-    // ==========================================
+
 
     public class ExtractionItem
     {
-        // NOUVEAU : Affichage de la ligne dans la vue historique (ex: "12", "45", "-")
         public string RowNum { get; set; }
 
         public string ContractId { get; set; }
@@ -62,11 +52,8 @@ namespace AutoActivator.Models
         public string FilePath { get; set; }
     }
 
-    // ==========================================
     // COMPARISON MODELS
-    // ==========================================
 
-    // NOUVEAU : Modèle pour stocker et calculer les métriques spécifiques (Produit, Test)
     public class ComparisonMetrics
     {
         public int TotalRows { get; set; }
@@ -90,19 +77,13 @@ namespace AutoActivator.Models
         /// Total number of rows containing at least one comparison error.
         /// </summary>
         public int TotalDifferencesFound { get; set; }
-
-        // --- NOUVELLES PROPRIÉTÉS POUR LA GESTION DES TESTS (ID TEST) ---
         public int TotalBaseTests { get; set; }
         public int TotalTargetTests { get; set; }
         public int ComparedTestsCount { get; set; }
         public List<string> MissingInTarget { get; set; } = new List<string>();
         public List<string> MissingInBase { get; set; } = new List<string>();
-        // ----------------------------------------------------------------
-
-        // --- NOUVELLES PROPRIÉTÉS POUR LE SCORE DETAILLÉ PAR TEST ET PAR PRODUIT ---
         public Dictionary<string, ComparisonMetrics> TestMetrics { get; set; } = new Dictionary<string, ComparisonMetrics>();
         public Dictionary<string, ComparisonMetrics> ProductMetrics { get; set; } = new Dictionary<string, ComparisonMetrics>();
-        // ---------------------------------------------------------------------------
 
         /// <summary>
         /// Detailed list of results file by file, table by table.

@@ -10,15 +10,14 @@ namespace AutoActivator.Services
 {
     public static class Comparator
     {
-        // Limit to prevent RAM saturation (Out Of Memory) if tables are 100% different
         private const int MAX_DIFFS_TO_REPORT = 100;
 
         /// <summary>
         /// Central function to compare two datasets (DataTables).
+        /// MEMORY OPTIMIZED: Uses lightweight structures instead of cloning DataTables.
         /// </summary>
         public static (string Status, string Details) CompareDataTables(DataTable dfRef, DataTable dfNew, string tableName)
         {
-            // STEP 1: Initial validity checks
             if (dfRef == null || dfNew == null)
             {
                 return ("KO_NULL_DATA", $"One or both DataTables are null for table {tableName}.");
@@ -36,8 +35,6 @@ namespace AutoActivator.Services
 
             try
             {
-                // NOUVEAU : Nettoyer le nom de la table pour les exclusions
-                // Si le nom reçu est "[ID501] LV.PCONT0", on extrait "LV.PCONT0" pour que le dictionnaire d'exclusions fonctionne.
                 string cleanTableName = tableName;
                 if (cleanTableName.StartsWith("["))
                 {
@@ -48,7 +45,6 @@ namespace AutoActivator.Services
                     }
                 }
 
-                // STEPS 2 & 3: Apply exclusion rules AND align schema
                 var exclusions = Exclusions.GetExclusionsForTable(cleanTableName) ?? new HashSet<string>();
 
                 var allColsRef = dfRef.Columns.Cast<DataColumn>().Select(c => c.ColumnName);
@@ -56,7 +52,7 @@ namespace AutoActivator.Services
 
                 var commonCols = allColsRef
                     .Intersect(allColsNew)
-                    .Except(exclusions, StringComparer.OrdinalIgnoreCase) // Case-insensitive for added safety
+                    .Except(exclusions, StringComparer.OrdinalIgnoreCase)
                     .OrderBy(c => c)
                     .ToList();
 
@@ -65,40 +61,22 @@ namespace AutoActivator.Services
                     return ("KO_NO_COMMON_COLS", "No common columns found after applying exclusion filters.");
                 }
 
-                // OPTIMIZATION: Instead of copying the whole table and manually removing columns,
-                // we project only the required columns directly into new tables.
-                string[] colsArray = commonCols.ToArray();
-                var df1 = new DataView(dfRef).ToTable(false, colsArray);
-                var df2 = new DataView(dfNew).ToTable(false, colsArray);
+                int[] refIndices = commonCols.Select(c => dfRef.Columns[c].Ordinal).ToArray();
+                int[] newIndices = commonCols.Select(c => dfNew.Columns[c].Ordinal).ToArray();
 
-                // STEP 4: Data normalization and formatting
-                NormalizeDataTable(df1, commonCols);
-                NormalizeDataTable(df2, commonCols);
+                List<string[]> refRows = ExtractAndNormalize(dfRef, refIndices);
+                List<string[]> newRows = ExtractAndNormalize(dfNew, newIndices);
 
-                // STEP 5: Record alignment (Sorting)
-                // Using brackets [ColumnName] to prevent crashes if column names contain spaces or special characters
-                string sortExpression = string.Join(", ", commonCols.Select(c => $"[{c}]"));
+                var rowComparer = new StringArrayComparer();
+                refRows.Sort(rowComparer);
+                newRows.Sort(rowComparer);
 
-                try
+                if (refRows.Count != newRows.Count)
                 {
-                    df1.DefaultView.Sort = sortExpression;
-                    df1 = df1.DefaultView.ToTable();
-
-                    df2.DefaultView.Sort = sortExpression;
-                    df2 = df2.DefaultView.ToTable();
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine($"[WARNING] Technical sort failed on table {tableName}. Proceeding without sort. Reason: {e.Message}");
+                    return ("KO_ROW_COUNT", $"Discrepancy in data volume: Source = {refRows.Count} rows vs Target = {newRows.Count} rows.");
                 }
 
-                // STEP 6: Final comparison
-                if (df1.Rows.Count != df2.Rows.Count)
-                {
-                    return ("KO_ROW_COUNT", $"Discrepancy in data volume: Source = {df1.Rows.Count} rows vs Target = {df2.Rows.Count} rows.");
-                }
-
-                return GenerateDiffReport(df1, df2, commonCols);
+                return GenerateDiffReport(refRows, newRows, commonCols);
             }
             catch (Exception e)
             {
@@ -107,74 +85,82 @@ namespace AutoActivator.Services
         }
 
         /// <summary>
-        /// Cleans and normalizes data to prevent false positives (spaces, decimals, null values).
+        /// Extracts only the required columns and normalizes the data into a very lightweight format.
         /// </summary>
-        private static void NormalizeDataTable(DataTable dt, List<string> columns)
+        private static List<string[]> ExtractAndNormalize(DataTable dt, int[] columnIndices)
         {
-            // Suspend data events (massive performance boost for loops modifying a DataTable)
-            dt.BeginLoadData();
+            var result = new List<string[]>(dt.Rows.Count);
 
             foreach (DataRow row in dt.Rows)
             {
-                foreach (var col in columns)
+                string[] stringRow = new string[columnIndices.Length];
+
+                for (int i = 0; i < columnIndices.Length; i++)
                 {
-                    object cellValue = row[col];
+                    object cellValue = row[columnIndices[i]];
 
                     if (cellValue == DBNull.Value || cellValue == null)
                     {
-                        row[col] = string.Empty;
+                        stringRow[i] = string.Empty;
                         continue;
                     }
 
                     string value = cellValue.ToString().Trim();
 
-                    // Handle textual "NaN" or "None" (Case-insensitive)
                     if (string.Equals(value, "nan", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(value, "none", StringComparison.OrdinalIgnoreCase))
                     {
-                        row[col] = string.Empty;
+                        stringRow[i] = string.Empty;
                     }
-                    // ROBUST PARSING: Use NumberStyles.Any and CultureInfo.InvariantCulture
                     else if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out double floatValue))
                     {
-                        // Round to 4 decimal places for consistent comparison
-                        row[col] = Math.Round(floatValue, 4).ToString(CultureInfo.InvariantCulture);
+                        stringRow[i] = Math.Round(floatValue, 4).ToString(CultureInfo.InvariantCulture);
                     }
                     else
                     {
-                        // Assign only if the value has actually changed (saves memory allocations)
-                        if (!string.Equals(cellValue.ToString(), value, StringComparison.Ordinal))
-                        {
-                            row[col] = value;
-                        }
+                        stringRow[i] = value;
                     }
                 }
+                result.Add(stringRow);
             }
 
-            // Resume data events
-            dt.EndLoadData();
-            dt.AcceptChanges();
+            return result;
         }
 
         /// <summary>
-        /// Compares cell by cell and generates a report.
+        /// Customized comparator to quickly sort a list of string arrays.
         /// </summary>
-        private static (string Status, string Details) GenerateDiffReport(DataTable df1, DataTable df2, List<string> commonCols)
+        private class StringArrayComparer : IComparer<string[]>
+        {
+            public int Compare(string[] x, string[] y)
+            {
+                for (int i = 0; i < x.Length; i++)
+                {
+                    int cmp = string.CompareOrdinal(x[i], y[i]);
+                    if (cmp != 0) return cmp;
+                }
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Compare cell by cell from the lightweight lists and generates a report.
+        /// </summary>
+        private static (string Status, string Details) GenerateDiffReport(List<string[]> refRows, List<string[]> newRows, List<string> commonCols)
         {
             var diffReport = new StringBuilder();
             int diffCount = 0;
 
-            for (int i = 0; i < df1.Rows.Count; i++)
+            for (int i = 0; i < refRows.Count; i++)
             {
                 bool rowHasDiff = false;
                 var rowDiffs = new StringBuilder();
 
                 for (int j = 0; j < commonCols.Count; j++)
                 {
-                    string val1 = df1.Rows[i][j]?.ToString() ?? string.Empty;
-                    string val2 = df2.Rows[i][j]?.ToString() ?? string.Empty;
+                    string val1 = refRows[i][j];
+                    string val2 = newRows[i][j];
 
-                    // Strict ordinal string comparison (fastest and most accurate after normalization)
                     if (!string.Equals(val1, val2, StringComparison.Ordinal))
                     {
                         rowHasDiff = true;
@@ -189,7 +175,6 @@ namespace AutoActivator.Services
                     diffReport.Append(rowDiffs.ToString());
                     diffReport.AppendLine();
 
-                    // Security limit to avoid consuming gigabytes of RAM
                     if (diffCount >= MAX_DIFFS_TO_REPORT)
                     {
                         diffReport.AppendLine($"\n[WARNING] Maximum number of reportable differences ({MAX_DIFFS_TO_REPORT}) reached. Truncating report...");

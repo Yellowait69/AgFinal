@@ -11,15 +11,14 @@ namespace AutoActivator.Config
     /// </summary>
     public static class Settings
     {
-        // -----------------------------------------------------------------------------
-        // 1. DIRECTORY AND FILE PATHS
-        // -----------------------------------------------------------------------------
+
+        //DIRECTORY AND FILE PATHS
+
         public static readonly string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
 
         public static readonly string InputDir = Path.Combine(BaseDir, "data", "input");
         public static readonly string OutputDir = Path.Combine(BaseDir, "data", "output");
 
-        // NOUVEAU : Dossier Baseline pour les fichiers de référence (Smart Matcher)
         public static readonly string BaselineDir = Path.Combine(BaseDir, "data", "baseline");
 
         public static readonly string SnapshotDir = Path.Combine(OutputDir, "snapshots");
@@ -28,9 +27,8 @@ namespace AutoActivator.Config
         public static readonly string ActivationOutputFile = Path.Combine(InputDir, "contrats_en_attente_activation.xlsx");
         public static readonly string InputFile = ActivationOutputFile;
 
-        // -----------------------------------------------------------------------------
-        // 2. DATABASE CONFIGURATION
-        // -----------------------------------------------------------------------------
+
+        //DATABASE CONFIGURATION
 
         // LISA Configuration (SQL Server)
         public static class DbConfig
