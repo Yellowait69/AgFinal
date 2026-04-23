@@ -15,8 +15,8 @@ namespace AutoActivator.Gui.Views
 {
     public partial class ActivationView : UserControl
     {
+        // Utilisation du service de données pour l'activation
         private readonly ActivationDataService _activationDataService = new ActivationDataService();
-
         private CancellationTokenSource _cts;
 
         public ActivationView()
@@ -24,7 +24,7 @@ namespace AutoActivator.Gui.Views
             InitializeComponent();
         }
 
-
+        // Navigation vers l'aide ciblée sur l'activation
         private void BtnHelp_Click(object sender, RoutedEventArgs e)
         {
             if (Window.GetWindow(this) is MainWindow mainWindow)
@@ -33,6 +33,7 @@ namespace AutoActivator.Gui.Views
             }
         }
 
+        // Sélection de fichiers CSV ou Excel pour le batch
         private void BtnBrowseActCsv_Click(object sender, RoutedEventArgs e)
         {
             var openFileDialog = new Microsoft.Win32.OpenFileDialog
@@ -49,6 +50,7 @@ namespace AutoActivator.Gui.Views
             if (TxtActContract != null) TxtActContract.Text = string.Empty;
         }
 
+        // Mise à jour dynamique du chemin réseau si "Demand ID" est coché
         private void UpdateBatchActCsvPath()
         {
             if (TxtBatchActCsv == null || RbBatchActSearchDemand == null) return;
@@ -56,9 +58,7 @@ namespace AutoActivator.Gui.Views
             if (RbBatchActSearchDemand.IsChecked == true)
             {
                 string envValue = CmbActEnv?.SelectedItem is ComboBoxItem eItem ? eItem.Tag?.ToString() ?? "D" : "D";
-
                 string channelValue = CmbActChannel?.SelectedItem is ComboBoxItem cItem ? cItem.Tag?.ToString() ?? "C01" : "C01";
-
                 TxtBatchActCsv.Text = $@"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_{channelValue}ComparisonsDB_URL_ELIA_LoginPage_{envValue}000.xls";
             }
             else if (RbBatchActSearchContract != null && RbBatchActSearchContract.IsChecked == true)
@@ -68,17 +68,15 @@ namespace AutoActivator.Gui.Views
         }
 
         private void BatchActInputType_Checked(object sender, RoutedEventArgs e) => UpdateBatchActCsvPath();
-
         private void CmbActEnv_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchActCsvPath();
 
+        // Gestion de la visibilité des boutons "Skip Prime" selon le canal
         private void CmbActChannel_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             UpdateBatchActCsvPath();
-
             if (CmbActChannel?.SelectedItem is ComboBoxItem cItem)
             {
                 string channelValue = cItem.Tag?.ToString() ?? "C01";
-
                 Visibility skipPrimeVisibility = (channelValue == "C01" || channelValue == "C03") ? Visibility.Visible : Visibility.Collapsed;
 
                 if (BtnSkipPrimeSingleAct != null) BtnSkipPrimeSingleAct.Visibility = skipPrimeVisibility;
@@ -86,12 +84,12 @@ namespace AutoActivator.Gui.Views
             }
         }
 
+        // Annulation sécurisée de la séquence en cours
         private void BtnCancelActivation_Click(object sender, RoutedEventArgs e)
         {
             if (_cts != null && !_cts.IsCancellationRequested)
             {
                 _cts.Cancel();
-
                 if (Window.GetWindow(this) is MainWindow mainWindow)
                 {
                     mainWindow.TxtStatus.Text = "Canceling... The sequence will stop shortly.";
@@ -100,11 +98,10 @@ namespace AutoActivator.Gui.Views
             }
         }
 
-
+        // Configuration automatique des paramètres selon le profil métier
         private void Preset_Checked(object sender, RoutedEventArgs e)
         {
             if (CmbActBucp == null || CmbActCmdpmt == null) return;
-
             if (sender == RbPresetBank)
             {
                 SelectComboBoxItemByContent(CmbActBucp, "382");
@@ -133,22 +130,19 @@ namespace AutoActivator.Gui.Views
         {
             foreach (ComboBoxItem item in comboBox.Items)
             {
-                if (item.Content?.ToString() == content)
-                {
-                    comboBox.SelectedItem = item;
-                    break;
-                }
+                if (item.Content?.ToString() == content) { comboBox.SelectedItem = item; break; }
             }
         }
 
-
+        // -----------------------------------------------------------
+        // LOGIQUE D'ACTIVATION UNIQUE (Single)
+        // -----------------------------------------------------------
         private void BtnRunSingleActivation_Click(object sender, RoutedEventArgs e) => RunSingleActivation(false);
         private void BtnSkipPrimeSingleAct_Click(object sender, RoutedEventArgs e) => RunSingleActivation(true);
 
         private async void RunSingleActivation(bool skipPrime)
         {
             if (!(Window.GetWindow(this) is MainWindow mainWindow)) return;
-
             _cts = new CancellationTokenSource();
 
             await mainWindow.RunProcessAsync(async () =>
@@ -176,6 +170,7 @@ namespace AutoActivator.Gui.Views
 
                 string resolvedContract = rawInput;
 
+                // Résolution si Demand ID
                 if (isDemandId)
                 {
                     Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Searching for the contract associated with the Demand ID...");
@@ -184,10 +179,9 @@ namespace AutoActivator.Gui.Views
                         throw new Exception($"Unable to find a contract associated with Demand ID {rawInput} in the {envValue}000 database.");
                 }
 
+                // Récupération prime et formatage
                 Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Fetching premium from the database...");
                 string amount = await _activationDataService.FetchPremiumAsync(resolvedContract, envValue + "000");
-
-                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Preparing activation sequence...");
                 string formattedContract = _activationDataService.FormatContractForJcl(resolvedContract);
 
                 StringBuilder report = new StringBuilder();
@@ -197,116 +191,87 @@ namespace AutoActivator.Gui.Views
 
                 try
                 {
+                    // Exécution de la séquence Mainframe
                     await _activationDataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, channel, skipPrime, username, password,
                         msg => Application.Current.Dispatcher.InvokeAsync(() => mainWindow.TxtStatus.Text = msg), _cts.Token);
 
-                    report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | Channel: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: SUCCESS");
-
-                    Application.Current.Dispatcher.Invoke(() => MessageBox.Show("Activation sequence completed successfully. Please check the generated report.", "Activation Successful", MessageBoxButton.OK, MessageBoxImage.Information));
+                    report.AppendLine($"Input: {rawInput} | Contract: {resolvedContract} | Amount: {amount} | Status: SUCCESS");
+                    Application.Current.Dispatcher.Invoke(() => MessageBox.Show("Activation completed successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information));
                 }
-                catch (Exception ex) when (ex.Message == "ALREADY_ACTIVE") // Catches the specific 008 Exception
+                catch (Exception ex) when (ex.Message == "ALREADY_ACTIVE") // Erreur 008 spécifique ADDPRCT
                 {
-                    report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | Channel: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: ALREADY ACTIVE (Error 008)");
-
-                    Application.Current.Dispatcher.Invoke(() => MessageBox.Show("This contract is already active (Error 008 - premium already assigned).", "Contract Already Active", MessageBoxButton.OK, MessageBoxImage.Information));
+                    report.AppendLine($"Input: {rawInput} | Status: ALREADY ACTIVE (RC=08)");
+                    Application.Current.Dispatcher.Invoke(() => MessageBox.Show("Contract already active.", "Info", MessageBoxButton.OK, MessageBoxImage.Information));
                 }
                 catch (Exception ex)
                 {
-                    report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | Channel: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: FAILED ({ex.Message})");
+                    report.AppendLine($"Input: {rawInput} | Status: FAILED ({ex.Message})");
                     throw;
                 }
                 finally
                 {
-                    string skipSuffix = skipPrime ? "_SKIP_PRIME" : "";
-                    string path = Path.Combine(Settings.OutputDir, $"Single_Activation_{formattedContract}{skipSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
+                    string path = Path.Combine(Settings.OutputDir, $"Single_Act_{formattedContract}_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
                     File.WriteAllText(path, report.ToString());
-
                     mainWindow.LastGeneratedPath = path;
-
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        if (mainWindow.PrgLoading != null) mainWindow.PrgLoading.Visibility = Visibility.Collapsed;
-                    });
+                    Application.Current.Dispatcher.Invoke(() => { if (mainWindow.PrgLoading != null) mainWindow.PrgLoading.Visibility = Visibility.Collapsed; });
                 }
             });
         }
 
-
+        // -----------------------------------------------------------
+        // LOGIQUE D'ACTIVATION MASSIVE (Batch)
+        // -----------------------------------------------------------
         private void BtnRunBatchActivation_Click(object sender, RoutedEventArgs e) => RunBatchActivation(false);
         private void BtnSkipPrimeBatchAct_Click(object sender, RoutedEventArgs e) => RunBatchActivation(true);
 
+        // Conversion Excel vers CSV avec nettoyage des processus Excel
         public string PrepareCsvFromExcel(string excelFilePath)
         {
-            if (!File.Exists(excelFilePath))
-                throw new FileNotFoundException($"Excel file not found: {excelFilePath}");
-
-            Directory.CreateDirectory(Settings.OutputDir);
-
-            string originalFileName = Path.GetFileNameWithoutExtension(excelFilePath);
-            string savedCsvPath = Path.Combine(Settings.OutputDir, $"Converted_Act_{originalFileName}_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
-
             Excel.Application excelApp = null;
             Excel.Workbook workbook = null;
-            Excel.Worksheet worksheet = null;
-            Excel.Range firstRow = null;
-            Excel.Range searchRange = null;
-            Excel.Range valueCol = null;
-
             try
             {
+                string originalFileName = Path.GetFileNameWithoutExtension(excelFilePath);
+                string savedCsvPath = Path.Combine(Settings.OutputDir, $"Converted_Act_{originalFileName}_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+                Directory.CreateDirectory(Settings.OutputDir);
+
                 excelApp = new Excel.Application { Visible = false, DisplayAlerts = false };
                 workbook = excelApp.Workbooks.Open(excelFilePath, ReadOnly: true);
-                worksheet = workbook.Sheets[1];
-
-                firstRow = worksheet.Rows[2];
-                searchRange = firstRow.Find("Value");
+                Excel.Worksheet worksheet = workbook.Sheets[1];
+                Excel.Range firstRow = worksheet.Rows[2];
+                Excel.Range searchRange = firstRow.Find("Value");
 
                 if (searchRange != null)
                 {
-                    valueCol = worksheet.Columns[searchRange.Column];
+                    Excel.Range valueCol = worksheet.Columns[searchRange.Column];
                     valueCol.NumberFormat = "0";
+                    Marshal.ReleaseComObject(valueCol);
+                    Marshal.ReleaseComObject(searchRange);
                 }
 
-                workbook.SaveAs(savedCsvPath, Excel.XlFileFormat.xlCSV, Type.Missing, Type.Missing,
-                                Type.Missing, Type.Missing, Excel.XlSaveAsAccessMode.xlNoChange,
-                                Type.Missing, Type.Missing, Type.Missing, Type.Missing, Type.Missing);
+                workbook.SaveAs(savedCsvPath, Excel.XlFileFormat.xlCSV);
+                return savedCsvPath;
             }
             finally
             {
-                if (valueCol != null) Marshal.ReleaseComObject(valueCol);
-                if (searchRange != null) Marshal.ReleaseComObject(searchRange);
-                if (firstRow != null) Marshal.ReleaseComObject(firstRow);
-                if (worksheet != null) Marshal.ReleaseComObject(worksheet);
-                if (workbook != null)
-                {
-                    workbook.Close(false);
-                    Marshal.ReleaseComObject(workbook);
-                }
-                if (excelApp != null)
-                {
-                    excelApp.Quit();
-                    Marshal.ReleaseComObject(excelApp);
-                }
+                if (workbook != null) { workbook.Close(false); Marshal.ReleaseComObject(workbook); }
+                if (excelApp != null) { excelApp.Quit(); Marshal.ReleaseComObject(excelApp); }
             }
-
-            return savedCsvPath;
         }
 
         private async void RunBatchActivation(bool skipPrime)
         {
             if (!(Window.GetWindow(this) is MainWindow mainWindow)) return;
-
             _cts = new CancellationTokenSource();
 
             await mainWindow.RunProcessAsync(async () =>
             {
                 string filePath = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8", channel = "C01";
-                string username = Settings.DbConfig.Uid;
-                string password = Settings.DbConfig.Pwd;
+                string username = Settings.DbConfig.Uid, password = Settings.DbConfig.Pwd;
                 bool isDemandId = false;
 
                 if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
-                    throw new Exception("Credentials are not configured. Please log in again.");
+                    throw new Exception("Credentials are not configured.");
 
                 Application.Current.Dispatcher.Invoke(() =>
                 {
@@ -319,30 +284,25 @@ namespace AutoActivator.Gui.Views
                     if (CmbActChannel.SelectedItem is ComboBoxItem chItem) channel = chItem.Tag?.ToString() ?? "C01";
                 });
 
-                if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) throw new Exception("Please select a valid file.");
+                if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) throw new Exception("Invalid file path.");
 
-                if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                if (filePath.EndsWith(".xls") || filePath.EndsWith(".xlsx"))
                 {
-                    Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Converting network Excel file to local CSV via Excel Interop...");
-
+                    Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Converting Excel to CSV...");
                     filePath = await Task.Run(() => PrepareCsvFromExcel(filePath));
                 }
 
+                // Orchestration du batch
                 var batchService = new BatchActivationService(_activationDataService);
-
                 var result = await batchService.RunBatchAsync(
                     filePath, isDemandId, envValue, cus, bucp, cmdpmt, channel, skipPrime, username, password, Settings.OutputDir,
-                    msg => Application.Current.Dispatcher.InvokeAsync(() => mainWindow.TxtStatus.Text = msg),
-                    _cts.Token
-                );
+                    msg => Application.Current.Dispatcher.InvokeAsync(() => mainWindow.TxtStatus.Text = msg), _cts.Token);
 
                 mainWindow.LastGeneratedPath = result.reportPath;
-
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     if (mainWindow.PrgLoading != null) mainWindow.PrgLoading.Visibility = Visibility.Collapsed;
-
-                    MessageBox.Show($"Batch completed.\nSuccess: {result.successCount} \nAlready Active: {result.alreadyActiveCount} \nFailed: {result.errorCount}\n\nPlease open the log file for detailed results.", "Batch Activation", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show($"Batch complete. Success: {result.successCount} | Failed: {result.errorCount}", "Batch Completed", MessageBoxButton.OK, MessageBoxImage.Information);
                 });
             });
         }
