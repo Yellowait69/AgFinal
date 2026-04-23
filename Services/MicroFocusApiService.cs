@@ -6,16 +6,16 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace AutoActivator.Services
 {
     /// <summary>
     /// Service responsible for communicating with the MicroFocus Mainframe REST API.
-    /// OPTIMIZED FOR BATCH: Uses System.Text.Json, increased timeouts, and thread-safe logging.
+    /// OPTIMIZED FOR BATCH: Uses Newtonsoft.Json for maximum stability in .NET Framework environments.
     /// </summary>
     public class MicroFocusApiService
     {
@@ -49,8 +49,7 @@ namespace AutoActivator.Services
 
             _httpClient = new HttpClient(handler)
             {
-                // CRITIQUE POUR LE MASSIVE BATCH : On passe de 30 secondes à 5 minutes
-                // Le Mainframe peut mettre plus de temps à répondre sur un gros Spool
+                // CRITIQUE POUR LE MASSIVE BATCH : Timeout de 5 minutes
                 Timeout = TimeSpan.FromMinutes(5)
             };
 
@@ -150,8 +149,8 @@ namespace AutoActivator.Services
             string submitUrl = $"{_nodeUrl}jescontrol/";
             var payload = new { subJes = "2", ctlSubmit = "Submit", JCLIn = jclContent };
 
-            // CORRECTION CS0104 : On précise explicitement le namespace pour System.Text.Json
-            string jsonPayload = System.Text.Json.JsonSerializer.Serialize(payload);
+            // CORRECTION: Utilisation de Newtonsoft.Json
+            string jsonPayload = JsonConvert.SerializeObject(payload);
 
             try
             {
@@ -168,8 +167,9 @@ namespace AutoActivator.Services
                             return (false, null, $"HTTP Error {(int)response.StatusCode}: {responseBody}");
                         }
 
-                        JsonNode doc = JsonNode.Parse(responseBody);
-                        JsonArray jobMsgArray = doc?["JobMsg"] as JsonArray;
+                        // CORRECTION: Utilisation de JObject au lieu de JsonNode
+                        JObject doc = JObject.Parse(responseBody);
+                        JArray jobMsgArray = doc["JobMsg"] as JArray;
 
                         if (jobMsgArray != null)
                         {
@@ -219,7 +219,6 @@ namespace AutoActivator.Services
                 {
                     string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
-                    // Optimisation Thread-Safe pour l'écriture du debug
                     try
                     {
                         string debugFilePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"DEBUG_API_{jobNum}.txt");
@@ -235,15 +234,14 @@ namespace AutoActivator.Services
                         return ("Unknown", $"HTTP Error: {(int)response.StatusCode}");
                     }
 
-                    JsonNode doc = JsonNode.Parse(responseBody);
-                    var jsonObject = doc as JsonObject;
+                    // CORRECTION: Utilisation de JObject
+                    JObject doc = JObject.Parse(responseBody);
 
-                    // Fonction helper propre à System.Text.Json.Nodes
+                    // Fonction helper compatible avec Newtonsoft.Json
                     string GetValueCI(string key)
                     {
-                        if (jsonObject == null) return null;
-                        var prop = jsonObject.FirstOrDefault(p => string.Equals(p.Key, key, StringComparison.OrdinalIgnoreCase));
-                        return prop.Value?.ToString().Trim();
+                        var prop = doc.Properties().FirstOrDefault(p => string.Equals(p.Name, key, StringComparison.OrdinalIgnoreCase));
+                        return prop?.Value?.ToString().Trim();
                     }
 
                     string status = GetValueCI("JobStatus") ?? "Unknown";
@@ -282,13 +280,15 @@ namespace AutoActivator.Services
                         return $"HTTP Error when requesting report: {(int)response.StatusCode}";
 
                     string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    JsonNode doc = JsonNode.Parse(responseBody);
-                    JsonArray ddsArray = doc?["JobDDs"] as JsonArray;
+
+                    // CORRECTION: Utilisation de JObject et JArray
+                    JObject doc = JObject.Parse(responseBody);
+                    JArray ddsArray = doc["JobDDs"] as JArray;
 
                     if (ddsArray != null)
                     {
-                        var dd = ddsArray.FirstOrDefault(d => d?["DDName"]?.ToString() == "BERPCTLO")
-                              ?? ddsArray.FirstOrDefault(d => d?["DDName"]?.ToString() == "SYSOUT");
+                        var dd = ddsArray.FirstOrDefault(d => d["DDName"]?.ToString() == "BERPCTLO")
+                              ?? ddsArray.FirstOrDefault(d => d["DDName"]?.ToString() == "SYSOUT");
 
                         if (dd != null)
                         {
