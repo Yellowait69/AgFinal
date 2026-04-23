@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
+using System.Threading;
 using System.Threading.Tasks;
 using AutoActivator.Config;
 
@@ -20,16 +21,19 @@ namespace AutoActivator.Services
 
         #region ASYNCHRONOUS METHODS (OPTIMIZED FOR SPEED AND PARALLELISM)
 
-        public async Task<bool> TestConnectionAsync()
+        // Ajout du CancellationToken
+        public async Task<bool> TestConnectionAsync(CancellationToken token = default)
         {
             try
             {
                 using (SqlConnection connection = new SqlConnection(_connectionString))
                 {
-                    await connection.OpenAsync().ConfigureAwait(false);
+                    // Passage du token
+                    await connection.OpenAsync(token).ConfigureAwait(false);
                     using (SqlCommand command = new SqlCommand("SELECT 1", connection))
                     {
-                        var result = await command.ExecuteScalarAsync().ConfigureAwait(false);
+                        // Passage du token
+                        var result = await command.ExecuteScalarAsync(token).ConfigureAwait(false);
                         if (result != null && result.ToString() == "1")
                         {
                             Console.WriteLine($"[INFO] Successful connection to the database (Environment: {EnvironmentName})");
@@ -38,6 +42,11 @@ namespace AutoActivator.Services
                     }
                 }
                 return false;
+            }
+            catch (OperationCanceledException)
+            {
+                // Remonte l'annulation proprement
+                throw;
             }
             catch (SqlException ex)
             {
@@ -51,7 +60,8 @@ namespace AutoActivator.Services
             }
         }
 
-        public async Task<DataTable> GetDataAsync(string query, Dictionary<string, object> parameters = null)
+        // Ajout du CancellationToken
+        public async Task<DataTable> GetDataAsync(string query, Dictionary<string, object> parameters = null, CancellationToken token = default)
         {
             DataTable dataTable = new DataTable();
 
@@ -69,14 +79,21 @@ namespace AutoActivator.Services
                             }
                         }
 
-                        await connection.OpenAsync().ConfigureAwait(false);
+                        // Passage du token
+                        await connection.OpenAsync(token).ConfigureAwait(false);
 
-                        using (SqlDataReader reader = await command.ExecuteReaderAsync().ConfigureAwait(false))
+                        // Passage du token - c'est ici que la requête lourde peut être interrompue
+                        using (SqlDataReader reader = await command.ExecuteReaderAsync(token).ConfigureAwait(false))
                         {
                             dataTable.Load(reader);
                         }
                     }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                // Remonte l'annulation proprement au lieu de dire "System Error"
+                throw;
             }
             catch (SqlException ex)
             {
@@ -92,6 +109,7 @@ namespace AutoActivator.Services
             return dataTable;
         }
 
+        // Ajout du CancellationToken à la fin des paramètres
         public async Task<bool> InjectPaymentAsync(
             string contractInternalId,
             decimal amount,
@@ -102,7 +120,8 @@ namespace AutoActivator.Services
             string simulatedIban = "BE47001304609580",
             string simulatedBic = "GEBABEBB",
             string bureauNumber = "12831",
-            string authorId = "AUTO_TEST")
+            string authorId = "AUTO_TEST",
+            CancellationToken token = default)
         {
             DateTime now = DateTime.Now;
             DateTime referenceDate = paymentDate ?? now;
@@ -148,13 +167,18 @@ namespace AutoActivator.Services
                         command.Parameters.AddWithValue("@bic", simulatedBic);
                         command.Parameters.AddWithValue("@auteur", authorId);
 
-                        await connection.OpenAsync().ConfigureAwait(false);
-                        await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+                        // Passage du token
+                        await connection.OpenAsync(token).ConfigureAwait(false);
+                        await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
 
                         Console.WriteLine($"[INFO] Payment of {amount} EUR successfully injected (Contract: {contractInternalId} | Env: {EnvironmentName})");
                         return true;
                     }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (SqlException ex)
             {

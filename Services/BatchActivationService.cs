@@ -38,6 +38,7 @@ namespace AutoActivator.Services
             var globalReport = new ConcurrentBag<(int RowNum, string Message)>();
             var contractsToProcess = new List<(string rawInput, int rowNum)>();
 
+            // 1. OPTIMISATION : ARRÊT DE LA LECTURE DU FICHIER SI ANNULÉ
             using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             using (var reader = new StreamReader(fs, Encoding.UTF8))
             {
@@ -48,6 +49,9 @@ namespace AutoActivator.Services
 
                 while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
+                    // Vérification de l'annulation pendant l'analyse des en-têtes
+                    token.ThrowIfCancellationRequested();
+
                     if (line.StartsWith("\uFEFF")) line = line.Substring(1);
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
@@ -75,6 +79,9 @@ namespace AutoActivator.Services
                 int currentRow = 1;
                 while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                 {
+                    // Vérification de l'annulation pendant le chargement des données massives
+                    token.ThrowIfCancellationRequested();
+
                     if (string.IsNullOrWhiteSpace(line)) continue;
 
                     var columns = ParseCsvLine(line, delimiter);
@@ -100,7 +107,8 @@ namespace AutoActivator.Services
             {
                 try
                 {
-                    if (token.IsCancellationRequested) return;
+                    // Utilisation stricte du ThrowIfCancellationRequested au lieu du return silencieux
+                    token.ThrowIfCancellationRequested();
 
                     string resolvedContract = item.rawInput;
 
@@ -127,7 +135,7 @@ namespace AutoActivator.Services
                     await semaphore.WaitAsync(token).ConfigureAwait(false);
                     try
                     {
-                        if (token.IsCancellationRequested) return;
+                        token.ThrowIfCancellationRequested();
 
                         onProgress($"[{processedItems} / {totalItems} completed] Sending to Mainframe API : {formattedContract}...");
 
@@ -143,6 +151,11 @@ namespace AutoActivator.Services
                     {
                         semaphore.Release();
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    // 2. CAPTURE DE L'ANNULATION POUR ÉVITER LES FAUX RAPPORTS D'ERREURS
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -165,12 +178,21 @@ namespace AutoActivator.Services
                 }
             }, token)).ToList();
 
-            await Task.WhenAll(tasks).ConfigureAwait(false);
-
-            onProgress("All contracts have been processed. Generating the report...");
+            // 3. CAPTURE DE L'ANNULATION GLOBALE (POUR GÉNÉRER UN RAPPORT PARTIEL)
+            try
+            {
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+                onProgress("All contracts have been processed. Generating the report...");
+            }
+            catch (OperationCanceledException)
+            {
+                onProgress("Activation batch cancelled by user. Generating partial report...");
+                globalReport.Add((0, "\n[WARNING] BATCH ACTIVATION WAS CANCELLED BY THE USER. THE FOLLOWING REPORT IS INCOMPLETE.\n"));
+            }
 
             string skipSuffix = skipPrime ? "_SKIP_PRIME" : "";
-            string reportPath = Path.Combine(outputDir, $"Activation_Batch{skipSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
+            string cancelSuffix = token.IsCancellationRequested ? "_PARTIAL_CANCELLED" : "";
+            string reportPath = Path.Combine(outputDir, $"Activation_Batch{skipSuffix}{cancelSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
 
             if (!Directory.Exists(outputDir)) Directory.CreateDirectory(outputDir);
 
@@ -192,12 +214,16 @@ namespace AutoActivator.Services
                     }
 
                     await writer.WriteLineAsync("---------------------------------------------------------------------------------------------------------").ConfigureAwait(false);
-                    await writer.WriteLineAsync($"END OF PROCESSING. Successes: {successCount} | Already active: {alreadyActiveCount} | Failures: {errorCount}").ConfigureAwait(false);
+
+                    if (token.IsCancellationRequested)
+                        await writer.WriteLineAsync($"PROCESSING INTERRUPTED. Successes: {successCount} | Already active: {alreadyActiveCount} | Failures: {errorCount}").ConfigureAwait(false);
+                    else
+                        await writer.WriteLineAsync($"END OF PROCESSING. Successes: {successCount} | Already active: {alreadyActiveCount} | Failures: {errorCount}").ConfigureAwait(false);
                 }
             }
             catch (IOException)
             {
-                reportPath = Path.Combine(outputDir, $"Activation_Batch{skipSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString().Substring(0, 4)}.txt");
+                reportPath = Path.Combine(outputDir, $"Activation_Batch{skipSuffix}{cancelSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid().ToString().Substring(0, 4)}.txt");
 
                 using (StreamWriter fallbackWriter = new StreamWriter(reportPath, false, Encoding.UTF8))
                 {
@@ -206,7 +232,7 @@ namespace AutoActivator.Services
                     {
                         await fallbackWriter.WriteLineAsync(log.Message).ConfigureAwait(false);
                     }
-                    await fallbackWriter.WriteLineAsync($"END OF PROCESSING. Successes: {successCount} | Failures: {errorCount}").ConfigureAwait(false);
+                    await fallbackWriter.WriteLineAsync($"PROCESSING RESULTS. Successes: {successCount} | Failures: {errorCount}").ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
@@ -214,6 +240,9 @@ namespace AutoActivator.Services
                 onProgress($"CRITICAL ERROR: Unable to save the report ({ex.Message})");
                 throw;
             }
+
+            // Remonter l'annulation à l'UI une fois le rapport de sauvegarde effectué
+            token.ThrowIfCancellationRequested();
 
             onProgress("Report generated successfully!");
 
