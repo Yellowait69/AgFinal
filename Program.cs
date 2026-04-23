@@ -13,14 +13,13 @@ namespace AutoActivator
 {
     class Program
     {
-
         static async Task Main(string[] args)
         {
             Console.WriteLine("==================================================");
             Console.WriteLine("       AUTO-ACTIVATOR L.I.S.A (.NET VERSION)      ");
             Console.WriteLine("==================================================");
             Console.WriteLine("1. Run Single Extraction (LISA & ELIA)");
-            Console.WriteLine("2. Run Activation");
+            Console.WriteLine("2. Run Massive Batch Activation");
             Console.WriteLine("3. Run Comparison");
             Console.WriteLine("0. Exit");
             Console.WriteLine("==================================================");
@@ -28,6 +27,7 @@ namespace AutoActivator
 
             var choice = Console.ReadLine();
 
+            // Création des dossiers de base s'ils n'existent pas
             try
             {
                 if (!Directory.Exists(Settings.OutputDir)) Directory.CreateDirectory(Settings.OutputDir);
@@ -62,8 +62,9 @@ namespace AutoActivator
         }
 
 
+        // -----------------------------------------------------------
         // 1. EXTRACTION
-
+        // -----------------------------------------------------------
         private static async Task RunTestExtractionAsync()
         {
             Console.WriteLine("\n--- Starting Extraction ---");
@@ -73,7 +74,7 @@ namespace AutoActivator
             if (string.IsNullOrWhiteSpace(input)) return;
 
             Console.Write("Environment suffix (e.g., D000 or Q000): ");
-            string envSuffix = Console.ReadLine() ?? "D000";
+            string envSuffix = Console.ReadLine()?.Trim().ToUpper();
             if (string.IsNullOrWhiteSpace(envSuffix)) envSuffix = "D000";
 
             var extractionService = new ExtractionService();
@@ -85,52 +86,97 @@ namespace AutoActivator
             }
             catch (Exception ex)
             {
-                 Console.WriteLine($"[ERROR] {ex.Message}");
+                 // Utilisation de ToString() au lieu de Message pour avoir la ligne exacte de l'erreur (Stack Trace)
+                 Console.WriteLine($"[ERROR] Extraction failed:\n{ex.ToString()}");
             }
         }
 
 
-        // 2. ACTIVATION
-
+        // -----------------------------------------------------------
+        // 2. ACTIVATION (Mode MASSIVE BATCH)
+        // -----------------------------------------------------------
         private static async Task RunActivationAsync()
         {
-            Console.WriteLine("\n--- Starting Activation Script ---");
+            Console.WriteLine("\n--- Starting Massive Batch Activation ---");
             Console.Write("Environment suffix (e.g., D000 or Q000): ");
-            string envSuffix = Console.ReadLine() ?? "D000";
+            string envSuffix = Console.ReadLine()?.Trim().ToUpper();
             if (string.IsNullOrWhiteSpace(envSuffix)) envSuffix = "D000";
 
+            // Menu pour éviter le hardcoding des numéros de contrats
+            Console.WriteLine("\nHow do you want to load the contracts?");
+            Console.WriteLine("1. Enter a single contract manually");
+            Console.WriteLine($"2. Load a list from a text file (located in '{Settings.InputDir}')");
+            Console.Write("Choice: ");
+            string inputChoice = Console.ReadLine()?.Trim();
 
-            var db = new DatabaseManager(envSuffix);
+            var contractsToProcess = new List<string>();
 
-
-            if (!await db.TestConnectionAsync()) return;
-
-
-            var contratsSources = new List<string> { "182-2728195-31" };
-
-            foreach (var oldContractExt in contratsSources)
+            if (inputChoice == "1")
             {
-                Console.WriteLine($"\n--- Processing: {oldContractExt} ---");
-                var parameters = new Dictionary<string, object> { { "@ContractNumber", oldContractExt } };
-
-                var dtId = await db.GetDataAsync(SqlQueries.Queries["GET_INTERNAL_ID"], parameters);
-
-                if (dtId.Rows.Count > 0)
+                Console.Write("Enter contract number (e.g., 182-2728195-31): ");
+                string contract = Console.ReadLine()?.Trim();
+                if (!string.IsNullOrWhiteSpace(contract))
                 {
-                    long idIntSource = Convert.ToInt64(dtId.Rows[0]["NO_CNT"]);
+                    contractsToProcess.Add(contract);
+                }
+            }
+            else if (inputChoice == "2")
+            {
+                Console.Write("Enter the file name (e.g., contrats.txt): ");
+                string fileName = Console.ReadLine()?.Trim() ?? "";
+                string filePath = Path.Combine(Settings.InputDir, fileName);
 
-                    Console.WriteLine($"   [OK] Contract identified for activation.");
+                if (File.Exists(filePath))
+                {
+                    // Lecture propre du fichier en ignorant les lignes vides
+                    contractsToProcess = File.ReadAllLines(filePath)
+                                             .Where(line => !string.IsNullOrWhiteSpace(line))
+                                             .Select(line => line.Trim())
+                                             .ToList();
+                    Console.WriteLine($"\n[INFO] Successfully loaded {contractsToProcess.Count} contracts from {fileName}.");
                 }
                 else
                 {
-                    Console.WriteLine($"   [SKIP] Contract {oldContractExt} not found.");
+                    Console.WriteLine($"[ERROR] File not found: {filePath}");
+                    return;
                 }
+            }
+            else
+            {
+                Console.WriteLine("[ERROR] Invalid choice. Returning to main menu.");
+                return;
+            }
+
+            if (contractsToProcess.Count == 0)
+            {
+                Console.WriteLine("[WARNING] No contracts to process. Aborting activation.");
+                return;
+            }
+
+            // --- DELEGATION AU SERVICE BATCH ---
+            // On ne boucle plus ici. On envoie TOUTE la liste au chef d'orchestre.
+            var batchActivationService = new BatchActivationService();
+
+            try
+            {
+                Console.WriteLine($"\n[INFO] Launching Bulk Activation for {contractsToProcess.Count} item(s)...");
+
+                // Appel d'une méthode (à implémenter dans BatchActivationService.cs) qui gérera
+                // la création du gros fichier texte, l'upload FTP et le lancement du Job global.
+                await batchActivationService.ProcessBatchAsync(contractsToProcess, envSuffix);
+
+                Console.WriteLine("\n🎉 Batch Activation process finished!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[FATAL ERROR] Bulk Activation failed:\n{ex.ToString()}");
             }
         }
 
 
+        // -----------------------------------------------------------
         // 3. COMPARISON
-
+        // -----------------------------------------------------------
         private static void RunComparison()
         {
             Console.WriteLine("\n--- Starting Comparator ---");
@@ -139,8 +185,6 @@ namespace AutoActivator
 
             Console.Write("Path to Target File (e.g., snapshot/ExtractionLISA_...): ");
             string targetFile = Console.ReadLine()?.Trim('\"');
-
-
 
             if (!File.Exists(baseFile) || !File.Exists(targetFile))
             {
@@ -151,7 +195,6 @@ namespace AutoActivator
             var orchestrator = new ComparisonOrchestrator();
             try
             {
-
                 var report = orchestrator.RunFullComparison(baseFile, targetFile);
 
                 Console.WriteLine($"\n=== COMPARISON REPORT ===");
@@ -170,7 +213,7 @@ namespace AutoActivator
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] Comparison failed: {ex.Message}");
+                Console.WriteLine($"[ERROR] Comparison failed:\n{ex.ToString()}");
             }
         }
     }

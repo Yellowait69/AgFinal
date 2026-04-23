@@ -6,16 +6,16 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace AutoActivator.Services
 {
     /// <summary>
     /// Service responsible for communicating with the MicroFocus Mainframe REST API.
-    /// It handles authentication, JCL job submission, status polling, and spool retrieval.
+    /// OPTIMIZED FOR BATCH: Uses System.Text.Json, increased timeouts, and thread-safe logging.
     /// </summary>
     public class MicroFocusApiService
     {
@@ -49,7 +49,9 @@ namespace AutoActivator.Services
 
             _httpClient = new HttpClient(handler)
             {
-                Timeout = TimeSpan.FromSeconds(30)
+                // CRITIQUE POUR LE MASSIVE BATCH : On passe de 30 secondes à 5 minutes
+                // Le Mainframe peut mettre plus de temps à répondre sur un gros Spool
+                Timeout = TimeSpan.FromMinutes(5)
             };
 
             _httpClient.DefaultRequestHeaders.Add("accept-encoding", "gzip, deflate, br");
@@ -147,7 +149,9 @@ namespace AutoActivator.Services
 
             string submitUrl = $"{_nodeUrl}jescontrol/";
             var payload = new { subJes = "2", ctlSubmit = "Submit", JCLIn = jclContent };
-            string jsonPayload = JsonConvert.SerializeObject(payload);
+
+            // Remplacement de Newtonsoft.Json par System.Text.Json (Plus rapide et natif)
+            string jsonPayload = JsonSerializer.Serialize(payload);
 
             try
             {
@@ -164,17 +168,18 @@ namespace AutoActivator.Services
                             return (false, null, $"HTTP Error {(int)response.StatusCode}: {responseBody}");
                         }
 
-                        JObject doc = JObject.Parse(responseBody);
+                        JsonNode doc = JsonNode.Parse(responseBody);
+                        JsonArray jobMsgArray = doc?["JobMsg"] as JsonArray;
 
-                        if (doc.TryGetValue("JobMsg", out JToken jobMsgToken))
+                        if (jobMsgArray != null)
                         {
                             string jobNum = null;
                             bool isReady = false;
                             var errorMsg = new StringBuilder();
 
-                            foreach (var lineToken in jobMsgToken)
+                            foreach (var lineToken in jobMsgArray)
                             {
-                                string line = lineToken.ToString();
+                                string line = lineToken?.ToString() ?? "";
                                 var match = Regex.Match(line, @"JOBNUM=(\d+)");
                                 if (match.Success) jobNum = "J" + match.Groups[1].Value;
                                 if (line.Contains("Job ready for execution")) isReady = true;
@@ -191,7 +196,7 @@ namespace AutoActivator.Services
                             if (isReady && !string.IsNullOrEmpty(jobNum)) return (true, jobNum, null);
                             return (false, null, string.IsNullOrEmpty(jobNum) ? "JobNum not found. \n" + errorMsg : errorMsg.ToString());
                         }
-                        return (false, null, "Unexpected JSON format.");
+                        return (false, null, "Unexpected JSON format (JobMsg not found).");
                     }
                 }
             }
@@ -214,22 +219,32 @@ namespace AutoActivator.Services
                 {
                     string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
+                    // Optimisation Thread-Safe pour l'écriture du debug
                     try
                     {
                         string debugFilePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"DEBUG_API_{jobNum}.txt");
-                        System.IO.File.AppendAllText(debugFilePath, "\n--- NEW VERIFICATION ---\n" + responseBody);
+                        using (var writer = new System.IO.StreamWriter(debugFilePath, true, Encoding.UTF8))
+                        {
+                            await writer.WriteLineAsync("\n--- NEW VERIFICATION ---\n" + responseBody).ConfigureAwait(false);
+                        }
                     }
-                    catch { /* Silently ignore if writing fails to prevent application crash */ }
+                    catch { /* Silently ignore to prevent app crash if multiple threads access simultaneously */ }
 
                     if (!response.IsSuccessStatusCode)
                     {
                         return ("Unknown", $"HTTP Error: {(int)response.StatusCode}");
                     }
 
-                    JObject doc = JObject.Parse(responseBody);
+                    JsonNode doc = JsonNode.Parse(responseBody);
+                    var jsonObject = doc as JsonObject;
 
-                    string GetValueCI(string key) =>
-                        doc.Properties().FirstOrDefault(p => p.Name.Equals(key, StringComparison.OrdinalIgnoreCase))?.Value?.ToString().Trim();
+                    // Fonction helper propre à System.Text.Json.Nodes
+                    string GetValueCI(string key)
+                    {
+                        if (jsonObject == null) return null;
+                        var prop = jsonObject.FirstOrDefault(p => string.Equals(p.Key, key, StringComparison.OrdinalIgnoreCase));
+                        return prop.Value?.ToString().Trim();
+                    }
 
                     string status = GetValueCI("JobStatus") ?? "Unknown";
 
@@ -267,12 +282,13 @@ namespace AutoActivator.Services
                         return $"HTTP Error when requesting report: {(int)response.StatusCode}";
 
                     string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    JObject doc = JObject.Parse(responseBody);
+                    JsonNode doc = JsonNode.Parse(responseBody);
+                    JsonArray ddsArray = doc?["JobDDs"] as JsonArray;
 
-                    if (doc.TryGetValue("JobDDs", out JToken ddsToken))
+                    if (ddsArray != null)
                     {
-                        var dd = ddsToken.FirstOrDefault(d => d["DDName"]?.ToString() == "BERPCTLO")
-                              ?? ddsToken.FirstOrDefault(d => d["DDName"]?.ToString() == "SYSOUT");
+                        var dd = ddsArray.FirstOrDefault(d => d?["DDName"]?.ToString() == "BERPCTLO")
+                              ?? ddsArray.FirstOrDefault(d => d?["DDName"]?.ToString() == "SYSOUT");
 
                         if (dd != null)
                         {

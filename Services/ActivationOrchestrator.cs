@@ -8,8 +8,9 @@ using System.Threading.Tasks;
 namespace AutoActivator.Services
 {
     /// <summary>
-    /// Orchestrates the submission and monitoring of a sequence of Mainframe JCL jobs.
-    /// It communicates with the MicroFocus server via API to activate contracts.
+    /// Orchestrates the submission and monitoring of a sequence of Mainframe JCL jobs
+    /// for a SINGLE contract activation.
+    /// It communicates with the MicroFocus server via API to execute the business process.
     /// </summary>
     public class ActivationOrchestrator
     {
@@ -25,17 +26,27 @@ namespace AutoActivator.Services
         /// <summary>
         /// Runs the entire activation sequence, submitting jobs one by one and waiting for their successful completion.
         /// </summary>
-        public async Task RunActivationSequenceAsync(Dictionary<string, string> generalVariables, Dictionary<string, string> addprctSpecificVariables, string username, string password, string channel, bool skipPrime, Action<string> onProgress, CancellationToken cancellationToken = default)
+        public async Task RunActivationSequenceAsync(
+            Dictionary<string, string> generalVariables,
+            Dictionary<string, string> addprctSpecificVariables,
+            string username,
+            string password,
+            string channel,
+            bool skipPrime,
+            Action<string> onProgress,
+            CancellationToken cancellationToken = default)
         {
             try
             {
                 string currentEnv = generalVariables.ContainsKey("ENV") ? generalVariables["ENV"] : "D";
 
-                bool isLogged = await _apiService.LogonAsync(username, password, currentEnv, msg => {}, cancellationToken).ConfigureAwait(false);
+                onProgress("1. Connecting to MicroFocus Mainframe...");
+                bool isLogged = await _apiService.LogonAsync(username, password, currentEnv, onProgress, cancellationToken).ConfigureAwait(false);
 
                 if (!isLogged)
                     throw new Exception("Unable to connect to the MicroFocus server (Check your VPN connection and credentials).");
 
+                // Préparation des variables spécifiques au premier Job
                 var addprctVars = new Dictionary<string, string>(generalVariables);
                 foreach (var kvp in addprctSpecificVariables)
                 {
@@ -43,6 +54,7 @@ namespace AutoActivator.Services
                 }
 
                 int jobCounter = 1;
+                onProgress("2. Starting JCL Sequence execution...");
 
                 if (channel != "C05" && !skipPrime)
                 {
@@ -53,14 +65,17 @@ namespace AutoActivator.Services
 
                 await ProcessSubmitAndWaitAsync("LI1J04D0", generalVariables, jobCounter++, onProgress, cancellationToken).ConfigureAwait(false);
                 await ProcessSubmitAndWaitAsync("LI1J04D2", generalVariables, jobCounter++, onProgress, cancellationToken).ConfigureAwait(false);
+
+                onProgress("3. Single Activation Sequence completed successfully!");
             }
             catch (OperationCanceledException)
             {
-                onProgress("[CANCELLED] The sequence was stopped by the user.");
+                onProgress("[CANCELLED] The activation sequence was stopped by the user.");
                 throw;
             }
             catch (Exception ex)
             {
+                // Remontée silencieuse pour le statut "Déjà actif"
                 if (ex.Message == "ALREADY_ACTIVE") throw;
 
                 onProgress($"[CRITICAL ERROR] Sequence interrupted: {ex.Message}");
@@ -73,6 +88,7 @@ namespace AutoActivator.Services
         /// </summary>
         private async Task ProcessSubmitAndWaitAsync(string jobName, Dictionary<string, string> variables, int count, Action<string> onProgress, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
 
             variables["JOBNAM"] = jobName;
 
@@ -87,6 +103,7 @@ namespace AutoActivator.Services
 
             string readyContent = await _jclProcessor.GetPreparedJclAsync(jobName, variables, count).ConfigureAwait(false);
 
+            // Logique de nettoyage spécifique aux JCLs AG Insurance
             if (jobName == "LVPG22U")
             {
                 int icegenerIndex = readyContent.IndexOf("//ICEGENER IF");
@@ -117,6 +134,7 @@ namespace AutoActivator.Services
                 }
             }
 
+            // Sauvegarde de debug locale du JCL généré
             try
             {
                 string uniqueId = Guid.NewGuid().ToString("N").Substring(0, 6);
@@ -129,13 +147,15 @@ namespace AutoActivator.Services
             }
             catch { /* Silently ignore debug file write errors to not crash the business flow */ }
 
+            // Soumission au Mainframe
             var (Success, JobNum, Error) = await _apiService.SubmitJobAsync(readyContent, cancellationToken).ConfigureAwait(false);
             if (!Success)
                 throw new Exception($"Failed to submit job {jobName}. Error:\n{Error}");
 
-            bool finished = false;
+            onProgress($"   -> [Running] {jobName} (ID: {JobNum}) submitted...");
 
-            int maxAttempts = 300;
+            bool finished = false;
+            int maxAttempts = 300; // Equivaut à 10 minutes de polling maximum par job (300 * 2s)
 
             for (int i = 0; i < maxAttempts; i++)
             {
@@ -153,6 +173,7 @@ namespace AutoActivator.Services
                     string cleanRC = ReturnCode.TrimStart('0');
                     if (string.IsNullOrEmpty(cleanRC)) cleanRC = "0";
 
+                    // RC = 0 ou 4 sont considérés comme des succès métier
                     if (cleanRC != "0" && cleanRC != "4")
                     {
                         if (jobName == "ADDPRCT" && cleanRC == "8")
@@ -163,12 +184,14 @@ namespace AutoActivator.Services
                         throw new Exception($"Business error on job {jobName} (Return code: {ReturnCode}). Sequence cancelled.");
                     }
 
+                    onProgress($"      [OK] {jobName} completed with RC={ReturnCode}.");
+
+                    // Téléchargement du Spool pour audit
                     if (jobName == "ADDPRCT" || jobName == "LVPG22U" || jobName == "LI1J04D0")
                     {
                         try
                         {
                             string reportContent = await _apiService.GetJobBusinessReportAsync(JobNum, cancellationToken).ConfigureAwait(false);
-
                             string reportPath = Path.Combine(Path.GetTempPath(), $"REPORT_{jobName}_{JobNum}.txt");
 
                             using (StreamWriter writer = new StreamWriter(reportPath, false, Encoding.UTF8))
