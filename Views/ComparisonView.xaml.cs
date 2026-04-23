@@ -32,7 +32,6 @@ namespace AutoActivator.Gui.Views
             InitializeComponent();
         }
 
-
         private void BtnHelp_Click(object sender, RoutedEventArgs e)
         {
             if (Window.GetWindow(this) is MainWindow mainWindow)
@@ -40,7 +39,6 @@ namespace AutoActivator.Gui.Views
                 mainWindow.OpenHelpTargetingTab(2);
             }
         }
-
 
         private void UserControl_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
         {
@@ -115,37 +113,53 @@ namespace AutoActivator.Gui.Views
             return null;
         }
 
-
+        // =====================================================================
+        // UPDATED METHOD: Automatically add the latest extraction
+        // =====================================================================
         private void BtnAddBaseline_Click(object sender, RoutedEventArgs e)
         {
-            var openFileDialog = new OpenFileDialog
+            try
             {
-                Filter = "CSV/Excel Files (*.csv;*.xls;*.xlsx)|*.csv;*.xls;*.xlsx|All Files (*.*)|*.*",
-                Title = "Select a file to copy to the Baseline folder"
-            };
+                // 1. Check if the extraction folder exists
+                if (!Directory.Exists(Settings.OutputDir))
+                {
+                    MessageBox.Show("The extraction folder does not exist yet. Please run an extraction first.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
 
-            if (openFileDialog.ShowDialog() == true)
-            {
-                try
+                // 2. Find the most recent CSV file in the extraction folder
+                var latestExtractionFile = Directory.GetFiles(Settings.OutputDir, "*.csv")
+                                                    .OrderByDescending(f => File.GetCreationTime(f))
+                                                    .FirstOrDefault();
+
+                // 3. If a file exists, copy it
+                if (latestExtractionFile != null)
                 {
                     if (!Directory.Exists(Settings.BaselineDir))
                         Directory.CreateDirectory(Settings.BaselineDir);
 
-                    string sourcePath = openFileDialog.FileName;
-                    string fileName = Path.GetFileName(sourcePath);
+                    string fileName = Path.GetFileName(latestExtractionFile);
                     string destPath = Path.Combine(Settings.BaselineDir, fileName);
 
-                    File.Copy(sourcePath, destPath, true);
-                    MessageBox.Show($"File '{fileName}' was successfully added to your baselines!", "Baseline Added", MessageBoxButton.OK, MessageBoxImage.Information);
+                    // Copy to the Baseline folder (true overwrites if it already exists)
+                    File.Copy(latestExtractionFile, destPath, true);
 
+                    MessageBox.Show($"The latest extraction ({fileName}) was automatically added to the baselines!", "Baseline Added", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                    // 4. Update the dropdown list in the interface
                     LoadBaselines();
                 }
-                catch (Exception ex)
+                else
                 {
-                    MessageBox.Show($"Error copying file: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show("No extraction was found in the output folder.", "No File", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error while copying the file: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
+        // =====================================================================
 
         private void BtnOpenBaselineFolder_Click(object sender, RoutedEventArgs e)
         {
@@ -166,7 +180,6 @@ namespace AutoActivator.Gui.Views
                 MessageBox.Show($"Error opening Baseline folder: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-
 
         private void BtnBrowseBase_Click(object sender, RoutedEventArgs e)
         {

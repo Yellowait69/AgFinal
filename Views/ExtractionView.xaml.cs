@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq; // <-- Mandatory addition to use OrderByDescending and FirstOrDefault
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -29,7 +30,6 @@ namespace AutoActivator.Gui.Views
             ListHistory.ItemsSource = ExtractionHistory;
             _extractionService = new ExtractionService();
         }
-
 
         private void BtnHelp_Click(object sender, RoutedEventArgs e)
         {
@@ -90,7 +90,6 @@ namespace AutoActivator.Gui.Views
                 : contract;
         }
 
-
         private void InputType_Checked(object sender, RoutedEventArgs e)
         {
             if (TxtExtContract != null) TxtExtContract.Text = string.Empty;
@@ -117,32 +116,50 @@ namespace AutoActivator.Gui.Views
         private void CmbExtEnv_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
         private void CmbExtChannel_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateBatchExtCsvPath();
 
-
+        // =====================================================================
+        // UPDATED METHOD: Automatic addition of the latest extraction
+        // =====================================================================
         private void BtnAddBaseline_Click(object sender, RoutedEventArgs e)
         {
-            var openFileDialog = new OpenFileDialog
+            try
             {
-                Filter = "CSV/Excel Files (*.csv;*.xls;*.xlsx)|*.csv;*.xls;*.xlsx|All Files (*.*)|*.*",
-                Title = "Select a file to copy to the Baseline folder"
-            };
-
-            if (openFileDialog.ShowDialog() == true)
-            {
-                try
+                // Check if the extraction folder exists
+                if (!Directory.Exists(Settings.OutputDir))
                 {
-                    Directory.CreateDirectory(Settings.BaselineDir);
-                    string fileName = Path.GetFileName(openFileDialog.FileName);
+                    MessageBox.Show("The extraction folder does not exist yet. Please run an extraction first.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                // Find the most recent CSV file in the extraction folder
+                var latestExtractionFile = Directory.GetFiles(Settings.OutputDir, "*.csv")
+                                                    .OrderByDescending(f => File.GetCreationTime(f))
+                                                    .FirstOrDefault();
+
+                // If there is indeed a file, copy it
+                if (latestExtractionFile != null)
+                {
+                    if (!Directory.Exists(Settings.BaselineDir))
+                        Directory.CreateDirectory(Settings.BaselineDir);
+
+                    string fileName = Path.GetFileName(latestExtractionFile);
                     string destPath = Path.Combine(Settings.BaselineDir, fileName);
 
-                    File.Copy(openFileDialog.FileName, destPath, true);
-                    MessageBox.Show($"File '{fileName}' was successfully added to your baselines!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                    // Copy to the Baseline folder (true allows overwriting if it already exists)
+                    File.Copy(latestExtractionFile, destPath, true);
+
+                    MessageBox.Show($"The latest extraction ({fileName}) was automatically added to the baselines!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
-                catch (Exception ex)
+                else
                 {
-                    MessageBox.Show($"Error copying file: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show("No extraction was found in the output folder.", "No file", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }
             }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error copying the file: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
+        // =====================================================================
 
         private void BtnOpenBaselineFolder_Click(object sender, RoutedEventArgs e)
         {
@@ -156,7 +173,6 @@ namespace AutoActivator.Gui.Views
                 MessageBox.Show($"Error opening Baseline folder: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-
 
         private async void BtnRunSingle_Click(object sender, RoutedEventArgs e)
         {
@@ -225,7 +241,6 @@ namespace AutoActivator.Gui.Views
                 });
             }
         }
-
 
         private void BtnBrowseExtCsv_Click(object sender, RoutedEventArgs e)
         {

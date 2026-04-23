@@ -47,17 +47,21 @@
                             </Grid>
 
                             <StackPanel Orientation="Horizontal" Margin="0,15,0,0" HorizontalAlignment="Right">
-                                <Button x:Name="BtnAddBaselineComp" Content="➕ Add Baseline" Click="BtnAddBaseline_Click" Background="#9B59B6" Foreground="White" Padding="10,5" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0" FontWeight="SemiBold">
+                                <Button x:Name="BtnAddBaselineComp" Content="➕ Add Baseline" Click="BtnAddBaseline_Click" Background="#9B59B6" Foreground="White" Padding="10,6" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0" FontWeight="SemiBold">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
-                                            <Border Background="{TemplateBinding Background}" CornerRadius="4"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                                            </Border>
                                         </ControlTemplate>
                                     </Button.Template>
                                 </Button>
-                                <Button x:Name="BtnOpenBaselineComp" Content="📂 Open Folder" Click="BtnOpenBaselineFolder_Click" Background="#3498DB" Foreground="White" Padding="10,5" BorderThickness="0" Cursor="Hand" FontWeight="SemiBold">
+                                <Button x:Name="BtnOpenBaselineComp" Content="📂 Open Folder" Click="BtnOpenBaselineFolder_Click" Background="#3498DB" Foreground="White" Padding="10,6" BorderThickness="0" Cursor="Hand" FontWeight="SemiBold">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
-                                            <Border Background="{TemplateBinding Background}" CornerRadius="4"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                                            </Border>
                                         </ControlTemplate>
                                     </Button.Template>
                                 </Button>
@@ -92,7 +96,7 @@
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
                                     <Border Background="{TemplateBinding Background}" CornerRadius="4">
-                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
                                     </Border>
                                 </ControlTemplate>
                             </Button.Template>

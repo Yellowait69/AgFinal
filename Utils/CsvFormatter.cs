@@ -74,21 +74,28 @@ namespace AutoActivator.Utils
         /// <summary>
         /// Splits the full file and keeps ONLY the text block of the most recent contract for each Test ID.
         /// MEMORY OPTIMIZED (Line-by-line streaming).
+        /// If no "TEST ID" is found (e.g., Single Extraction), treats the whole file as a single block.
         /// </summary>
         public static Dictionary<string, string> SplitAndFilterMostRecentByTestId(string filePath)
         {
             var blocks = new Dictionary<string, (DateTime date, StringBuilder content)>();
             if (!File.Exists(filePath)) return new Dictionary<string, string>();
 
-            string currentRootTestId = "UNKNOWN";
+            string defaultId = "SINGLE_CONTRACT"; // Fallback ID for unit extractions
+            string currentRootTestId = defaultId;
             DateTime currentDate = DateTime.MinValue;
             StringBuilder currentBlock = new StringBuilder();
             long fallbackCounter = 0;
+
+            bool hasGlobalReportMarkers = false;
 
             foreach (var line in File.ReadLines(filePath, Encoding.UTF8))
             {
                 if (line.StartsWith("### GLOBAL CONTRACT REPORT:"))
                 {
+                    hasGlobalReportMarkers = true;
+
+                    // Save the previous block if it existed
                     if (currentBlock.Length > 0 && currentRootTestId != "UNKNOWN")
                     {
                         if (!blocks.ContainsKey(currentRootTestId) || currentDate >= blocks[currentRootTestId].date)
@@ -97,6 +104,7 @@ namespace AutoActivator.Utils
                         }
                     }
 
+                    // Reset for the new block
                     currentBlock = new StringBuilder();
                     currentDate = new DateTime(fallbackCounter++);
                     currentRootTestId = "UNKNOWN";
@@ -119,17 +127,26 @@ namespace AutoActivator.Utils
                 currentBlock.AppendLine(line);
             }
 
-            if (currentBlock.Length > 0 && currentRootTestId != "UNKNOWN")
+            // Save the last (or only) block
+            if (currentBlock.Length > 0)
             {
-                if (!blocks.ContainsKey(currentRootTestId) || currentDate >= blocks[currentRootTestId].date)
+                // If the file never had a GLOBAL CONTRACT REPORT marker, it's a single extraction.
+                // We use the fallback defaultId.
+                if (!hasGlobalReportMarkers)
                 {
-                    blocks[currentRootTestId] = (currentDate, currentBlock);
+                    blocks[defaultId] = (DateTime.Now, currentBlock);
+                }
+                else if (currentRootTestId != "UNKNOWN")
+                {
+                    if (!blocks.ContainsKey(currentRootTestId) || currentDate >= blocks[currentRootTestId].date)
+                    {
+                        blocks[currentRootTestId] = (currentDate, currentBlock);
+                    }
                 }
             }
 
             return blocks.ToDictionary(k => k.Key, v => v.Value.content.ToString());
         }
-
 
         public static List<string> GetAllTableNamesFromContent(string fileContent)
         {
