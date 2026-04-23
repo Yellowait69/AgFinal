@@ -4,6 +4,7 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using AutoActivator.Config;
 using AutoActivator.Services;
@@ -61,7 +62,6 @@ namespace AutoActivator
             Console.ReadKey();
         }
 
-
         // -----------------------------------------------------------
         // 1. EXTRACTION
         // -----------------------------------------------------------
@@ -86,11 +86,9 @@ namespace AutoActivator
             }
             catch (Exception ex)
             {
-                 // Utilisation de ToString() au lieu de Message pour avoir la ligne exacte de l'erreur (Stack Trace)
                  Console.WriteLine($"[ERROR] Extraction failed:\n{ex.ToString()}");
             }
         }
-
 
         // -----------------------------------------------------------
         // 2. ACTIVATION (Mode MASSIVE BATCH)
@@ -102,7 +100,18 @@ namespace AutoActivator
             string envSuffix = Console.ReadLine()?.Trim().ToUpper();
             if (string.IsNullOrWhiteSpace(envSuffix)) envSuffix = "D000";
 
-            // Menu pour éviter le hardcoding des numéros de contrats
+            // Extraction de la lettre de l'environnement (ex: 'D' pour D000)
+            string envLetter = envSuffix.Substring(0, 1);
+
+            // L'API Mainframe requiert des identifiants
+            Console.Write("Username Mainframe (ex: XA3894): ");
+            string username = Console.ReadLine()?.Trim();
+            if (string.IsNullOrWhiteSpace(username)) username = "XA3894";
+
+            Console.Write("Password Mainframe : ");
+            string password = Console.ReadLine()?.Trim();
+
+            // Menu pour charger les contrats
             Console.WriteLine("\nHow do you want to load the contracts?");
             Console.WriteLine("1. Enter a single contract manually");
             Console.WriteLine($"2. Load a list from a text file (located in '{Settings.InputDir}')");
@@ -128,7 +137,6 @@ namespace AutoActivator
 
                 if (File.Exists(filePath))
                 {
-                    // Lecture propre du fichier en ignorant les lignes vides
                     contractsToProcess = File.ReadAllLines(filePath)
                                              .Where(line => !string.IsNullOrWhiteSpace(line))
                                              .Select(line => line.Trim())
@@ -153,26 +161,56 @@ namespace AutoActivator
                 return;
             }
 
-            // --- DELEGATION AU SERVICE BATCH ---
-            // On ne boucle plus ici. On envoie TOUTE la liste au chef d'orchestre.
-            var batchActivationService = new BatchActivationService();
+            // CRÉATION D'UN FICHIER CSV TEMPORAIRE
+            // Permet d'utiliser la vraie méthode RunBatchAsync sans modifier BatchActivationService.cs
+            string tempCsvPath = Path.Combine(Settings.InputDir, $"temp_batch_{Guid.NewGuid():N}.csv");
 
             try
             {
+                File.WriteAllText(tempCsvPath, "Contract\n" + string.Join("\n", contractsToProcess), Encoding.UTF8);
+
+                // FIX CS7036 : Instanciation avec l'injection de dépendance requise
+                var dataService = new ActivationDataService();
+                var batchActivationService = new BatchActivationService(dataService);
+
                 Console.WriteLine($"\n[INFO] Launching Bulk Activation for {contractsToProcess.Count} item(s)...");
 
-                // Appel d'une méthode (à implémenter dans BatchActivationService.cs) qui gérera
-                // la création du gros fichier texte, l'upload FTP et le lancement du Job global.
-                await batchActivationService.ProcessBatchAsync(contractsToProcess, envSuffix);
+                // FIX CS1061 : Appel à la vraie méthode d'orchestration existante
+                var result = await batchActivationService.RunBatchAsync(
+                    filePath: tempCsvPath,
+                    isDemandId: false,
+                    envValue: envLetter,
+                    cus: "000",             // Valeurs métier par défaut pour la console
+                    bucp: "00000",
+                    cmdpmt: "1",
+                    channel: "C05",
+                    skipPrime: false,
+                    username: username,
+                    password: password,
+                    outputDir: Settings.OutputDir,
+                    onProgress: msg => Console.WriteLine(msg), // Redirige les logs vers la console
+                    token: CancellationToken.None
+                );
 
-                Console.WriteLine("\n🎉 Batch Activation process finished!");
+                Console.WriteLine("\n==================================================");
+                Console.WriteLine("🎉 BATCH ACTIVATION PROCESS FINISHED!");
+                Console.WriteLine($"Success: {result.successCount} | Already Active: {result.alreadyActiveCount} | Errors: {result.errorCount}");
+                Console.WriteLine($"Report saved at: {result.reportPath}");
+                Console.WriteLine("==================================================");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[FATAL ERROR] Bulk Activation failed:\n{ex.ToString()}");
             }
+            finally
+            {
+                // Nettoyage propre du fichier temporaire
+                if (File.Exists(tempCsvPath))
+                {
+                    File.Delete(tempCsvPath);
+                }
+            }
         }
-
 
         // -----------------------------------------------------------
         // 3. COMPARISON

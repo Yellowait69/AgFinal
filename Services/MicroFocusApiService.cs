@@ -150,8 +150,8 @@ namespace AutoActivator.Services
             string submitUrl = $"{_nodeUrl}jescontrol/";
             var payload = new { subJes = "2", ctlSubmit = "Submit", JCLIn = jclContent };
 
-            // Remplacement de Newtonsoft.Json par System.Text.Json (Plus rapide et natif)
-            string jsonPayload = JsonSerializer.Serialize(payload);
+            // CORRECTION CS0104 : On précise explicitement le namespace pour System.Text.Json
+            string jsonPayload = System.Text.Json.JsonSerializer.Serialize(payload);
 
             try
             {
