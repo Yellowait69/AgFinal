@@ -25,7 +25,8 @@ namespace AutoActivator.Services
             _extractionService = extractionService;
         }
 
-        public async Task PerformBatchExtractionAsync(string filePath, string env, Action<BatchProgressInfo> onProgressUpdate, bool isDemandId = false)
+        // 1. AJOUT DU CancellationToken ICI
+        public async Task PerformBatchExtractionAsync(string filePath, string env, Action<BatchProgressInfo> onProgressUpdate, bool isDemandId = false, CancellationToken token = default)
         {
             if (!File.Exists(filePath))
                 throw new FileNotFoundException("The specified CSV file could not be found.", filePath);
@@ -106,60 +107,86 @@ namespace AutoActivator.Services
             int totalItems = contractsToProcess.Count;
             int processedItems = 0;
 
+            // 2. TRANSMISSION DU TOKEN À LA TASK
             var tasks = contractsToProcess.Select((item, index) => Task.Run(async () =>
             {
-                await Task.Delay(Math.Min(index * 20, 2000)).ConfigureAwait(false);
-
-                await semaphore.WaitAsync().ConfigureAwait(false);
                 try
                 {
-                    ExtractionResult result = await _extractionService.PerformExtractionAsync(item.contractNumber, env, false, isDemandId).ConfigureAwait(false);
+                    // Arrêt immédiat si le bouton Cancel a été cliqué avant même de commencer
+                    token.ThrowIfCancellationRequested();
 
-                    string displayContract = isDemandId && !string.IsNullOrEmpty(result.ContractReference)
-                        ? result.ContractReference
-                        : item.contractNumber;
+                    // Transmission du token au Delay
+                    await Task.Delay(Math.Min(index * 20, 2000), token).ConfigureAwait(false);
 
-                    if (!string.IsNullOrWhiteSpace(result.LisaContent) || !string.IsNullOrWhiteSpace(result.EliaContent))
+                    // Transmission du token au WaitAsync
+                    await semaphore.WaitAsync(token).ConfigureAwait(false);
+                    try
                     {
-                        StringBuilder localReport = new StringBuilder();
-                        localReport.AppendLine(new string('=', 80));
-                        localReport.AppendLine($"### GLOBAL CONTRACT REPORT: {displayContract} | TEST ID: {item.rawTestId} | ENV: {env} ###");
-                        localReport.AppendLine(new string('=', 80));
+                        // Revérification après l'attente du sémaphore
+                        token.ThrowIfCancellationRequested();
 
-                        if (!string.IsNullOrWhiteSpace(result.LisaContent))
+                        ExtractionResult result = await _extractionService.PerformExtractionAsync(item.contractNumber, env, false, isDemandId).ConfigureAwait(false);
+
+                        // Revérification après la longue requête SQL
+                        token.ThrowIfCancellationRequested();
+
+                        string displayContract = isDemandId && !string.IsNullOrEmpty(result.ContractReference)
+                            ? result.ContractReference
+                            : item.contractNumber;
+
+                        if (!string.IsNullOrWhiteSpace(result.LisaContent) || !string.IsNullOrWhiteSpace(result.EliaContent))
                         {
-                            localReport.AppendLine($"--- LISA SECTION ---");
-                            localReport.Append(result.LisaContent).AppendLine();
+                            StringBuilder localReport = new StringBuilder();
+                            localReport.AppendLine(new string('=', 80));
+                            localReport.AppendLine($"### GLOBAL CONTRACT REPORT: {displayContract} | TEST ID: {item.rawTestId} | ENV: {env} ###");
+                            localReport.AppendLine(new string('=', 80));
+
+                            if (!string.IsNullOrWhiteSpace(result.LisaContent))
+                            {
+                                localReport.AppendLine($"--- LISA SECTION ---");
+                                localReport.Append(result.LisaContent).AppendLine();
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(result.EliaContent))
+                            {
+                                localReport.AppendLine($"--- ELIA SECTION (UCON: {result.UconId}) ---");
+                                localReport.Append(result.EliaContent).AppendLine();
+                            }
+
+                            string tempFile = Path.Combine(tempDirPath, $"{index}.tmp");
+                            using (StreamWriter writer = new StreamWriter(tempFile, false, Encoding.UTF8))
+                            {
+                                await writer.WriteAsync(localReport.ToString()).ConfigureAwait(false);
+                            }
                         }
 
-                        if (!string.IsNullOrWhiteSpace(result.EliaContent))
-                        {
-                            localReport.AppendLine($"--- ELIA SECTION (UCON: {result.UconId}) ---");
-                            localReport.Append(result.EliaContent).AppendLine();
-                        }
+                        int current = Interlocked.Increment(ref processedItems);
 
-                        string tempFile = Path.Combine(tempDirPath, $"{index}.tmp");
-                        using (StreamWriter writer = new StreamWriter(tempFile, false, Encoding.UTF8))
+                        onProgressUpdate?.Invoke(new BatchProgressInfo
                         {
-                            await writer.WriteAsync(localReport.ToString()).ConfigureAwait(false);
-                        }
+                            RowNum = item.rowNum,
+                            ContractId = displayContract,
+                            InternalId = result.InternalId,
+                            Product = env,
+                            Premium = string.IsNullOrWhiteSpace(result.Premium) ? "0" : result.Premium,
+                            UconId = result.UconId,
+                            DemandId = result.DemandId,
+                            Status = "OK",
+                            CurrentItem = current,
+                            TotalItems = totalItems
+                        });
                     }
-
-                    int current = Interlocked.Increment(ref processedItems);
-
-                    onProgressUpdate?.Invoke(new BatchProgressInfo
+                    finally
                     {
-                        RowNum = item.rowNum,
-                        ContractId = displayContract,
-                        InternalId = result.InternalId,
-                        Product = env,
-                        Premium = string.IsNullOrWhiteSpace(result.Premium) ? "0" : result.Premium,
-                        UconId = result.UconId,
-                        DemandId = result.DemandId,
-                        Status = "OK",
-                        CurrentItem = current,
-                        TotalItems = totalItems
-                    });
+                        semaphore.Release();
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    // 3. CAPTURE DE L'ANNULATION
+                    // Ne rien faire pour l'UI ici, on remonte l'exception silencieusement
+                    // pour arrêter le processus proprement sans tagger ça comme une "Erreur SQL".
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -178,20 +205,28 @@ namespace AutoActivator.Services
                         TotalItems = totalItems
                     });
                 }
-                finally
-                {
-                    semaphore.Release();
-                }
-            })).ToList();
+            }, token)).ToList(); // Ajout du token ici aussi
 
-            await Task.WhenAll(tasks).ConfigureAwait(false);
+            try
+            {
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Le batch a été interrompu par l'utilisateur !
+                // On capture l'erreur ici de manière à permettre au code en dessous
+                // de générer le fichier CSV partiel avec ce qui a déjà été extrait.
+            }
 
             string origFileName = Path.GetFileNameWithoutExtension(filePath);
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             Directory.CreateDirectory(Settings.OutputDir);
 
             char envLetter = !string.IsNullOrEmpty(env) ? char.ToUpper(env[0]) : 'U';
-            string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{origFileName}_{envLetter}_{timestamp}.csv");
+
+            // On ajoute "_PARTIAL" au nom si annulé, pour la clarté de l'utilisateur
+            string partialSuffix = token.IsCancellationRequested ? "_PARTIAL_CANCELLED" : "";
+            string combinedPath = Path.Combine(Settings.OutputDir, $"Extraction_{origFileName}_{envLetter}{partialSuffix}_{timestamp}.csv");
 
             try
             {
@@ -217,9 +252,16 @@ namespace AutoActivator.Services
 
                     if (!anyDataWritten)
                     {
-                        await finalWriter.WriteAsync("NO CONTRACT FOUND.").ConfigureAwait(false);
+                        if (token.IsCancellationRequested)
+                            await finalWriter.WriteAsync("EXTRACTION CANCELLED BEFORE ANY CONTRACT WAS FOUND.").ConfigureAwait(false);
+                        else
+                            await finalWriter.WriteAsync("NO CONTRACT FOUND.").ConfigureAwait(false);
                     }
                 }
+
+                // Optionnel: Si vous voulez prévenir l'UI que c'était annulé tout à la fin,
+                // dé-commentez la ligne suivante pour remonter l'exception jusqu'à MainWindow.xaml.cs :
+                // token.ThrowIfCancellationRequested();
             }
             catch (IOException)
             {

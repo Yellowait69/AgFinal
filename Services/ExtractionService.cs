@@ -20,10 +20,14 @@ namespace AutoActivator.Services
         {
         }
 
-        public async Task<ExtractionResult> PerformExtractionAsync(string targetContract, string envSuffix, bool saveIndividualFile = true, bool isDemandId = false)
+        // 1. AJOUT DU CancellationToken
+        public async Task<ExtractionResult> PerformExtractionAsync(string targetContract, string envSuffix, bool saveIndividualFile = true, bool isDemandId = false, CancellationToken token = default)
         {
             if (string.IsNullOrWhiteSpace(targetContract))
                 throw new ArgumentException("The input value is empty.");
+
+            // Vérification initiale
+            token.ThrowIfCancellationRequested();
 
             string cleanedContract = targetContract.Replace("\u00A0", "").Replace("\uFEFF", "").Trim();
 
@@ -41,6 +45,8 @@ namespace AutoActivator.Services
                     throw new Exception($"No associated contract found for Demand ID {cleanedContract} in environment {envSuffix}.");
                 }
             }
+
+            token.ThrowIfCancellationRequested();
 
             var parameters = new Dictionary<string, object> { { "@ContractNumber", cleanedContract } };
 
@@ -65,6 +71,8 @@ namespace AutoActivator.Services
             string premiumAmount = "0";
 
             #region LISA SECTION
+            token.ThrowIfCancellationRequested();
+
             if (dtLisa.Rows.Count > 0)
             {
                 if (dtLisa.Rows[0]["NO_CNT"] == DBNull.Value)
@@ -75,12 +83,15 @@ namespace AutoActivator.Services
 
                 var lisaTables = new[] { "LV.PCONT0", "LV.ELIAT0", "LV.ELIHT0", "LV.SCNTT0", "LV.SWBGT0", "LV.SAVTT0", "LV.XRSTT0", "LV.SPERT0", "LV.ADMDT0", "FJ1.TB5LPPL", "FJ1.TB5LPPR", "FJ1.TB5LGDR", "LV.PRIST0", "LV.PECHT0", "LV.PFIET0", "LV.PMNTT0", "LV.PRCTT0", "LV.PSUMT0", "LV.SELTT0", "FJ1.TB5LPPF", "LV.FMVGT0", "LV.FMVDT0", "LV.SFTS", "LV.PINCT0", "LV.SCLST0", "LV.SCLRT0", "LV.SCLDT0", "LV.BSPDT0", "LV.BSPGT0", "LV.BPBAT0", "LV.BPPAT0", "LV.MWBGT0" };
 
-                await ExtractAndAppendTablesAsync(envSuffix, lisaTables, "@InternalId", internalId, sbLisa).ConfigureAwait(false);
+                // Transmission du token
+                await ExtractAndAppendTablesAsync(envSuffix, lisaTables, "@InternalId", internalId, sbLisa, token).ConfigureAwait(false);
             }
             else sbLisa.AppendLine($"### DIAGNOSTIC : Contract {cleanedContract} missing ###");
             #endregion
 
             #region ELIA SECTION
+            token.ThrowIfCancellationRequested();
+
             if (dtElia.Rows.Count > 0)
             {
                 eliaUconId = dtElia.Rows[0]["IT5UCONAIDN"]?.ToString()?.Trim() ?? "Not found";
@@ -99,6 +110,8 @@ namespace AutoActivator.Services
                     catch { /* Silently ignore the error and keep "0" */ }
                 }
 
+                token.ThrowIfCancellationRequested();
+
                 var eliaDemandDb = new DatabaseManager(envSuffix);
                 var dtDemand = await eliaDemandDb.GetDataAsync(SqlQueries.Queries["GET_ELIA_DEMAND_IDS"], new Dictionary<string, object> { { "@EliaId", eliaUconId } }).ConfigureAwait(false);
 
@@ -111,16 +124,20 @@ namespace AutoActivator.Services
 
                 var eliaTables = new[] { "FJ1.TB5HELT", "FJ1.TB5UCON", "FJ1.TB5UGAR", "FJ1.TB5UASU", "FJ1.TB5UCCR", "FJ1.TB5UAVE", "FJ1.TB5UPNR", "FJ1.TB5UPRP", "FJ1.TB5UPRS", "FJ1.TB5UPMP", "FJ1.TB5URPP", "FJ1.TB5UPRF", "FJ1.TB5UFML", "FJ1.TB5UCRB", "FJ1.TB5UDCR", "FJ1.TB5UBEN" };
 
-                await ExtractAndAppendTablesAsync(envSuffix, eliaTables, "@EliaId", eliaUconId, sbElia).ConfigureAwait(false);
+                // Transmission du token
+                await ExtractAndAppendTablesAsync(envSuffix, eliaTables, "@EliaId", eliaUconId, sbElia, token).ConfigureAwait(false);
 
                 if (demandIds.Count > 0)
                 {
                     var demandTables = new[] { "FJ1.TB5HDMD", "FJ1.TB5HDGM", "FJ1.TB5HDGD", "FJ1.TB5HPRO", "FJ1.TB5HEPT", "FJ1.TB5HDIC" };
-                    await ExtractAndAppendTablesAsync(envSuffix, demandTables, "@DemandIds", string.Join(",", demandIds), sbElia).ConfigureAwait(false);
+                    // Transmission du token
+                    await ExtractAndAppendTablesAsync(envSuffix, demandTables, "@DemandIds", string.Join(",", demandIds), sbElia, token).ConfigureAwait(false);
                 }
             }
             else sbElia.AppendLine("### ELIA SECTION : NO DATA FOUND ###");
             #endregion
+
+            token.ThrowIfCancellationRequested();
 
             string finalLisaContent = sbLisa.ToString();
             string finalEliaContent = sbElia.ToString();
@@ -171,7 +188,8 @@ namespace AutoActivator.Services
             };
         }
 
-        private async Task ExtractAndAppendTablesAsync(string envSuffix, IEnumerable<string> tables, string parameterName, object parameterValue, StringBuilder sb)
+        // 2. AJOUT DU CancellationToken
+        private async Task ExtractAndAppendTablesAsync(string envSuffix, IEnumerable<string> tables, string parameterName, object parameterValue, StringBuilder sb, CancellationToken token = default)
         {
             var tablesList = tables.ToList();
 
@@ -184,35 +202,55 @@ namespace AutoActivator.Services
                 int index = i;
                 string table = tablesList[index];
 
+                // 3. PASSAGE DU TOKEN A TASK.RUN
                 tasks.Add(Task.Run(async () =>
                 {
-                    await semaphore.WaitAsync().ConfigureAwait(false);
                     try
                     {
-                        if (SqlQueries.Queries.ContainsKey(table))
+                        // Vérification avant d'attendre le thread pool SQL
+                        token.ThrowIfCancellationRequested();
+
+                        // 4. PASSAGE DU TOKEN AU SEMAPHORE
+                        await semaphore.WaitAsync(token).ConfigureAwait(false);
+                        try
                         {
-                            var threadSafeDb = new DatabaseManager(envSuffix);
-                            var dt = await threadSafeDb.GetDataAsync(SqlQueries.Queries[table], new Dictionary<string, object> { { parameterName, parameterValue } }).ConfigureAwait(false);
+                            // Vérification juste avant l'exécution SQL
+                            token.ThrowIfCancellationRequested();
 
-                            var tempSb = new StringBuilder();
-                            CsvFormatter.AddTableToBuffer(tempSb, table, dt);
-                            resultsArray[index] = tempSb.ToString();
+                            if (SqlQueries.Queries.ContainsKey(table))
+                            {
+                                var threadSafeDb = new DatabaseManager(envSuffix);
+                                var dt = await threadSafeDb.GetDataAsync(SqlQueries.Queries[table], new Dictionary<string, object> { { parameterName, parameterValue } }).ConfigureAwait(false);
 
-                            dt.Clear();
-                            dt.Dispose();
+                                // Vérification avant le traitement lourd du CsvFormatter
+                                token.ThrowIfCancellationRequested();
+
+                                var tempSb = new StringBuilder();
+                                CsvFormatter.AddTableToBuffer(tempSb, table, dt);
+                                resultsArray[index] = tempSb.ToString();
+
+                                dt.Clear();
+                                dt.Dispose();
+                            }
                         }
+                        finally
+                        {
+                            semaphore.Release();
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // On laisse l'exception remonter proprement, ce n'est pas une "erreur technique"
+                        throw;
                     }
                     catch (Exception ex)
                     {
                         resultsArray[index] = $"### TABLE : {table} | EXTRACTION ERROR\nSQL Error: {ex.Message}\n";
                     }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
-                }));
+                }, token));
             }
 
+            // Si une des tâches lance une OperationCanceledException, WhenAll la remontera et annulera le reste
             await Task.WhenAll(tasks).ConfigureAwait(false);
 
             foreach (var content in resultsArray)

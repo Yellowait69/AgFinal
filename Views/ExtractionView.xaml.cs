@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq; // <-- Mandatory addition to use OrderByDescending and FirstOrDefault
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -193,17 +194,35 @@ namespace AutoActivator.Gui.Views
 
             await mainWindow.RunProcessAsync(async () =>
             {
-                UpdateMainWindowStatus(mainWindow, $"Extracting Environment {envValue}000...");
-                await PerformSingleExtractionAsync(rawInput, $"{envValue}000", progress, isDemandId, mainWindow);
-                UpdateMainWindowStatus(mainWindow, "Single extraction completed successfully.", Brushes.Green);
+                try
+                {
+                    // Assuming MainWindow exposes the active CancellationToken
+                    CancellationToken token = mainWindow.GetCancellationToken();
+
+                    UpdateMainWindowStatus(mainWindow, $"Extracting Environment {envValue}000...");
+                    await PerformSingleExtractionAsync(rawInput, $"{envValue}000", progress, isDemandId, mainWindow, token);
+
+                    if (token.IsCancellationRequested)
+                    {
+                        UpdateMainWindowStatus(mainWindow, "Single extraction cancelled by user.", Brushes.Orange);
+                    }
+                    else
+                    {
+                        UpdateMainWindowStatus(mainWindow, "Single extraction completed successfully.", Brushes.Green);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    UpdateMainWindowStatus(mainWindow, "Single extraction cancelled by user.", Brushes.Orange);
+                }
             });
         }
 
-        private async Task PerformSingleExtractionAsync(string targetValue, string env, IProgress<ExtractionItem> progress, bool isDemandId, MainWindow mainWindow)
+        private async Task PerformSingleExtractionAsync(string targetValue, string env, IProgress<ExtractionItem> progress, bool isDemandId, MainWindow mainWindow, CancellationToken token)
         {
             try
             {
-                ExtractionResult result = await _extractionService.PerformExtractionAsync(targetValue, env, true, isDemandId).ConfigureAwait(false);
+                ExtractionResult result = await _extractionService.PerformExtractionAsync(targetValue, env, true, isDemandId, token).ConfigureAwait(false);
                 mainWindow.LastGeneratedPath = Settings.OutputDir;
 
                 string displayContract = isDemandId ? FormatContractForDisplay(result.ContractReference) : FormatContractForDisplay(targetValue);
@@ -223,6 +242,11 @@ namespace AutoActivator.Gui.Views
                     Test = finalTest,
                     FilePath = result.FilePath
                 });
+            }
+            catch (OperationCanceledException)
+            {
+                // Silently return or handle if needed. The outer block catches it too.
+                throw;
             }
             catch (Exception)
             {
@@ -357,20 +381,39 @@ namespace AutoActivator.Gui.Views
             {
                 try
                 {
+                    // Get token from main window
+                    CancellationToken token = mainWindow.GetCancellationToken();
+
                     string actualFile = filePath;
                     UpdateMainWindowStatus(mainWindow, $"Preparing Environment {envValue}000...");
 
                     if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                     {
                         UpdateMainWindowStatus(mainWindow, $"Converting Network Excel to CSV for {envValue}000...");
-                        actualFile = await Task.Run(() => PrepareCsvFromExcel(filePath)).ConfigureAwait(false);
+                        actualFile = await Task.Run(() => PrepareCsvFromExcel(filePath), token).ConfigureAwait(false);
                     }
 
+                    token.ThrowIfCancellationRequested();
+
                     UpdateMainWindowStatus(mainWindow, $"Launching batch extraction ({envValue}000)...");
-                    await batchService.PerformBatchExtractionAsync(actualFile, $"{envValue}000", progress.Report, isDemandId).ConfigureAwait(false);
+
+                    // Pass the token to the service
+                    await batchService.PerformBatchExtractionAsync(actualFile, $"{envValue}000", progress.Report, isDemandId, token).ConfigureAwait(false);
 
                     mainWindow.LastGeneratedPath = Settings.OutputDir;
-                    UpdateMainWindowStatus(mainWindow, "Batch extraction completed! Files saved in Output folder.", Brushes.Green);
+
+                    if (token.IsCancellationRequested)
+                    {
+                        UpdateMainWindowStatus(mainWindow, "Batch extraction cancelled. Partial files saved in Output folder.", Brushes.Orange);
+                    }
+                    else
+                    {
+                        UpdateMainWindowStatus(mainWindow, "Batch extraction completed! Files saved in Output folder.", Brushes.Green);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    UpdateMainWindowStatus(mainWindow, "Batch extraction cancelled by user.", Brushes.Orange);
                 }
                 catch (Exception ex)
                 {
