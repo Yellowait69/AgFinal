@@ -33,8 +33,11 @@ namespace AutoActivator.Services
             { "P", new List<string> { "spmfas07", "spmfas09", "spmfas01", "spmfas03", "spmfas05", "spmfas11", "spmfas13" } }
         };
 
-        public string ActiveServer { get; private set; }
-        private string _nodeUrl;
+        // CORRECTION MAJEURE : Ces propriétés sont passées en 'static'.
+        // Elles partagent ainsi l'URL de connexion et le nom du serveur avec toutes les instances
+        // du service lors d'un traitement par lot (Batch), évitant l'erreur "Not connected".
+        public static string ActiveServer { get; private set; }
+        private static string _nodeUrl;
 
         static MicroFocusApiService()
         {
