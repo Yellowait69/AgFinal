@@ -20,7 +20,7 @@
         <TextBox x:Name="TxtUsername" Grid.Row="2" Padding="8" FontSize="14" BorderBrush="#DCDDE1" Margin="0,0,0,15" CharacterCasing="Upper"/>
 
         <TextBlock Grid.Row="3" Text="Password:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,5"/>
-        <PasswordBox x:Name="TxtPassword" Grid.Row="4" Padding="8" FontSize="14" BorderBrush="#DCDDE1" Margin="0,0,0,25"/>
+        <PasswordBox x:Name="TxtPassword" Grid.Row="4" Padding="8" FontSize="20" BorderBrush="#DCDDE1" Margin="0,0,0,25"/>
 
         <Button x:Name="BtnLogin" Grid.Row="5" Content="Login" Click="BtnLogin_Click" Background="#3498DB" Foreground="White" FontWeight="Bold" FontSize="14" Padding="10,15" BorderThickness="0" Cursor="Hand" HorizontalAlignment="Stretch" VerticalAlignment="Top">
             <Button.Template>
