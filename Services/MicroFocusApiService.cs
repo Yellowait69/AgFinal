@@ -15,7 +15,7 @@ namespace AutoActivator.Services
 {
     /// <summary>
     /// Service responsible for communicating with the MicroFocus Mainframe REST API.
-    /// OPTIMIZED FOR BATCH: Uses Newtonsoft.Json for maximum stability in .NET Framework environments.
+    /// It handles authentication, JCL job submission, status polling, and spool retrieval.
     /// </summary>
     public class MicroFocusApiService
     {
@@ -49,8 +49,7 @@ namespace AutoActivator.Services
 
             _httpClient = new HttpClient(handler)
             {
-                // CRITIQUE POUR LE MASSIVE BATCH : Timeout de 5 minutes
-                Timeout = TimeSpan.FromMinutes(5)
+                Timeout = TimeSpan.FromSeconds(30)
             };
 
             _httpClient.DefaultRequestHeaders.Add("accept-encoding", "gzip, deflate, br");
@@ -148,8 +147,6 @@ namespace AutoActivator.Services
 
             string submitUrl = $"{_nodeUrl}jescontrol/";
             var payload = new { subJes = "2", ctlSubmit = "Submit", JCLIn = jclContent };
-
-            // CORRECTION: Utilisation de Newtonsoft.Json
             string jsonPayload = JsonConvert.SerializeObject(payload);
 
             try
@@ -167,19 +164,17 @@ namespace AutoActivator.Services
                             return (false, null, $"HTTP Error {(int)response.StatusCode}: {responseBody}");
                         }
 
-                        // CORRECTION: Utilisation de JObject au lieu de JsonNode
                         JObject doc = JObject.Parse(responseBody);
-                        JArray jobMsgArray = doc["JobMsg"] as JArray;
 
-                        if (jobMsgArray != null)
+                        if (doc.TryGetValue("JobMsg", out JToken jobMsgToken))
                         {
                             string jobNum = null;
                             bool isReady = false;
                             var errorMsg = new StringBuilder();
 
-                            foreach (var lineToken in jobMsgArray)
+                            foreach (var lineToken in jobMsgToken)
                             {
-                                string line = lineToken?.ToString() ?? "";
+                                string line = lineToken.ToString();
                                 var match = Regex.Match(line, @"JOBNUM=(\d+)");
                                 if (match.Success) jobNum = "J" + match.Groups[1].Value;
                                 if (line.Contains("Job ready for execution")) isReady = true;
@@ -196,7 +191,7 @@ namespace AutoActivator.Services
                             if (isReady && !string.IsNullOrEmpty(jobNum)) return (true, jobNum, null);
                             return (false, null, string.IsNullOrEmpty(jobNum) ? "JobNum not found. \n" + errorMsg : errorMsg.ToString());
                         }
-                        return (false, null, "Unexpected JSON format (JobMsg not found).");
+                        return (false, null, "Unexpected JSON format.");
                     }
                 }
             }
@@ -222,27 +217,19 @@ namespace AutoActivator.Services
                     try
                     {
                         string debugFilePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"DEBUG_API_{jobNum}.txt");
-                        using (var writer = new System.IO.StreamWriter(debugFilePath, true, Encoding.UTF8))
-                        {
-                            await writer.WriteLineAsync("\n--- NEW VERIFICATION ---\n" + responseBody).ConfigureAwait(false);
-                        }
+                        System.IO.File.AppendAllText(debugFilePath, "\n--- NEW VERIFICATION ---\n" + responseBody);
                     }
-                    catch { /* Silently ignore to prevent app crash if multiple threads access simultaneously */ }
+                    catch { /* Silently ignore if writing fails to prevent application crash */ }
 
                     if (!response.IsSuccessStatusCode)
                     {
                         return ("Unknown", $"HTTP Error: {(int)response.StatusCode}");
                     }
 
-                    // CORRECTION: Utilisation de JObject
                     JObject doc = JObject.Parse(responseBody);
 
-                    // Fonction helper compatible avec Newtonsoft.Json
-                    string GetValueCI(string key)
-                    {
-                        var prop = doc.Properties().FirstOrDefault(p => string.Equals(p.Name, key, StringComparison.OrdinalIgnoreCase));
-                        return prop?.Value?.ToString().Trim();
-                    }
+                    string GetValueCI(string key) =>
+                        doc.Properties().FirstOrDefault(p => p.Name.Equals(key, StringComparison.OrdinalIgnoreCase))?.Value?.ToString().Trim();
 
                     string status = GetValueCI("JobStatus") ?? "Unknown";
 
@@ -280,15 +267,12 @@ namespace AutoActivator.Services
                         return $"HTTP Error when requesting report: {(int)response.StatusCode}";
 
                     string responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-
-                    // CORRECTION: Utilisation de JObject et JArray
                     JObject doc = JObject.Parse(responseBody);
-                    JArray ddsArray = doc["JobDDs"] as JArray;
 
-                    if (ddsArray != null)
+                    if (doc.TryGetValue("JobDDs", out JToken ddsToken))
                     {
-                        var dd = ddsArray.FirstOrDefault(d => d["DDName"]?.ToString() == "BERPCTLO")
-                              ?? ddsArray.FirstOrDefault(d => d["DDName"]?.ToString() == "SYSOUT");
+                        var dd = ddsToken.FirstOrDefault(d => d["DDName"]?.ToString() == "BERPCTLO")
+                              ?? ddsToken.FirstOrDefault(d => d["DDName"]?.ToString() == "SYSOUT");
 
                         if (dd != null)
                         {

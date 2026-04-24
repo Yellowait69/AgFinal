@@ -275,6 +275,7 @@ namespace AutoActivator.Services
             return vars2.OrderBy(x => x).ToList();
         }
 
+
         public string GenerateFtpJcl(DsnDirection direction, string dsn, string tempFileName, TransferMode transferMode)
         {
             return GenerateFtpJcl(direction, new List<Tuple<string, string>> { new Tuple<string, string>(dsn, tempFileName) }, transferMode);
