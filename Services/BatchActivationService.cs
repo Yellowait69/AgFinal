@@ -29,8 +29,14 @@ namespace AutoActivator.Services
             _dataService = dataService;
             _apiService = new MicroFocusApiService();
 
-            // Initialisation du processeur JCL
-            string jclDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "JCL");
+            // CORRECTION : On pointe vers le lecteur réseau contenant les JCL
+            string jclDir = @"\\Jafile02\elia\11 - Technical Architecture\11 - IS Tooling\01 - Tools\LVCHAIN\JCL";
+
+            if (!Directory.Exists(jclDir))
+            {
+                throw new Exception($"[CRITICAL] JCL network folder is inaccessible: {jclDir}. Please check your VPN or network connection.");
+            }
+
             _jclProcessor = new JclProcessorService(jclDir);
         }
 
@@ -52,7 +58,7 @@ namespace AutoActivator.Services
             var validContractsForBulk = new ConcurrentBag<(int RowNum, string RawInput, string FormattedContract, string Amount)>();
 
             // =========================================================================================
-            // 1. OPTIMISATION : LECTURE DU FICHIER CSV (Ta logique d'origine conservée)
+            // 1. OPTIMISATION : LECTURE DU FICHIER CSV
             // =========================================================================================
             using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             using (var reader = new StreamReader(fs, Encoding.UTF8))
@@ -113,9 +119,8 @@ namespace AutoActivator.Services
             int processedItems = 0;
 
             // =========================================================================================
-            // 2. PHASE 1 : INTERROGATION BASE DE DONNÉES EN PARALLÈLE (Massivement accélérée)
+            // 2. PHASE 1 : INTERROGATION BASE DE DONNÉES EN PARALLÈLE
             // =========================================================================================
-            // Le SemaphoreSlim passe à 30 car SQL Server encaisse facilement, et on n'attaque pas encore le Mainframe.
             var dbSemaphore = new SemaphoreSlim(30);
 
             onProgress($"[PHASE 1] Starting parallel DB validation... (0 / {totalItems} contracts)");
@@ -154,7 +159,7 @@ namespace AutoActivator.Services
                 }
                 catch (OperationCanceledException)
                 {
-                    throw; // 2. CAPTURE DE L'ANNULATION POUR ÉVITER LES FAUX RAPPORTS D'ERREURS
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -181,7 +186,7 @@ namespace AutoActivator.Services
             }
 
             // =========================================================================================
-            // 3. PHASE 2 : EXÉCUTION BATCH MAINFRAME (Fichier Unique + FTP + 1 Seul Run)
+            // 3. PHASE 2 : EXÉCUTION BATCH MAINFRAME
             // =========================================================================================
             string localTempFilePath = null;
             var contractsToUpload = validContractsForBulk.ToList();
@@ -212,7 +217,6 @@ namespace AutoActivator.Services
 
                     await RunBatchActivationSequenceAsync(variables, skipPrime, onProgress, token).ConfigureAwait(false);
 
-                    // Si la séquence réussit (pas de crash technique), tous les contrats du lot sont considérés OK
                     successCount += contractsToUpload.Count;
                     foreach (var c in contractsToUpload)
                     {
@@ -222,7 +226,6 @@ namespace AutoActivator.Services
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
                 {
-                    // Si le Job global plante (ex: Abend JCL), tous les contrats du lot sont en erreur
                     foreach (var c in contractsToUpload)
                     {
                         globalReport.Add((c.RowNum, $"[FAILED]  Line {c.RowNum,-4} | Input: {c.RawInput} | BATCH MAINFRAME CRASH: {ex.Message}"));
@@ -233,12 +236,12 @@ namespace AutoActivator.Services
                 finally
                 {
                     if (localTempFilePath != null && File.Exists(localTempFilePath))
-                        File.Delete(localTempFilePath); // Sécurité anti-saturation du disque
+                        File.Delete(localTempFilePath);
                 }
             }
 
             // =========================================================================================
-            // 4. GÉNÉRATION DU RAPPORT FINAL (Ta logique d'origine, incluant les fallback IOException)
+            // 4. GÉNÉRATION DU RAPPORT FINAL
             // =========================================================================================
             if (!token.IsCancellationRequested)
             {
@@ -296,9 +299,7 @@ namespace AutoActivator.Services
                 throw;
             }
 
-            // Remonter l'annulation à l'UI une fois le rapport de sauvegarde effectué
             token.ThrowIfCancellationRequested();
-
             onProgress("Report generated successfully!");
 
             return (successCount, alreadyActiveCount, errorCount, reportPath);
@@ -345,7 +346,6 @@ namespace AutoActivator.Services
             var sb = new StringBuilder();
             foreach (var c in contracts)
             {
-                // Formatage adaptable aux besoins de votre programme Cobol
                 sb.AppendLine($"{c.FormattedContract.PadRight(20)};{c.Amount.PadLeft(15, '0')}");
             }
 
