@@ -96,10 +96,24 @@ namespace AutoActivator.Services
                 }
             }
 
-            var semaphore = new SemaphoreSlim(1);
-
             int totalItems = contractsToProcess.Count;
             int processedItems = 0;
+
+            // =========================================================================================
+            // 2. OPTIMISATION : AUTHENTIFICATION GLOBALE UNIQUE AU MAINFRAME
+            // =========================================================================================
+            onProgress("Authentification globale au Mainframe en cours...");
+            var apiService = new MicroFocusApiService();
+            bool isLogged = await apiService.LogonAsync(username, password, envValue, msg => { }, token).ConfigureAwait(false);
+
+            if (!isLogged)
+                throw new Exception("Échec de l'authentification initiale au serveur MicroFocus. Vérifiez le VPN et vos identifiants.");
+
+            // =========================================================================================
+            // 3. ARCHITECTURE DOUBLE SÉMAPHORE (Fan-Out / Funnel-In)
+            // =========================================================================================
+            var dbSemaphore = new SemaphoreSlim(30); // DB2 SQL encaisse 30 requêtes simultanées facilement
+            var mainframeSemaphore = new SemaphoreSlim(1); // Mainframe API limité à 1 pour éviter U3505 et Lock -911
 
             onProgress($"Starting parallel DB processing... (0 / {totalItems} contracts)");
 
@@ -111,35 +125,48 @@ namespace AutoActivator.Services
                     token.ThrowIfCancellationRequested();
 
                     string resolvedContract = item.rawInput;
+                    string amount = "0";
+                    string formattedContract = "";
 
-                    onProgress($"[{processedItems} / {totalItems} completed] DB Search : {item.rawInput}...");
-
-                    if (isDemandId)
-                    {
-                        resolvedContract = await _dataService.GetContractFromDemandAsync(item.rawInput, envValue + "000").ConfigureAwait(false);
-
-                        if (string.IsNullOrEmpty(resolvedContract))
-                        {
-                            globalReport.Add((item.rowNum, $"[FAILED]  Line {item.rowNum,-4} | Input: {item.rawInput} | Error: No contract associated with this Demand ID in the database."));
-                            Interlocked.Increment(ref errorCount);
-
-                            int currentErr = Interlocked.Increment(ref processedItems);
-                            onProgress($"[{currentErr} / {totalItems} completed] DB Failure : {item.rawInput}");
-                            return;
-                        }
-                    }
-
-                    string amount = await _dataService.FetchPremiumAsync(resolvedContract, envValue + "000").ConfigureAwait(false);
-                    string formattedContract = _dataService.FormatContractForJcl(resolvedContract);
-
-                    await semaphore.WaitAsync(token).ConfigureAwait(false);
+                    // --- PHASE 1 : REQUÊTES DB EN PARALLÈLE ---
+                    await dbSemaphore.WaitAsync(token).ConfigureAwait(false);
                     try
                     {
                         token.ThrowIfCancellationRequested();
 
-                        onProgress($"[{processedItems} / {totalItems} completed] Sending to Mainframe API : {formattedContract}...");
+                        if (isDemandId)
+                        {
+                            resolvedContract = await _dataService.GetContractFromDemandAsync(item.rawInput, envValue + "000").ConfigureAwait(false);
 
-                        await _dataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, channel, skipPrime, username, password, msg => { }, token).ConfigureAwait(false);
+                            if (string.IsNullOrEmpty(resolvedContract))
+                            {
+                                globalReport.Add((item.rowNum, $"[FAILED]  Line {item.rowNum,-4} | Input: {item.rawInput} | Error: No contract associated with this Demand ID in the database."));
+                                Interlocked.Increment(ref errorCount);
+
+                                int currentErr = Interlocked.Increment(ref processedItems);
+                                onProgress($"[{currentErr} / {totalItems} completed] DB Failure : {item.rawInput}");
+                                return; // On sort de la tâche, on ne va pas à la Phase 2
+                            }
+                        }
+
+                        amount = await _dataService.FetchPremiumAsync(resolvedContract, envValue + "000").ConfigureAwait(false);
+                        formattedContract = _dataService.FormatContractForJcl(resolvedContract);
+                    }
+                    finally
+                    {
+                        dbSemaphore.Release(); // Libération rapide de la BDD
+                    }
+
+                    // --- PHASE 2 : SOUMISSION MAINFRAME EN FILE D'ATTENTE ---
+                    await mainframeSemaphore.WaitAsync(token).ConfigureAwait(false);
+                    try
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        onProgress($"[{processedItems} / {totalItems} completed] Sending API Job : {formattedContract}...");
+
+                        // OPTIMISATION : On passe skipLogon = true car on s'est déjà authentifié globalement
+                        await _dataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, channel, skipPrime, true, username, password, msg => { }, token).ConfigureAwait(false);
 
                         globalReport.Add((item.rowNum, $"[SUCCESS] Line {item.rowNum,-4} | Input: {item.rawInput} -> JCL Contract: {formattedContract} | Env: {envValue} | Amount: {amount}"));
                         Interlocked.Increment(ref successCount);
@@ -149,36 +176,34 @@ namespace AutoActivator.Services
                     }
                     finally
                     {
-                        semaphore.Release();
+                        mainframeSemaphore.Release();
                     }
                 }
                 catch (OperationCanceledException)
                 {
-                    // 2. CAPTURE DE L'ANNULATION POUR ÉVITER LES FAUX RAPPORTS D'ERREURS
+                    // CAPTURE DE L'ANNULATION POUR ÉVITER LES FAUX RAPPORTS D'ERREURS
                     throw;
                 }
                 catch (Exception ex)
                 {
+                    int currentFail = Interlocked.Increment(ref processedItems);
+
                     if (ex.Message == "ALREADY_ACTIVE")
                     {
                         globalReport.Add((item.rowNum, $"[ALREADY ACTIVE] Line {item.rowNum,-4} | Input: {item.rawInput} | The contract is already activated (Error 008)."));
                         Interlocked.Increment(ref alreadyActiveCount);
-
-                        int currentAct = Interlocked.Increment(ref processedItems);
-                        onProgress($"[{currentAct} / {totalItems} completed] Already active : {item.rawInput}");
+                        onProgress($"[{currentFail} / {totalItems} completed] Already active : {item.rawInput}");
                     }
                     else
                     {
                         globalReport.Add((item.rowNum, $"[FAILED]  Line {item.rowNum,-4} | Input: {item.rawInput} | Error: {ex.Message}"));
                         Interlocked.Increment(ref errorCount);
-
-                        int currentFail = Interlocked.Increment(ref processedItems);
                         onProgress($"[{currentFail} / {totalItems} completed] Failed : {item.rawInput}");
                     }
                 }
             }, token)).ToList();
 
-            // 3. CAPTURE DE L'ANNULATION GLOBALE (POUR GÉNÉRER UN RAPPORT PARTIEL)
+            // CAPTURE DE L'ANNULATION GLOBALE (POUR GÉNÉRER UN RAPPORT PARTIEL)
             try
             {
                 await Task.WhenAll(tasks).ConfigureAwait(false);

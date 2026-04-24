@@ -24,7 +24,6 @@ namespace AutoActivator.Gui.Views
             InitializeComponent();
         }
 
-
         private void BtnHelp_Click(object sender, RoutedEventArgs e)
         {
             if (Window.GetWindow(this) is MainWindow mainWindow)
@@ -100,7 +99,6 @@ namespace AutoActivator.Gui.Views
             }
         }
 
-
         private void Preset_Checked(object sender, RoutedEventArgs e)
         {
             if (CmbActBucp == null || CmbActCmdpmt == null) return;
@@ -141,7 +139,6 @@ namespace AutoActivator.Gui.Views
             }
         }
 
-
         private void BtnRunSingleActivation_Click(object sender, RoutedEventArgs e) => RunSingleActivation(false);
         private void BtnSkipPrimeSingleAct_Click(object sender, RoutedEventArgs e) => RunSingleActivation(true);
 
@@ -151,81 +148,95 @@ namespace AutoActivator.Gui.Views
 
             _cts = new CancellationTokenSource();
 
+            // ACTIVER LE BOUTON D'ANNULATION
+            BtnCancelSingleAct.IsEnabled = true;
+
             await mainWindow.RunProcessAsync(async () =>
             {
-                string rawInput = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8", channel = "C01";
-                string username = Settings.DbConfig.Uid;
-                string password = Settings.DbConfig.Pwd;
-                bool isDemandId = false;
-
-                if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
-                    throw new Exception("Credentials are not configured. Please log in again.");
-
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    rawInput = TxtActContract.Text.Trim();
-                    isDemandId = RbActSearchDemand?.IsChecked == true;
-                    if (CmbActEnv.SelectedItem is ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
-                    cus = TxtActCus.Text.Trim();
-                    if (CmbActBucp.SelectedItem is ComboBoxItem bItem) bucp = bItem.Content?.ToString() ?? "382";
-                    if (CmbActCmdpmt.SelectedItem is ComboBoxItem cItem) cmdpmt = cItem.Content?.ToString() ?? "8";
-                    if (CmbActChannel.SelectedItem is ComboBoxItem chItem) channel = chItem.Tag?.ToString() ?? "C01";
-                });
-
-                if (string.IsNullOrEmpty(rawInput)) throw new Exception("Please enter a contract value or Demand ID.");
-
-                string resolvedContract = rawInput;
-
-                if (isDemandId)
-                {
-                    Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Searching for the contract associated with the Demand ID...");
-                    resolvedContract = await _activationDataService.GetContractFromDemandAsync(rawInput, envValue + "000");
-                    if (string.IsNullOrEmpty(resolvedContract))
-                        throw new Exception($"Unable to find a contract associated with Demand ID {rawInput} in the {envValue}000 database.");
-                }
-
-                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Fetching premium from the database...");
-                string amount = await _activationDataService.FetchPremiumAsync(resolvedContract, envValue + "000");
-
-                Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Preparing activation sequence...");
-                string formattedContract = _activationDataService.FormatContractForJcl(resolvedContract);
-
-                StringBuilder report = new StringBuilder();
-                report.AppendLine("=== SINGLE ACTIVATION REPORT ===");
-                report.AppendLine($"Date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-                if (skipPrime) report.AppendLine("MODE: SKIP PRIME (Bypassing ADDPRCT, LVPP06U, LVPG22U)\n");
-
                 try
                 {
-                    await _activationDataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, channel, skipPrime, username, password,
-                        msg => Application.Current.Dispatcher.InvokeAsync(() => mainWindow.TxtStatus.Text = msg), _cts.Token);
+                    string rawInput = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8", channel = "C01";
+                    string username = Settings.DbConfig.Uid;
+                    string password = Settings.DbConfig.Pwd;
+                    bool isDemandId = false;
 
-                    report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | Channel: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: SUCCESS");
-
-                    Application.Current.Dispatcher.Invoke(() => MessageBox.Show("Activation sequence completed successfully. Please check the generated report.", "Activation Successful", MessageBoxButton.OK, MessageBoxImage.Information));
-                }
-                catch (Exception ex) when (ex.Message == "ALREADY_ACTIVE") // Catches the specific 008 Exception
-                {
-                    report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | Channel: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: ALREADY ACTIVE (Error 008)");
-
-                    Application.Current.Dispatcher.Invoke(() => MessageBox.Show("This contract is already active (Error 008 - premium already assigned).", "Contract Already Active", MessageBoxButton.OK, MessageBoxImage.Information));
-                }
-                catch (Exception ex)
-                {
-                    report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | Channel: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: FAILED ({ex.Message})");
-                    throw;
-                }
-                finally
-                {
-                    string skipSuffix = skipPrime ? "_SKIP_PRIME" : "";
-                    string path = Path.Combine(Settings.OutputDir, $"Single_Activation_{formattedContract}{skipSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
-                    File.WriteAllText(path, report.ToString());
-
-                    mainWindow.LastGeneratedPath = path;
+                    if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+                        throw new Exception("Credentials are not configured. Please log in again.");
 
                     Application.Current.Dispatcher.Invoke(() =>
                     {
-                        if (mainWindow.PrgLoading != null) mainWindow.PrgLoading.Visibility = Visibility.Collapsed;
+                        rawInput = TxtActContract.Text.Trim();
+                        isDemandId = RbActSearchDemand?.IsChecked == true;
+                        if (CmbActEnv.SelectedItem is ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
+                        cus = TxtActCus.Text.Trim();
+                        if (CmbActBucp.SelectedItem is ComboBoxItem bItem) bucp = bItem.Content?.ToString() ?? "382";
+                        if (CmbActCmdpmt.SelectedItem is ComboBoxItem cItem) cmdpmt = cItem.Content?.ToString() ?? "8";
+                        if (CmbActChannel.SelectedItem is ComboBoxItem chItem) channel = chItem.Tag?.ToString() ?? "C01";
+                    });
+
+                    if (string.IsNullOrEmpty(rawInput)) throw new Exception("Please enter a contract value or Demand ID.");
+
+                    string resolvedContract = rawInput;
+
+                    if (isDemandId)
+                    {
+                        Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Searching for the contract associated with the Demand ID...");
+                        resolvedContract = await _activationDataService.GetContractFromDemandAsync(rawInput, envValue + "000");
+                        if (string.IsNullOrEmpty(resolvedContract))
+                            throw new Exception($"Unable to find a contract associated with Demand ID {rawInput} in the {envValue}000 database.");
+                    }
+
+                    Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Fetching premium from the database...");
+                    string amount = await _activationDataService.FetchPremiumAsync(resolvedContract, envValue + "000");
+
+                    Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Preparing activation sequence...");
+                    string formattedContract = _activationDataService.FormatContractForJcl(resolvedContract);
+
+                    StringBuilder report = new StringBuilder();
+                    report.AppendLine("=== SINGLE ACTIVATION REPORT ===");
+                    report.AppendLine($"Date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                    if (skipPrime) report.AppendLine("MODE: SKIP PRIME (Bypassing ADDPRCT, LVPP06U, LVPG22U)\n");
+
+                    try
+                    {
+                        await _activationDataService.ExecuteActivationSequenceAsync(formattedContract, amount, envValue, cus, bucp, cmdpmt, channel, skipPrime, false, username, password,
+                            msg => Application.Current.Dispatcher.InvokeAsync(() => mainWindow.TxtStatus.Text = msg), _cts.Token);
+
+                        report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | Channel: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: SUCCESS");
+
+                        Application.Current.Dispatcher.Invoke(() => MessageBox.Show("Activation sequence completed successfully. Please check the generated report.", "Activation Successful", MessageBoxButton.OK, MessageBoxImage.Information));
+                    }
+                    catch (Exception ex) when (ex.Message == "ALREADY_ACTIVE") // Catches the specific 008 Exception
+                    {
+                        report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | Channel: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: ALREADY ACTIVE (Error 008)");
+
+                        Application.Current.Dispatcher.Invoke(() => MessageBox.Show("This contract is already active (Error 008 - premium already assigned).", "Contract Already Active", MessageBoxButton.OK, MessageBoxImage.Information));
+                    }
+                    catch (Exception ex)
+                    {
+                        report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | Channel: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: FAILED ({ex.Message})");
+                        throw;
+                    }
+                    finally
+                    {
+                        string skipSuffix = skipPrime ? "_SKIP_PRIME" : "";
+                        string path = Path.Combine(Settings.OutputDir, $"Single_Activation_{formattedContract}{skipSuffix}_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
+                        File.WriteAllText(path, report.ToString());
+
+                        mainWindow.LastGeneratedPath = path;
+
+                        Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            if (mainWindow.PrgLoading != null) mainWindow.PrgLoading.Visibility = Visibility.Collapsed;
+                        });
+                    }
+                }
+                finally
+                {
+                    // DESACTIVER LE BOUTON D'ANNULATION À LA FIN
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        BtnCancelSingleAct.IsEnabled = false;
                     });
                 }
             });
@@ -298,52 +309,66 @@ namespace AutoActivator.Gui.Views
 
             _cts = new CancellationTokenSource();
 
+            // ACTIVER LE BOUTON D'ANNULATION
+            BtnCancelBatchAct.IsEnabled = true;
+
             await mainWindow.RunProcessAsync(async () =>
             {
-                string filePath = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8", channel = "C01";
-                string username = Settings.DbConfig.Uid;
-                string password = Settings.DbConfig.Pwd;
-                bool isDemandId = false;
-
-                if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
-                    throw new Exception("Credentials are not configured. Please log in again.");
-
-                Application.Current.Dispatcher.Invoke(() =>
+                try
                 {
-                    filePath = TxtBatchActCsv.Text.Trim();
-                    isDemandId = RbBatchActSearchDemand?.IsChecked == true;
-                    if (CmbActEnv.SelectedItem is ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
-                    cus = TxtActCus.Text.Trim();
-                    if (CmbActBucp.SelectedItem is ComboBoxItem bItem) bucp = bItem.Content?.ToString() ?? "382";
-                    if (CmbActCmdpmt.SelectedItem is ComboBoxItem cItem) cmdpmt = cItem.Content?.ToString() ?? "8";
-                    if (CmbActChannel.SelectedItem is ComboBoxItem chItem) channel = chItem.Tag?.ToString() ?? "C01";
-                });
+                    string filePath = "", envValue = "D", cus = "XXX", bucp = "382", cmdpmt = "8", channel = "C01";
+                    string username = Settings.DbConfig.Uid;
+                    string password = Settings.DbConfig.Pwd;
+                    bool isDemandId = false;
 
-                if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) throw new Exception("Please select a valid file.");
+                    if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+                        throw new Exception("Credentials are not configured. Please log in again.");
 
-                if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
-                {
-                    Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Converting network Excel file to local CSV via Excel Interop...");
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        filePath = TxtBatchActCsv.Text.Trim();
+                        isDemandId = RbBatchActSearchDemand?.IsChecked == true;
+                        if (CmbActEnv.SelectedItem is ComboBoxItem eItem) envValue = eItem.Tag?.ToString() ?? "D";
+                        cus = TxtActCus.Text.Trim();
+                        if (CmbActBucp.SelectedItem is ComboBoxItem bItem) bucp = bItem.Content?.ToString() ?? "382";
+                        if (CmbActCmdpmt.SelectedItem is ComboBoxItem cItem) cmdpmt = cItem.Content?.ToString() ?? "8";
+                        if (CmbActChannel.SelectedItem is ComboBoxItem chItem) channel = chItem.Tag?.ToString() ?? "C01";
+                    });
 
-                    filePath = await Task.Run(() => PrepareCsvFromExcel(filePath));
+                    if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) throw new Exception("Please select a valid file.");
+
+                    if (filePath.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) || filePath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Application.Current.Dispatcher.Invoke(() => mainWindow.TxtStatus.Text = "Converting network Excel file to local CSV via Excel Interop...");
+
+                        filePath = await Task.Run(() => PrepareCsvFromExcel(filePath));
+                    }
+
+                    var batchService = new BatchActivationService(_activationDataService);
+
+                    var result = await batchService.RunBatchAsync(
+                        filePath, isDemandId, envValue, cus, bucp, cmdpmt, channel, skipPrime, username, password, Settings.OutputDir,
+                        msg => Application.Current.Dispatcher.InvokeAsync(() => mainWindow.TxtStatus.Text = msg),
+                        _cts.Token
+                    );
+
+                    mainWindow.LastGeneratedPath = result.reportPath;
+
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        if (mainWindow.PrgLoading != null) mainWindow.PrgLoading.Visibility = Visibility.Collapsed;
+
+                        MessageBox.Show($"Batch completed.\nSuccess: {result.successCount} \nAlready Active: {result.alreadyActiveCount} \nFailed: {result.errorCount}\n\nPlease open the log file for detailed results.", "Batch Activation", MessageBoxButton.OK, MessageBoxImage.Information);
+                    });
                 }
-
-                var batchService = new BatchActivationService(_activationDataService);
-
-                var result = await batchService.RunBatchAsync(
-                    filePath, isDemandId, envValue, cus, bucp, cmdpmt, channel, skipPrime, username, password, Settings.OutputDir,
-                    msg => Application.Current.Dispatcher.InvokeAsync(() => mainWindow.TxtStatus.Text = msg),
-                    _cts.Token
-                );
-
-                mainWindow.LastGeneratedPath = result.reportPath;
-
-                Application.Current.Dispatcher.Invoke(() =>
+                finally
                 {
-                    if (mainWindow.PrgLoading != null) mainWindow.PrgLoading.Visibility = Visibility.Collapsed;
-
-                    MessageBox.Show($"Batch completed.\nSuccess: {result.successCount} \nAlready Active: {result.alreadyActiveCount} \nFailed: {result.errorCount}\n\nPlease open the log file for detailed results.", "Batch Activation", MessageBoxButton.OK, MessageBoxImage.Information);
-                });
+                    // DESACTIVER LE BOUTON D'ANNULATION À LA FIN
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        BtnCancelBatchAct.IsEnabled = false;
+                    });
+                }
             });
         }
     }

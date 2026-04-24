@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,9 +34,10 @@ namespace AutoActivator.Services
                     return dt.Rows[0]["IT5UCONLREFEXN"]?.ToString()?.Trim();
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently ignore errors and return null
+                // On trace l'erreur au lieu de l'engloutir totalement
+                Debug.WriteLine($"[DB Error] GetContractFromDemandAsync failed for {demandId}: {ex.Message}");
             }
             return null;
         }
@@ -62,14 +64,16 @@ namespace AutoActivator.Services
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Silently ignore errors and return default 0
+                // On trace l'erreur au lieu de l'engloutir totalement
+                Debug.WriteLine($"[DB Error] FetchPremiumAsync failed for {contract}: {ex.Message}");
             }
             return "0";
         }
 
-        public async Task ExecuteActivationSequenceAsync(string contract, string amount, string envValue, string cus, string bucp, string cmdpmt, string channel, bool skipPrime, string username, string password, Action<string> onProgress, CancellationToken token)
+        // OPTIMISATION : Ajout du paramètre 'bool skipLogon'
+        public async Task ExecuteActivationSequenceAsync(string contract, string amount, string envValue, string cus, string bucp, string cmdpmt, string channel, bool skipPrime, bool skipLogon, string username, string password, Action<string> onProgress, CancellationToken token)
         {
             string q2 = envValue == "D" ? "Q2T" : "Q2C";
             string fastCtrl = envValue == "D" ? "I0T.DB.CA.FIB.FASTCTRL" : "I10.DB.CA.FIB.FASTCTRL";
@@ -118,8 +122,9 @@ namespace AutoActivator.Services
 
             var orchestrator = new ActivationOrchestrator(jclFolder);
 
+            // OPTIMISATION : On transmet le paramètre 'skipLogon' à l'orchestrateur
             await orchestrator.RunActivationSequenceAsync(
-                generalVariables, addprctVariables, username, password, channel, skipPrime,
+                generalVariables, addprctVariables, username, password, channel, skipPrime, skipLogon,
                 onProgress, token
             ).ConfigureAwait(false);
         }

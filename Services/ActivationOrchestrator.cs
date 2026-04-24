@@ -25,16 +25,20 @@ namespace AutoActivator.Services
         /// <summary>
         /// Runs the entire activation sequence, submitting jobs one by one and waiting for their successful completion.
         /// </summary>
-        public async Task RunActivationSequenceAsync(Dictionary<string, string> generalVariables, Dictionary<string, string> addprctSpecificVariables, string username, string password, string channel, bool skipPrime, Action<string> onProgress, CancellationToken cancellationToken = default)
+        public async Task RunActivationSequenceAsync(Dictionary<string, string> generalVariables, Dictionary<string, string> addprctSpecificVariables, string username, string password, string channel, bool skipPrime, bool skipLogon, Action<string> onProgress, CancellationToken cancellationToken = default)
         {
             try
             {
                 string currentEnv = generalVariables.ContainsKey("ENV") ? generalVariables["ENV"] : "D";
 
-                bool isLogged = await _apiService.LogonAsync(username, password, currentEnv, msg => {}, cancellationToken).ConfigureAwait(false);
+                // OPTIMISATION 1 : On ne s'authentifie que si skipLogon est false
+                if (!skipLogon)
+                {
+                    bool isLogged = await _apiService.LogonAsync(username, password, currentEnv, msg => { }, cancellationToken).ConfigureAwait(false);
 
-                if (!isLogged)
-                    throw new Exception("Unable to connect to the MicroFocus server (Check your VPN connection and credentials).");
+                    if (!isLogged)
+                        throw new Exception("Unable to connect to the MicroFocus server (Check your VPN connection and credentials).");
+                }
 
                 var addprctVars = new Dictionary<string, string>(generalVariables);
                 foreach (var kvp in addprctSpecificVariables)
@@ -73,7 +77,6 @@ namespace AutoActivator.Services
         /// </summary>
         private async Task ProcessSubmitAndWaitAsync(string jobName, Dictionary<string, string> variables, int count, Action<string> onProgress, CancellationToken cancellationToken)
         {
-
             variables["JOBNAM"] = jobName;
 
             if (jobName == "LVPP06U" || jobName == "LVPG22U")
@@ -134,12 +137,13 @@ namespace AutoActivator.Services
                 throw new Exception($"Failed to submit job {jobName}. Error:\n{Error}");
 
             bool finished = false;
-
             int maxAttempts = 300;
 
             for (int i = 0; i < maxAttempts; i++)
             {
-                await Task.Delay(2000, cancellationToken).ConfigureAwait(false);
+                // OPTIMISATION 2 : Polling dynamique (500ms pour les 4 premiers essais, 2000ms ensuite)
+                int delay = (i < 4) ? 500 : 2000;
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
 
                 var (Status, ReturnCode) = await _apiService.CheckJobStatusAsync(JobNum, cancellationToken).ConfigureAwait(false);
 
@@ -165,18 +169,22 @@ namespace AutoActivator.Services
 
                     if (jobName == "ADDPRCT" || jobName == "LVPG22U" || jobName == "LI1J04D0")
                     {
-                        try
+                        // OPTIMISATION 3 : Téléchargement du rapport en tâche de fond (Fire-and-forget)
+                        // On utilise CancellationToken.None pour éviter que l'annulation du batch ne coupe le téléchargement en cours
+                        _ = Task.Run(async () =>
                         {
-                            string reportContent = await _apiService.GetJobBusinessReportAsync(JobNum, cancellationToken).ConfigureAwait(false);
-
-                            string reportPath = Path.Combine(Path.GetTempPath(), $"REPORT_{jobName}_{JobNum}.txt");
-
-                            using (StreamWriter writer = new StreamWriter(reportPath, false, Encoding.UTF8))
+                            try
                             {
-                                await writer.WriteAsync(reportContent).ConfigureAwait(false);
+                                string reportContent = await _apiService.GetJobBusinessReportAsync(JobNum, CancellationToken.None).ConfigureAwait(false);
+                                string reportPath = Path.Combine(Path.GetTempPath(), $"REPORT_{jobName}_{JobNum}.txt");
+
+                                using (StreamWriter writer = new StreamWriter(reportPath, false, Encoding.UTF8))
+                                {
+                                    await writer.WriteAsync(reportContent).ConfigureAwait(false);
+                                }
                             }
-                        }
-                        catch { /* Ignore if spool fetching fails, job was still technically successful */ }
+                            catch { /* Ignore if spool fetching fails, job was still technically successful */ }
+                        });
                     }
 
                     finished = true;
