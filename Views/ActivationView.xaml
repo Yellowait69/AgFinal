@@ -30,7 +30,7 @@
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
                         <RadioButton x:Name="RbPresetBank" Content="Bank (BUCP: 382, CMD: 8)" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="Preset_Checked"/>
                         <RadioButton x:Name="RbPresetBrokerOld" Content="Broker Old Gen. (BUCP: 49797, CMD: X)" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="Preset_Checked"/>
-                        <RadioButton x:Name="RbPresetBrokerNew" Content="Broker New Gen. (BUCP: 80819, CMD: H)" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="Preset_Checked"/>
+                        <RadioButton x:Name="RbPresetBrokerNew" Content="Broker New Gen. (BUCP: 80819, CMD: H)" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="Preset_Checked" IsChecked="True"/>
                         <Button x:Name="BtnClearPreset" Content="Clear Presets" Padding="10,2" Background="#BDC3C7" BorderThickness="0" Cursor="Hand" Click="BtnClearPreset_Click"/>
                     </StackPanel>
 
@@ -43,7 +43,7 @@
 
                         <StackPanel Grid.Column="0">
                             <TextBlock Text="Environment:" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>
-                            <ComboBox x:Name="CmbActEnv" Margin="0,0,0,15" Padding="6" FontSize="14" BorderBrush="#DCDDE1" SelectedIndex="0" SelectionChanged="CmbActEnv_SelectionChanged">
+                            <ComboBox x:Name="CmbActEnv" Margin="0,0,0,15" Padding="6" FontSize="14" BorderBrush="#DCDDE1" SelectedIndex="1" SelectionChanged="CmbActEnv_SelectionChanged">
                                 <ComboBoxItem Content="D000 (D)" Tag="D"/>
                                 <ComboBoxItem Content="Q000 (Q)" Tag="Q"/>
                             </ComboBox>
@@ -80,7 +80,7 @@
                 </StackPanel>
             </Border>
 
-            <TabControl Grid.Row="2" Background="Transparent" BorderThickness="0" Margin="0,0,0,15">
+            <TabControl Grid.Row="2" Background="Transparent" BorderThickness="0" Margin="0,0,0,15" SelectedIndex="1">
 
                 <TabItem Header="📄 Single Activation" FontSize="14" FontWeight="SemiBold">
                     <Border Background="White" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,10,0,0" MinHeight="250">
@@ -114,8 +114,8 @@
 
                             <StackPanel Margin="0,0,0,15" Orientation="Horizontal">
                                 <TextBlock Text="Input Type:" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                <RadioButton x:Name="RbBatchActSearchContract" Content="Contract Number" IsChecked="True" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="BatchActInputType_Checked"/>
-                                <RadioButton x:Name="RbBatchActSearchDemand" Content="For Testing Team Only!" VerticalAlignment="Center" Cursor="Hand" Checked="BatchActInputType_Checked"/>
+                                <RadioButton x:Name="RbBatchActSearchContract" Content="Contract Number" Margin="0,0,15,0" VerticalAlignment="Center" Cursor="Hand" Checked="BatchActInputType_Checked"/>
+                                <RadioButton x:Name="RbBatchActSearchDemand" Content="For Testing Team Only!" IsChecked="True" VerticalAlignment="Center" Cursor="Hand" Checked="BatchActInputType_Checked"/>
                             </StackPanel>
 
                             <TextBlock Text="Data File path (CSV/XLS):" Margin="0,0,0,5" FontWeight="SemiBold" Foreground="#2C3E50"/>

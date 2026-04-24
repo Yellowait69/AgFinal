@@ -10,7 +10,7 @@
 
         <StackPanel Grid.Row="0" Margin="0,0,0,15">
             <TextBlock Text="Help &amp; Documentation Center" TextWrapping="Wrap" FontSize="26" FontWeight="Bold" Foreground="#2C3E50"/>
-            <TextBlock Text="Welcome to the E.T.L Comparison Tool. Discover how to activate, extract, and compare contractual data."
+            <TextBlock Text="Welcome to the E.T.L (Extract, Transform, Load) Comparison Tool. Discover how to activate, extract, and compare contractual data."
                        TextWrapping="Wrap" FontSize="14" Foreground="#7F8C8D" Margin="0,5,0,0"/>
         </StackPanel>
 
@@ -40,57 +40,8 @@
                 </Style>
             </TabControl.Resources>
 
-            <TabItem Header="📥 1. Extraction">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
-                    <StackPanel>
-                        <TextBlock Text="Extraction Module &amp; Data Retrieval" TextWrapping="Wrap" FontSize="20" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
-                        <TextBlock TextWrapping="Wrap" Foreground="#34495E" FontSize="14" LineHeight="22" Margin="0,0,0,20">
-                            The extraction module connects to specific database environments (<Run FontWeight="Bold">D000</Run>, <Run FontWeight="Bold">Q000</Run>, etc.) to retrieve dozens of tables across the LISA and ELIA systems. Data is assembled into strictly ordered CSV files for future comparisons.
-                        </TextBlock>
-
-                        <TextBlock Text="Core Engine Architecture &amp; Optimizations" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#8E44AD" Margin="0,0,0,5"/>
-                        <Border Background="#F5EEF8" BorderBrush="#9B59B6" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
-                            <StackPanel>
-                                <TextBlock Text="• Demand ID Auto-Resolution:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
-                                <TextBlock Text="If you search by Demand ID, the engine runs a background pre-query to automatically resolve the real Contract Number before starting the dual ELIA/LISA extraction." TextWrapping="Wrap" Foreground="#6C3483" Margin="10,0,0,10"/>
-
-                                <TextBlock Text="• SQL Connection Pool Protection:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
-                                <TextBlock Text="To prevent crashing the database during massive batches, the parallel extractor is strictly throttled using a SemaphoreSlim(10). It allows fast multi-threading while capping concurrent SQL queries." TextWrapping="Wrap" Foreground="#6C3483" Margin="10,0,0,10"/>
-
-                                <TextBlock Text="• Background Excel Interop Cleanup:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
-                                <TextBlock Text="If you load an Excel file, the engine quietly converts it to CSV in the background, ensuring COM objects are fully released to prevent Excel ghost processes." TextWrapping="Wrap" Foreground="#6C3483"/>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Background="#F9F9F9" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,20">
-                            <StackPanel>
-                                <TextBlock Text="Batch Input File Rules (Excel / CSV)" TextWrapping="Wrap" FontWeight="Bold" FontSize="18" Foreground="#2C3E50" Margin="0,0,0,10"/>
-                                <TextBlock Text="Your input files MUST strictly adhere to the following templates based on your search criteria." TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,15"/>
-
-                                <TextBlock Text="1. Search by Contract ID:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,5"/>
-                                <TextBlock Text="The program scans your file looking for a column named exactly 'LISA Contract'. Ensure that your column header matches this name precisely." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
-                                <Border BorderBrush="#DCDDE1" BorderThickness="1" CornerRadius="4" Margin="20,0,0,20" HorizontalAlignment="Left" Padding="2" Background="White">
-                                    <Image Source="/Images/TemplateContractLisa.png" Width="400" Stretch="Uniform" ToolTip="Example of the LISA Contract column format"/>
-                                </Border>
-
-                                <TextBlock Text="2. Search by Demand ID:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,5"/>
-                                <TextBlock Text="The program looks for a column named 'Value'. Important: The system expects this column header to be located specifically on the second row (Row 2) of your file to accurately retrieve all Demand IDs." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
-                                <Border BorderBrush="#DCDDE1" BorderThickness="1" CornerRadius="4" Margin="20,0,0,10" HorizontalAlignment="Left" Padding="2" Background="White">
-                                    <Image Source="/Images/TemplateDemandValue.png" Width="400" Stretch="Uniform" ToolTip="Example of the Value column on Row 2"/>
-                                </Border>
-                            </StackPanel>
-                        </Border>
-
-                        <TextBlock Text="Session History Tracking" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
-                        <TextBlock TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,15">
-                            The GUI dynamically updates the <Run FontWeight="Bold">Session History</Run> grid on the main UI thread. Contracts raising SQL errors or not found are marked as <Run Foreground="#E74C3C" FontWeight="Bold">KO (Inactive)</Run> and are automatically pushed to the top of the list for immediate debugging.
-                        </TextBlock>
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-
-            <TabItem Header="⚡ 2. Activation">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+            <TabItem Header="⚡ 1. Activation">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="20">
                     <StackPanel>
                         <TextBlock Text="Activation Module &amp; Automated Factory" TextWrapping="Wrap" FontSize="20" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
                         <TextBlock TextWrapping="Wrap" Foreground="#34495E" FontSize="14" LineHeight="22" Margin="0,0,0,20">
@@ -150,8 +101,57 @@
                 </ScrollViewer>
             </TabItem>
 
+            <TabItem Header="📥 2. Extraction">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="20">
+                    <StackPanel>
+                        <TextBlock Text="Extraction Module &amp; Data Retrieval" TextWrapping="Wrap" FontSize="20" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#34495E" FontSize="14" LineHeight="22" Margin="0,0,0,20">
+                            The extraction module connects to specific database environments (<Run FontWeight="Bold">D000</Run>, <Run FontWeight="Bold">Q000</Run>, etc.) to retrieve dozens of tables across the LISA and ELIA systems. Data is assembled into strictly ordered CSV files for future comparisons.
+                        </TextBlock>
+
+                        <TextBlock Text="Core Engine Architecture &amp; Optimizations" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#8E44AD" Margin="0,0,0,5"/>
+                        <Border Background="#F5EEF8" BorderBrush="#9B59B6" BorderThickness="1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock Text="• Demand ID Auto-Resolution:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
+                                <TextBlock Text="If you search by Demand ID, the engine runs a background pre-query to automatically resolve the real Contract Number before starting the dual ELIA/LISA extraction." TextWrapping="Wrap" Foreground="#6C3483" Margin="10,0,0,10"/>
+
+                                <TextBlock Text="• SQL Connection Pool Protection:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
+                                <TextBlock Text="To prevent crashing the database during massive batches, the parallel extractor is strictly throttled using a SemaphoreSlim(10). It allows fast multi-threading while capping concurrent SQL queries." TextWrapping="Wrap" Foreground="#6C3483" Margin="10,0,0,10"/>
+
+                                <TextBlock Text="• Background Excel Interop Cleanup:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#4A235A"/>
+                                <TextBlock Text="If you load an Excel file, the engine quietly converts it to CSV in the background, ensuring COM objects are fully released to prevent Excel ghost processes." TextWrapping="Wrap" Foreground="#6C3483"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="#F9F9F9" CornerRadius="5" Padding="20" BorderBrush="#DCDDE1" BorderThickness="1" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock Text="Batch Input File Rules (Excel / CSV)" TextWrapping="Wrap" FontWeight="Bold" FontSize="18" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                                <TextBlock Text="Your input files MUST strictly adhere to the following templates based on your search criteria." TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,15"/>
+
+                                <TextBlock Text="1. Search by Contract ID:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                                <TextBlock Text="The program scans your file looking for a column named exactly 'LISA Contract'. Ensure that your column header matches this name precisely." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
+                                <Border BorderBrush="#DCDDE1" BorderThickness="1" CornerRadius="4" Margin="20,0,0,20" HorizontalAlignment="Left" Padding="2" Background="White">
+                                    <Image Source="/Images/TemplateContractLisa.png" Width="400" Stretch="Uniform" ToolTip="Example of the LISA Contract column format"/>
+                                </Border>
+
+                                <TextBlock Text="2. Search by Demand ID:" TextWrapping="Wrap" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                                <TextBlock Text="The program looks for a column named 'Value'. Important: The system expects this column header to be located specifically on the second row (Row 2) of your file to accurately retrieve all Demand IDs." TextWrapping="Wrap" Foreground="#7F8C8D" Margin="20,0,0,10"/>
+                                <Border BorderBrush="#DCDDE1" BorderThickness="1" CornerRadius="4" Margin="20,0,0,10" HorizontalAlignment="Left" Padding="2" Background="White">
+                                    <Image Source="/Images/TemplateDemandValue.png" Width="400" Stretch="Uniform" ToolTip="Example of the Value column on Row 2"/>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="Session History Tracking" TextWrapping="Wrap" FontWeight="Bold" FontSize="16" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#7F8C8D" LineHeight="20" Margin="0,0,0,15">
+                            The GUI dynamically updates the <Run FontWeight="Bold">Session History</Run> grid on the main UI thread. Contracts raising SQL errors or not found are marked as <Run Foreground="#E74C3C" FontWeight="Bold">KO (Inactive)</Run> and are automatically pushed to the top of the list for immediate debugging.
+                        </TextBlock>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <TabItem Header="📊 3. Comparison">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="20">
                     <StackPanel>
                         <TextBlock Text="Deep Comparison &amp; Non-Regression Engine" TextWrapping="Wrap" FontSize="20" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
                         <TextBlock TextWrapping="Wrap" Foreground="#34495E" FontSize="14" LineHeight="22" Margin="0,0,0,20">
