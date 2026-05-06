@@ -14,7 +14,6 @@ namespace AutoActivator.Config
         // GLOBAL LIST
         public static readonly IReadOnlyList<string> IgnoreColumns = new List<string>
         {
-            // --- LEGACY EXCLUSIONS ---
             // Major technical identifiers
             "NO_CNT", "NO_CNT_EXTENDED", "NO_AVT", "C_STE",
 
@@ -29,7 +28,6 @@ namespace AutoActivator.Config
             "T_FILLER_11", "T_FILLER_20", "T_FILLER_30", "T_FILLER_31",
             "T_FILLER_36", "T_FILLER_84", "T_FILLER_85",
 
-            // --- NEW EXCLUSIONS (False positives D000 vs Q000) ---
             // Identifiers
             "IT5HDMDAIDN", "IT5UCONAIDN", "IT5UASUAIDN", "IT5UPNRAIDN",
             "IT5HDMDNREFEXNDOS", "IT5UPNRLCAEIDN", "IT5UCONLREFEXN",
@@ -46,26 +44,40 @@ namespace AutoActivator.Config
             "IT5UPRPDPMRPAI", "IT5HDMDDCRE", "IT5HDMDDDRNMOD",
 
             // Personal data / Other
-            "IT5UPNRLNOM", "IT5UPNRLPRN", "IT5UPRSUPTT"
+            "IT5UPNRLNOM", "IT5UPNRLPRN", "IT5UPRSUPTT",
+
+            "TSTAMP_CRT", "T_DON_LIE", "NO_REF_LOT"
 
         };
 
         // SPECIFIC EXCLUSIONS
         public static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> SpecificExclusions = new Dictionary<string, IReadOnlyList<string>>
         {
-            // Contract Table
-            { "LV.SCNTT0", new List<string> { "NO_POLICE_PAPIER", "NO_BUR_INTRO", "NO_BUR_INT_GES" } },
+            // Contract Table (LISA)
+            { "LV.PCONT0", new List<string> { "D_ECH", "D_EFF_CNT", "D_PDC_CNT", "D_PDC_GAR", "D_TRM_CNT", "D_TRM_GAR", "D_TRM_GAR_CLI" } },
+            { "LV.ELIAT0", new List<string> { "D_PREV_CLT_EVN" } },
+            { "LV.ELIHT0", new List<string> { "D_PREV_CLT_EVN" } },
+            { "LV.SCNTT0", new List<string> { "NO_POLICE_PAPIER", "NO_BUR_INTRO", "NO_BUR_INT_GES", "D_DEB_CLI_TSFR_RES", "D_EFF_CNT", "D_ETAT_CNT", "D_ETAT_CNT_PIE", "D_EVOL_TRAIT", "D_LIM_CLI_TSFR_RES", "D_MAX_A_VE_LBR", "D_MAX_PROL_TRM", "D_PDC_AVT", "D_PDC_CNT", "D_RCP_POL_SIGN", "D_TRAIT_CNT", "D_TRM_CNT", "INSTA_MM_ANNIV_CNT", "M_CAP_VIE", "M_CAP_VIE_ORGN" } },
+            { "LV.SWBGT0", new List<string> { "AGE_TRF_PDC", "D_ANT", "D_FIN_VALID_TRF", "D_PDC_GAR", "D_TRM_GAR", "D_TRM_GAR_CLI", "M_CAP_REF", "M_CAP_VIE" } },
 
-            // Beneficiaries / Clauses Table
+            // Amendment / Endorsement Table (LISA)
+            { "LV.SAVTT0", new List<string> { "NO_AVT_REF", "NO_AVT_CLS", "NO_AVT_T_LBR", "NO_AVT_ELT", "NO_AVT_PB", "NO_AVT_DCL", "D_EFF_AVT", "D_ETAT_AVT", "D_PDC_AVT", "D_PDC_CLI", "D_VE" } },
+
+            // Beneficiaries / Clauses Table (LISA)
             { "LV.SCLST0", new List<string> { "NO_ORD_CLS" } },
             { "LV.SCLRT0", new List<string> { "NO_ORD_RNG", "NO_ORD_CLS" } },
 
-            // Financial Tables
-            { "LV.BSPDT0", new List<string> { "NO_ORD_TRF_EPA", "NO_ORD_MVT_EPA", "NO_ORD_QUITT", "NO_ORD_MVT_ANNUL", "D_REF_MVT_EPA", "D_STA_IMPR", "C_STA_IMPR" } },
-            { "LV.BSPGT0", new List<string> { "NO_ORD_TRF_EPA" } },
+            // Financial Tables (LISA)
+            { "LV.PRIST0", new List<string> { "D_ECH" } },
+            { "LV.PECHT0", new List<string> { "D_AF_QUITT", "D_ECH", "D_VALID_CPNT" } },
+            { "LV.PMNTT0", new List<string> { "D_BISM_DCOR", "D_BISM_DVA", "D_ECH", "D_REF_PRM" } },
+            { "LV.PRCTT0", new List<string> { "D_BISM_DCOR", "D_BISM_DVA", "D_REF_PRM" } },
+            { "LV.BSPDT0", new List<string> { "NO_ORD_TRF_EPA", "NO_ORD_MVT_EPA", "NO_ORD_QUITT", "NO_ORD_MVT_ANNUL", "D_REF_MVT_EPA", "D_STA_IMPR", "C_STA_IMPR", "D_BISM_DCOR", "D_ECH", "D_ETAT_MVT_EPA", "M_CAP_VIE" } },
+            { "LV.BSPGT0", new List<string> { "NO_ORD_TRF_EPA", "D_ETAT_TRF_EPA", "M_CAP_VIE" } },
+            { "LV.BPBAT0", new List<string> { "D_DEB_DIST_PB", "D_FIN_DIST_PB" } },
 
-            // Amendment / Endorsement Table
-            { "LV.SAVTT0", new List<string> { "NO_AVT_REF", "NO_AVT_CLS", "NO_AVT_T_LBR", "NO_AVT_ELT", "NO_AVT_PB", "NO_AVT_DCL" } }
+            // ELIA Tables
+            { "FJ1.TB5LGDR", new List<string> { "IT5LGDRDDEBVAL", "IT5LGDRDFINVAL", "IT5LGDRDTISCRE", "IT5LGDRDTISDRNMOD", "IT5LGDRDTISMAJDB2", "IT5LGDRNCON" } }
         };
 
 
@@ -74,7 +86,6 @@ namespace AutoActivator.Config
         /// </summary>
         public static HashSet<string> GetExclusionsForTable(string tableName)
         {
-            // Using a HashSet to optimize column lookup (O(1) instead of O(N))
             var exclusions = new HashSet<string>(IgnoreColumns);
 
             if (SpecificExclusions.TryGetValue(tableName, out var specificCols))
