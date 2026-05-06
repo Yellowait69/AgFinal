@@ -16,12 +16,21 @@ namespace AutoActivator.Gui.Views
     public partial class ActivationView : UserControl
     {
         private readonly ActivationDataService _activationDataService = new ActivationDataService();
-
         private CancellationTokenSource _cts;
 
         public ActivationView()
         {
             InitializeComponent();
+
+            if (RbPresetBrokerNew.IsChecked == true)
+            {
+                Preset_Checked(RbPresetBrokerNew, null);
+            }
+
+            if (RbBatchActSearchDemand.IsChecked == true)
+            {
+                UpdateBatchActCsvPath();
+            }
         }
 
         private void BtnHelp_Click(object sender, RoutedEventArgs e)
@@ -40,6 +49,7 @@ namespace AutoActivator.Gui.Views
                 Title = "Select file for batch activation",
                 InitialDirectory = Path.GetFullPath(Settings.InputDir)
             };
+
             if (openFileDialog.ShowDialog() == true) TxtBatchActCsv.Text = openFileDialog.FileName;
         }
 
@@ -55,7 +65,6 @@ namespace AutoActivator.Gui.Views
             if (RbBatchActSearchDemand.IsChecked == true)
             {
                 string envValue = CmbActEnv?.SelectedItem is ComboBoxItem eItem ? eItem.Tag?.ToString() ?? "D" : "D";
-
                 string channelValue = CmbActChannel?.SelectedItem is ComboBoxItem cItem ? cItem.Tag?.ToString() ?? "C01" : "C01";
 
                 TxtBatchActCsv.Text = $@"\\jafile01\Automated_Testing\IS_QCRUNS\00_GENERICS\KEY_{channelValue}ComparisonsDB_URL_ELIA_LoginPage_{envValue}000.xls";
@@ -148,7 +157,6 @@ namespace AutoActivator.Gui.Views
 
             _cts = new CancellationTokenSource();
 
-            // ACTIVER LE BOUTON D'ANNULATION
             BtnCancelSingleAct.IsEnabled = true;
 
             await mainWindow.RunProcessAsync(async () =>
@@ -206,7 +214,7 @@ namespace AutoActivator.Gui.Views
 
                         Application.Current.Dispatcher.Invoke(() => MessageBox.Show("Activation sequence completed successfully. Please check the generated report.", "Activation Successful", MessageBoxButton.OK, MessageBoxImage.Information));
                     }
-                    catch (Exception ex) when (ex.Message == "ALREADY_ACTIVE") // Catches the specific 008 Exception
+                    catch (Exception ex) when (ex.Message == "ALREADY_ACTIVE")
                     {
                         report.AppendLine($"Original Input: {rawInput} | Contract Found: {resolvedContract} | JCL Contract: {formattedContract} | Env: {envValue} | Channel: {channel} | CUS: {cus} | BUCP: {bucp} | CMDPMT: {cmdpmt} | Amount: {amount} | Status: ALREADY ACTIVE (Error 008)");
 
@@ -233,7 +241,6 @@ namespace AutoActivator.Gui.Views
                 }
                 finally
                 {
-                    // DESACTIVER LE BOUTON D'ANNULATION À LA FIN
                     Application.Current.Dispatcher.Invoke(() =>
                     {
                         BtnCancelSingleAct.IsEnabled = false;
@@ -309,7 +316,6 @@ namespace AutoActivator.Gui.Views
 
             _cts = new CancellationTokenSource();
 
-            // ACTIVER LE BOUTON D'ANNULATION
             BtnCancelBatchAct.IsEnabled = true;
 
             await mainWindow.RunProcessAsync(async () =>
@@ -363,7 +369,6 @@ namespace AutoActivator.Gui.Views
                 }
                 finally
                 {
-                    // DESACTIVER LE BOUTON D'ANNULATION À LA FIN
                     Application.Current.Dispatcher.Invoke(() =>
                     {
                         BtnCancelBatchAct.IsEnabled = false;
